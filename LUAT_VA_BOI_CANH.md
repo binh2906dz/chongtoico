@@ -89,6 +89,7 @@ Bản đầu (2026-11-07), chi tiết kỹ thuật ở `huongdan.txt`:
 | 2026-11-07 | Triển khai: Docker Compose (`app` + `db`) trên VPS hiện tại, `app` chỉ mở `127.0.0.1:8090`; Nginx cũ thêm một khối `server` cho tên miền phụ chuyển vào cổng này (N3). |
 | 2026-11-07 | Dữ liệu cũ cần dùng: chủ dự án **chọn sau**. Bộ khung `b22c5f7`: AI **đánh giá lại khi đã rõ chức năng** rồi đề xuất giữ / sửa / xoá. |
 | 2026-11-07 | Bộ khung `b22c5f7` (Python): **đã xoá**, thay bằng bản Node.js. Phiên bản thực tế trong Docker: **Node 24**, **PostgreSQL 17** (dòng "Node.js 22 / PostgreSQL 16" ở trên đã thay thế bởi dòng này). |
+| 2026-11-07 | Cách làm hiện tại: **tập trung code trước, kiểm thử sau**. AI chỉ chạy kiểm tra nhanh (biên dịch `tsc` / `npm run build`) để không đẩy code hỏng; không mở trình duyệt, không viết thêm bài kiểm thử lớn cho tới khi chủ dự án yêu cầu giai đoạn kiểm thử. Vẫn phải báo trung thực cái gì chưa chạy thử (L10). |
 
 ## 7. Câu hỏi còn mở
 
@@ -192,3 +193,8 @@ Mẫu mỗi mục:
   - Script socket: tin chat đẩy realtime tới người khác, đếm online đúng, CSKH admin trả lời đẩy realtime tới khách.
   - **Chưa chạy thử:** `docker build` / `docker compose` (máy không có Docker), `install.sh` / `update.sh` / Nginx / certbot trên VPS thật, PostgreSQL thật (chỉ PGlite), giao diện trên điện thoại thật.
 - File / commit: `c9bc793`.
+
+### 2026-11-07 — Quyết định — Code trước, kiểm thử sau
+- Việc đã làm: thêm dòng quyết định vào mục 6.
+- Lý do: chủ dự án yêu cầu "hiện tại tập trung code trước, test sau".
+- File / commit: commit ghi quyết định này.
