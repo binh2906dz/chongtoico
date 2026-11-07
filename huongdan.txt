@@ -10,6 +10,7 @@ Hệ thống cũ (không dùng code chung): https://github.com/binh2906dz/telegr
 --------------------------------------------------------------------------------
 0) QUY TẮC BẮT BUỘC — ĐỌC TRƯỚC, GHI SAU
 --------------------------------------------------------------------------------
+- ĐỌC LUAT_VA_BOI_CANH.md TRƯỚC TIÊN — file luật gốc, ưu tiên hơn file này.
 - Trước khi sửa code / cấu hình / deploy: đọc hết file này.
 - Sau mỗi thay đổi đáng kể: thêm một mục vào "8) NHẬT KÝ THAY ĐỔI" (ngày ISO,
   tóm tắt, file/commit chính). KHÔNG ghi mật khẩu / token thật.
@@ -110,6 +111,8 @@ b22c5f7 feat: scaffold new platform (FastAPI + aiogram 3 + PostgreSQL + Redis + 
   + Redis), aiogram 3 multi-bot qua webhook có secret, migration 0001 (admins,
   bots, telegram_users, bot_subscribers), API auth/bots/stats, giao diện React
   (đăng nhập, tổng quan, quản lý bot), scripts/install.sh + update.sh. (commit b22c5f7)
+[2026-11-07] Thêm LUAT_VA_BOI_CANH.md (luật + bối cảnh, ưu tiên cao nhất); rule Cursor
+  chuyển sang bắt đọc file này trước. Bộ khung b22c5f7 đang chờ chủ dự án quyết giữ/sửa/xoá.
 
 ================================================================================
 Hết — lưu ý: không lưu mật khẩu / token thật trong file này.
