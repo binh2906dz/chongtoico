@@ -15,6 +15,13 @@
       "when": 1794070773817,
       "tag": "0001_video_follow",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794072301943,
+      "tag": "0002_engagement",
+      "breakpoints": true
     }
   ]
 }

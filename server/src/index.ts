@@ -1,6 +1,7 @@
 import { buildApp } from "./app.js";
 import { config } from "./config.js";
 import { closeDb, initDb } from "./db/index.js";
+import { startMaintenance, stopMaintenance } from "./maintenance.js";
 import { closeRealtime, initRealtime } from "./realtime.js";
 import { seed } from "./seed.js";
 
@@ -9,12 +10,14 @@ const app = await buildApp();
 await seed((msg) => app.log.info(msg));
 initRealtime(app.server);
 await app.listen({ host: config.host, port: config.port });
+startMaintenance((msg) => app.log.info(msg));
 
 let stopping = false;
 async function shutdown(signal: string) {
   if (stopping) return;
   stopping = true;
   app.log.info(`${signal} received, shutting down`);
+  stopMaintenance();
   await closeRealtime();
   await app.close();
   await closeDb();

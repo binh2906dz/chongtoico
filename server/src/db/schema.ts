@@ -1,4 +1,5 @@
 import {
+  type AnyPgColumn,
   bigint,
   boolean,
   date,
@@ -308,6 +309,8 @@ export const videos = pgTable(
     likeCount: integer("like_count").notNull().default(0),
     dislikeCount: integer("dislike_count").notNull().default(0),
     commentCount: integer("comment_count").notNull().default(0),
+    /** "public" | "members" — members-only videos hide the file and details from guests. */
+    visibility: varchar("visibility", { length: 16 }).notNull().default("public"),
     createdAt: createdAt(),
   },
   (t) => [
@@ -330,7 +333,7 @@ export const videoVotes = pgTable(
     value: integer("value").notNull(),
     createdAt: createdAt(),
   },
-  (t) => [primaryKey({ columns: [t.videoId, t.userId] })],
+  (t) => [primaryKey({ columns: [t.videoId, t.userId] }), index("video_votes_created_idx").on(t.createdAt)],
 );
 
 export const videoComments = pgTable(
@@ -343,11 +346,118 @@ export const videoComments = pgTable(
     userId: integer("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
+    /** One level of replies: a reply always points at a top-level comment. */
+    parentId: integer("parent_id").references((): AnyPgColumn => videoComments.id, { onDelete: "cascade" }),
     content: varchar("content", { length: 2000 }).notNull(),
+    likeCount: integer("like_count").notNull().default(0),
+    dislikeCount: integer("dislike_count").notNull().default(0),
     createdAt: createdAt(),
   },
-  (t) => [index("video_comments_video_idx").on(t.videoId, t.id)],
+  (t) => [index("video_comments_video_idx").on(t.videoId, t.id), index("video_comments_parent_idx").on(t.parentId)],
 );
+
+export const videoCommentVotes = pgTable(
+  "video_comment_votes",
+  {
+    commentId: integer("comment_id")
+      .notNull()
+      .references(() => videoComments.id, { onDelete: "cascade" }),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    value: integer("value").notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [primaryKey({ columns: [t.commentId, t.userId] })],
+);
+
+export const videoTags = pgTable(
+  "video_tags",
+  {
+    id: serial("id").primaryKey(),
+    slug: varchar("slug", { length: 64 }).notNull(),
+    name: varchar("name", { length: 40 }).notNull(),
+    videoCount: integer("video_count").notNull().default(0),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("video_tags_slug_uq").on(t.slug), index("video_tags_count_idx").on(t.videoCount)],
+);
+
+export const videoTagLinks = pgTable(
+  "video_tag_links",
+  {
+    videoId: integer("video_id")
+      .notNull()
+      .references(() => videos.id, { onDelete: "cascade" }),
+    tagId: integer("tag_id")
+      .notNull()
+      .references(() => videoTags.id, { onDelete: "cascade" }),
+  },
+  (t) => [primaryKey({ columns: [t.videoId, t.tagId] }), index("video_tag_links_tag_idx").on(t.tagId)],
+);
+
+export const videoSaves = pgTable(
+  "video_saves",
+  {
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    videoId: integer("video_id")
+      .notNull()
+      .references(() => videos.id, { onDelete: "cascade" }),
+    /** "favorite" (Yêu thích) | "later" (Xem sau) */
+    list: varchar("list", { length: 16 }).notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.list, t.videoId] }), index("video_saves_user_idx").on(t.userId, t.list, t.createdAt)],
+);
+
+export const reports = pgTable(
+  "reports",
+  {
+    id: serial("id").primaryKey(),
+    /** "video" | "video_comment" | "post" | "site" (takedown request not tied to one item) */
+    targetType: varchar("target_type", { length: 16 }).notNull(),
+    targetId: integer("target_id").notNull().default(0),
+    reason: varchar("reason", { length: 16 }).notNull(),
+    message: varchar("message", { length: 2000 }).notNull().default(""),
+    contact: varchar("contact", { length: 200 }).notNull().default(""),
+    userId: integer("user_id").references(() => users.id, { onDelete: "set null" }),
+    ip: varchar("ip", { length: 64 }),
+    /** "open" | "resolved" | "dismissed" */
+    status: varchar("status", { length: 16 }).notNull().default("open"),
+    handledBy: integer("handled_by").references(() => users.id, { onDelete: "set null" }),
+    handledAt: timestamp("handled_at", { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [index("reports_status_idx").on(t.status, t.id), index("reports_target_idx").on(t.targetType, t.targetId)],
+);
+
+export const notifications = pgTable(
+  "notifications",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** "reply" | "quote" | "comment_reply" | "follow" | "new_thread" */
+    type: varchar("type", { length: 16 }).notNull(),
+    actorId: integer("actor_id").references(() => users.id, { onDelete: "cascade" }),
+    threadId: integer("thread_id").references(() => threads.id, { onDelete: "cascade" }),
+    postId: integer("post_id").references(() => posts.id, { onDelete: "cascade" }),
+    videoId: integer("video_id").references(() => videos.id, { onDelete: "cascade" }),
+    commentId: integer("comment_id").references(() => videoComments.id, { onDelete: "cascade" }),
+    isRead: boolean("is_read").notNull().default(false),
+    createdAt: createdAt(),
+  },
+  (t) => [index("notifications_user_idx").on(t.userId, t.id), index("notifications_unread_idx").on(t.userId, t.isRead)],
+);
+
+export const siteSettings = pgTable("site_settings", {
+  key: varchar("key", { length: 32 }).primaryKey(),
+  value: text("value").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
 
 export const videoViewDays = pgTable(
   "video_view_days",

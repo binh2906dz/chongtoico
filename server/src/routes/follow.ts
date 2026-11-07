@@ -5,6 +5,7 @@ import { author, authorColumns, requireActive, requireUser } from "../auth.js";
 import { db } from "../db/index.js";
 import { threads, threadWatches, userFollows, users } from "../db/schema.js";
 import { badRequest, idParam, notFound, pageQuery, paginate, parse } from "../http.js";
+import { notify } from "../notify.js";
 import { mapThread, threadSelect } from "./forum.js";
 
 const PER_PAGE = 20;
@@ -61,6 +62,8 @@ export default async function followRoutes(app: FastifyInstance) {
         .returning({ id: userFollows.followingId });
       if (!inserted.length) {
         await db.delete(userFollows).where(and(eq(userFollows.followerId, me.id), eq(userFollows.followingId, target.id)));
+      } else {
+        await notify([{ userId: target.id, type: "follow", actorId: me.id }]);
       }
       return followStats(target.id, me.id);
     },

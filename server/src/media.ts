@@ -5,7 +5,7 @@ import sharp from "sharp";
 import { config } from "./config.js";
 import { badRequest } from "./http.js";
 
-export type MediaKind = "albums" | "avatars" | "posts" | "thumbs";
+export type MediaKind = "albums" | "avatars" | "posts" | "thumbs" | "ads";
 
 export interface StoredImage {
   key: string;
@@ -66,6 +66,7 @@ export async function removeImage(kind: MediaKind, key: string) {
 
 export const albumImageUrl = (key: string, thumb = false) => `/media/a/${key}${thumb ? "_t" : ""}.webp`;
 export const videoThumbUrl = (key: string | null) => (key ? `/media/t/${key}.webp` : null);
+export const adImageUrl = (key: string | null) => (key ? `/media/b/${key}.webp` : null);
 
 export const VIDEO_DIR = () => path.join(config.uploadDir, "videos");
 export const videoFileUrl = (key: string, ext: string) => `/media/v/${key}.${ext}`;

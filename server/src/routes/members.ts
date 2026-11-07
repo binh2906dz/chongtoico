@@ -1,15 +1,15 @@
-import { count, desc, eq } from "drizzle-orm";
+import { count, desc, eq, gt } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { author, authorColumns, profileUser } from "../auth.js";
 import { db } from "../db/index.js";
-import { posts, threads, users } from "../db/schema.js";
+import { posts, threads, users, videoTags } from "../db/schema.js";
 import { notFound, parse } from "../http.js";
 import { getOnline } from "../realtime.js";
-import { hotAlbums } from "./albums.js";
+import { hotAlbums, latestAlbums } from "./albums.js";
 import { followStats } from "./follow.js";
 import { threadFeed } from "./forum.js";
-import { listVideoCategories, listVideos } from "./videos.js";
+import { listVideoCategories, listVideos, videosByIds, watchingNowIds } from "./videos.js";
 
 export async function forumStats() {
   const [[t], [p], [u], [latest]] = await Promise.all([
@@ -31,20 +31,33 @@ export default async function memberRoutes(app: FastifyInstance) {
   app.get("/api/stats", async () => forumStats());
 
   app.get("/api/home", async (req) => {
-    const [albums, today, newest, videoCategories, latest, hot, trending, stats] = await Promise.all([
-      hotAlbums(!!req.user, 8),
-      listVideos({ sort: "today", limit: 8 }),
-      listVideos({ sort: "new", limit: 24 }),
-      listVideoCategories(),
-      threadFeed("latest", 10),
-      threadFeed("hot", 10),
-      threadFeed("trending", 10),
-      forumStats(),
-    ]);
+    const [albums, newAlbums, today, week, newest, random, watching, videoCategories, tags, latest, hot, trending, stats] =
+      await Promise.all([
+        hotAlbums(!!req.user, 8),
+        latestAlbums(!!req.user, 6),
+        listVideos({ sort: "today", limit: 8 }),
+        listVideos({ sort: "week", limit: 8 }),
+        listVideos({ sort: "new", limit: 24 }),
+        listVideos({ sort: "random", limit: 8 }),
+        videosByIds(watchingNowIds(8)),
+        listVideoCategories(),
+        db
+          .select({ id: videoTags.id, slug: videoTags.slug, name: videoTags.name, videoCount: videoTags.videoCount })
+          .from(videoTags)
+          .where(gt(videoTags.videoCount, 0))
+          .orderBy(desc(videoTags.videoCount))
+          .limit(30),
+        threadFeed("latest", 10),
+        threadFeed("hot", 10),
+        threadFeed("trending", 10),
+        forumStats(),
+      ]);
     return {
-      videos: { today: today.rows, newest: newest.rows },
+      videos: { today: today.rows, week: week.rows, newest: newest.rows, random: random.rows, watching },
       videoCategories,
+      tags,
       hotAlbums: albums,
+      latestAlbums: newAlbums,
       feeds: { latest, hot, trending },
       stats,
     };

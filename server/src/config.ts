@@ -5,6 +5,16 @@ function bool(value: string | undefined, fallback: boolean): boolean {
   return ["1", "true", "yes", "on"].includes(value.toLowerCase());
 }
 
+// Only the reverse proxy may set X-Forwarded-For. Nginx on the host reaches the
+// container through the Docker bridge, so private ranges are trusted, never "all".
+const DEFAULT_TRUSTED_PROXIES = "127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16";
+
+function trustProxy(value: string | undefined): string | false {
+  if (value === undefined || value === "" || value.toLowerCase() === "true") return DEFAULT_TRUSTED_PROXIES;
+  if (["0", "false", "no", "off"].includes(value.toLowerCase())) return false;
+  return value;
+}
+
 export const config = {
   siteName: process.env.SITE_NAME || "Chống Tối Cổ",
   host: process.env.HOST || "127.0.0.1",
@@ -14,7 +24,7 @@ export const config = {
   uploadDir: path.resolve(process.env.UPLOAD_DIR || "./data/uploads"),
   publicDir: path.resolve(process.env.PUBLIC_DIR || "../frontend/dist"),
   cookieSecure: bool(process.env.COOKIE_SECURE, false),
-  trustProxy: bool(process.env.TRUST_PROXY, true),
+  trustProxy: trustProxy(process.env.TRUST_PROXY),
   adminUsername: process.env.ADMIN_USERNAME || "",
   adminPassword: process.env.ADMIN_PASSWORD || "",
   sessionDays: 30,

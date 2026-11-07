@@ -11,12 +11,14 @@ import Forum from "./pages/Forum";
 import Home from "./pages/Home";
 import Member from "./pages/Member";
 import NewThread from "./pages/NewThread";
+import Notifications from "./pages/Notifications";
+import SavedVideos from "./pages/SavedVideos";
 import Search from "./pages/Search";
-import { Contact, NotFound, Privacy, Terms } from "./pages/StaticPages";
-import ThreadPage from "./pages/ThreadPage";
+import { Contact, NotFound, Privacy, Rules, Takedown, Terms } from "./pages/StaticPages";
+import ThreadPage, { PostRedirect } from "./pages/ThreadPage";
 import VideoHistory from "./pages/VideoHistory";
 import VideoPage from "./pages/VideoPage";
-import Videos from "./pages/Videos";
+import Videos, { VideoTags } from "./pages/Videos";
 import WhatsNew from "./pages/WhatsNew";
 
 export default function App() {
@@ -26,12 +28,17 @@ export default function App() {
         <Route index element={<Home />} />
         <Route path="video" element={<Videos />} />
         <Route path="video/da-xem" element={<VideoHistory />} />
+        <Route path="video/yeu-thich" element={<SavedVideos />} />
+        <Route path="video/tag" element={<VideoTags />} />
+        <Route path="video/tag/:tag" element={<Videos />} />
         <Route path="video/the-loai/:slug" element={<Videos />} />
         <Route path="video/:id" element={<VideoPage />} />
         <Route path="dang-theo-doi" element={<Following />} />
+        <Route path="thong-bao" element={<Notifications />} />
         <Route path="dien-dan" element={<Forum />} />
         <Route path="dien-dan/:slug" element={<CategoryPage />} />
         <Route path="chu-de/:id" element={<ThreadPage />} />
+        <Route path="bai/:id" element={<PostRedirect />} />
         <Route path="tao-chu-de" element={<NewThread />} />
         <Route path="moi" element={<WhatsNew />} />
         <Route path="album" element={<Albums />} />
@@ -42,6 +49,8 @@ export default function App() {
         <Route path="dang-nhap" element={<Login />} />
         <Route path="dang-ky" element={<Register />} />
         <Route path="quan-tri" element={<Admin />} />
+        <Route path="noi-quy" element={<Rules />} />
+        <Route path="go-noi-dung" element={<Takedown />} />
         <Route path="dieu-khoan" element={<Terms />} />
         <Route path="quyen-rieng-tu" element={<Privacy />} />
         <Route path="lien-he" element={<Contact />} />

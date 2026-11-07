@@ -29,6 +29,8 @@ function UploadForm({ categories, onDone }: { categories: VideoCategory[]; onDon
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [categoryId, setCategoryId] = useState("");
+  const [tags, setTags] = useState("");
+  const [membersOnly, setMembersOnly] = useState(false);
   const [progress, setProgress] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<number | null>(null);
@@ -73,6 +75,8 @@ function UploadForm({ categories, onDone }: { categories: VideoCategory[]; onDon
     form.append("title", title);
     form.append("description", description);
     form.append("categoryId", categoryId);
+    form.append("tags", tags);
+    form.append("visibility", membersOnly ? "members" : "public");
     form.append("duration", String(meta.duration));
     form.append("width", String(meta.width));
     form.append("height", String(meta.height));
@@ -88,6 +92,8 @@ function UploadForm({ categories, onDone }: { categories: VideoCategory[]; onDon
       setThumbBlob(null);
       setTitle("");
       setDescription("");
+      setTags("");
+      setMembersOnly(false);
       if (fileRef.current) fileRef.current.value = "";
       onDone();
     } catch (err) {
@@ -206,6 +212,26 @@ function UploadForm({ categories, onDone }: { categories: VideoCategory[]; onDon
         <label className="label">Mô tả</label>
         <textarea className="input" rows={3} maxLength={5000} value={description} onChange={(e) => setDescription(e.target.value)} disabled={uploading} />
       </div>
+      <div className="grid gap-3 md:grid-cols-3">
+        <div className="md:col-span-2">
+          <label className="label">Thẻ (cách nhau bằng dấu phẩy, tối đa 15)</label>
+          <input
+            className="input"
+            maxLength={1000}
+            placeholder="ví dụ: hài hước, mèo, tổng hợp"
+            value={tags}
+            onChange={(e) => setTags(e.target.value)}
+            disabled={uploading}
+          />
+        </div>
+        <label className="flex items-center gap-2 self-end pb-2 text-sm">
+          <input type="checkbox" checked={membersOnly} onChange={(e) => setMembersOnly(e.target.checked)} disabled={uploading} />
+          🔒 Chỉ thành viên đã đăng nhập được xem
+        </label>
+      </div>
+      {!decodeError && src && meta.duration === 0 && (
+        <div className="text-xs text-muted">Chưa đọc được thời lượng — máy chủ sẽ tự lấy sau khi tải lên (nếu có ffmpeg).</div>
+      )}
 
       <ErrorBox message={error} />
       {uploading && (
@@ -300,6 +326,7 @@ function VideoList({ categories, tick }: { categories: VideoCategory[]; tick: nu
               </Link>
               <div className="min-w-0 flex-1">
                 <Link to={`/video/${v.id}`} className="line-clamp-2 font-semibold hover:text-brand">
+                  {v.membersOnly && <span className="mr-1 text-xs text-sky-300">🔒</span>}
                   {v.title}
                 </Link>
                 <div className="mt-0.5 text-xs text-muted">
@@ -327,6 +354,29 @@ function VideoList({ categories, tick }: { categories: VideoCategory[]; tick: nu
                   }}
                 >
                   Sửa tên
+                </button>
+                <button
+                  className="btn-ghost px-2 py-1 text-xs"
+                  onClick={async () => {
+                    try {
+                      const { video } = await api<{ video: { tags: string } }>(`/api/admin/videos/${v.id}`);
+                      const next = prompt("Thẻ (cách nhau bằng dấu phẩy):", video.tags);
+                      if (next !== null && next !== video.tags) await act(() => api(`/api/admin/videos/${v.id}`, { method: "PATCH", body: { tags: next } }));
+                    } catch (e) {
+                      setErr(errorMessage(e));
+                    }
+                  }}
+                >
+                  Thẻ
+                </button>
+                <button
+                  className="btn-ghost px-2 py-1 text-xs"
+                  title={v.membersOnly ? "Đang chỉ thành viên — bấm để công khai" : "Đang công khai — bấm để chỉ thành viên xem"}
+                  onClick={() =>
+                    act(() => api(`/api/admin/videos/${v.id}`, { method: "PATCH", body: { visibility: v.membersOnly ? "public" : "members" } }))
+                  }
+                >
+                  {v.membersOnly ? "🔓 Công khai" : "🔒 Chỉ TV"}
                 </button>
                 <button
                   className="btn-ghost px-2 py-1 text-xs"

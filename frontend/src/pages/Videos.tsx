@@ -4,13 +4,15 @@ import { ErrorBox, Pagination, Spinner, Tabs } from "../components/ui";
 import { VideoGrid } from "../components/VideoCard";
 import { formatNumber } from "../format";
 import { useFetch } from "../useFetch";
-import type { VideoCategory, VideoItem } from "../types";
+import type { VideoCategory, VideoItem, VideoTag } from "../types";
 
 export const SORT_TABS = [
   { id: "hom-nay", api: "today", label: "Xem nhiều hôm nay" },
   { id: "moi", api: "new", label: "Mới nhất" },
+  { id: "tuan", api: "week", label: "Hay nhất tuần" },
   { id: "hay", api: "best", label: "Hay nhất" },
-  { id: "hot", api: "hot", label: "Hot nhất" },
+  { id: "hot", api: "hot", label: "Hot 7 ngày" },
+  { id: "ngau-nhien", api: "random", label: "🔀 Ngẫu nhiên" },
 ] as const;
 type SortId = (typeof SORT_TABS)[number]["id"];
 
@@ -36,8 +38,51 @@ export function VideoCategoryBar({ active }: { active?: string }) {
   );
 }
 
+export function TagCloud({ tags, limit }: { tags: VideoTag[]; limit?: number }) {
+  if (!tags.length) return null;
+  const max = Math.max(...tags.map((t) => t.videoCount ?? 1));
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {tags.slice(0, limit).map((t) => {
+        const weight = (t.videoCount ?? 1) / max;
+        return (
+          <Link
+            key={t.id}
+            to={`/video/tag/${t.slug}`}
+            className="rounded-full border border-line px-2.5 py-0.5 text-slate-300 hover:border-brand/50 hover:text-brand"
+            style={{ fontSize: `${0.75 + weight * 0.35}rem` }}
+          >
+            #{t.name}
+            {t.videoCount ? <span className="ml-1 text-[10px] text-muted">{t.videoCount}</span> : null}
+          </Link>
+        );
+      })}
+    </div>
+  );
+}
+
+export function VideoTags() {
+  const { data, error, loading } = useFetch<{ tags: VideoTag[] }>("/api/videos/tags?limit=300");
+  return (
+    <div className="space-y-4">
+      <h1 className="text-2xl font-black">🏷️ Thẻ video</h1>
+      {loading && !data ? (
+        <Spinner />
+      ) : error ? (
+        <ErrorBox message={error} />
+      ) : data?.tags.length ? (
+        <div className="panel p-4">
+          <TagCloud tags={data.tags} />
+        </div>
+      ) : (
+        <div className="panel p-8 text-center text-sm text-muted">Chưa có thẻ nào.</div>
+      )}
+    </div>
+  );
+}
+
 export default function Videos() {
-  const { slug } = useParams();
+  const { slug, tag: tagSlug } = useParams();
   const [params, setParams] = useSearchParams();
   const sortId = (SORT_TABS.find((t) => t.id === params.get("sap-xep"))?.id ?? "moi") as SortId;
   const sort = SORT_TABS.find((t) => t.id === sortId)!.api;
@@ -47,10 +92,17 @@ export default function Videos() {
 
   const query = new URLSearchParams({ sort, page: String(page) });
   if (slug) query.set("category", slug);
+  if (tagSlug) query.set("tag", tagSlug);
   if (q) query.set("q", q);
-  const { data, error, loading } = useFetch<{ videos: VideoItem[]; category: VideoCategory | null; page: number; totalPages: number; total: number }>(
-    `/api/videos?${query}`,
-  );
+  const [shuffle, setShuffle] = useState(0);
+  const { data, error, loading } = useFetch<{
+    videos: VideoItem[];
+    category: VideoCategory | null;
+    tag: VideoTag | null;
+    page: number;
+    totalPages: number;
+    total: number;
+  }>(`/api/videos?${query}${sort === "random" ? `&r=${shuffle}` : ""}`);
 
   function update(next: Record<string, string | null>) {
     const p = new URLSearchParams(params);
@@ -67,7 +119,13 @@ export default function Videos() {
     update({ q: draft.trim() || null, trang: null });
   }
 
-  const title = q ? `Kết quả tìm "${q}"` : data?.category ? `Thể loại: ${data.category.name}` : "Video";
+  const title = q
+    ? `Kết quả tìm "${q}"`
+    : data?.category
+      ? `Thể loại: ${data.category.name}`
+      : data?.tag
+        ? `Thẻ: #${data.tag.name}`
+        : "Video";
 
   return (
     <div className="space-y-4">
@@ -81,23 +139,40 @@ export default function Videos() {
             <input className="input w-56 py-1.5" placeholder="Tìm video..." value={draft} onChange={(e) => setDraft(e.target.value)} />
             <button className="btn-ghost px-3 py-1.5">Tìm</button>
           </form>
+          <Link to="/video/yeu-thich" className="btn-ghost px-3 py-1.5">
+            ❤️ Yêu thích
+          </Link>
           <Link to="/video/da-xem" className="btn-ghost px-3 py-1.5">
             🕘 Đã xem
+          </Link>
+          <Link to="/video/tag" className="btn-ghost px-3 py-1.5">
+            🏷️ Thẻ
           </Link>
         </div>
       </div>
       <VideoCategoryBar active={slug} />
-      <Tabs
-        tabs={SORT_TABS.map((t) => ({ id: t.id, label: t.label }))}
-        value={sortId}
-        onChange={(id) => update({ "sap-xep": id === "moi" ? null : id, trang: null })}
-      />
+      <div className="flex flex-wrap items-center gap-2">
+        <Tabs
+          tabs={SORT_TABS.map((t) => ({ id: t.id, label: t.label }))}
+          value={sortId}
+          onChange={(id) => update({ "sap-xep": id === "moi" ? null : id, trang: null })}
+        />
+        {sort === "random" && (
+          <button className="btn-ghost px-3 py-1 text-sm" onClick={() => setShuffle((s) => s + 1)}>
+            Đổi lượt khác
+          </button>
+        )}
+      </div>
       {loading && !data ? (
         <Spinner />
       ) : error ? (
         <ErrorBox message={error} />
       ) : (
-        <VideoGrid videos={data?.videos ?? []} empty={q ? "Không tìm thấy video phù hợp." : "Chưa có video nào."} />
+        <VideoGrid
+          videos={data?.videos ?? []}
+          empty={q ? "Không tìm thấy video phù hợp." : "Chưa có video nào."}
+          showRecent={sort === "today"}
+        />
       )}
       {data && <Pagination page={data.page} totalPages={data.totalPages} onPage={(p) => update({ trang: p > 1 ? String(p) : null })} />}
     </div>

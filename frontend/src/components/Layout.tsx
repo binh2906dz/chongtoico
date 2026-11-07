@@ -2,6 +2,8 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { isStaff, useAuth } from "../auth";
 import { useOnline } from "../socket";
+import { AdBanner, NoticeBar } from "./Extras";
+import NotificationBell from "./NotificationBell";
 import SupportWidget from "./SupportWidget";
 import { Avatar } from "./ui";
 
@@ -66,8 +68,14 @@ function UserMenu() {
           <Link to="/dang-theo-doi" onClick={() => setOpen(false)} className="block px-4 py-2 text-sm hover:bg-panel-2">
             Đang theo dõi
           </Link>
+          <Link to="/video/yeu-thich" onClick={() => setOpen(false)} className="block px-4 py-2 text-sm hover:bg-panel-2">
+            Yêu thích / Xem sau
+          </Link>
           <Link to="/video/da-xem" onClick={() => setOpen(false)} className="block px-4 py-2 text-sm hover:bg-panel-2">
             Video đã xem
+          </Link>
+          <Link to="/thong-bao" onClick={() => setOpen(false)} className="block px-4 py-2 text-sm hover:bg-panel-2">
+            Thông báo
           </Link>
           {isStaff(user) && (
             <Link to="/quan-tri" onClick={() => setOpen(false)} className="block px-4 py-2 text-sm text-brand hover:bg-panel-2">
@@ -130,7 +138,8 @@ export default function Layout() {
           <form onSubmit={search} className="ml-auto hidden md:block">
             <input className="input w-52 py-1.5" placeholder="Tìm video, chủ đề..." value={q} onChange={(e) => setQ(e.target.value)} />
           </form>
-          <div className="ml-auto md:ml-0">
+          <div className="ml-auto flex items-center gap-1 md:ml-0">
+            <NotificationBell />
             <UserMenu />
           </div>
         </div>
@@ -153,6 +162,8 @@ export default function Layout() {
         )}
       </header>
 
+      <NoticeBar />
+
       <div className="border-b border-line bg-panel/60">
         <div className="mx-auto flex max-w-6xl items-center gap-2 px-4 py-1.5 text-xs text-muted">
           <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-400" />
@@ -163,15 +174,22 @@ export default function Layout() {
       </div>
 
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-5">
+        <AdBanner slot="top" className="mb-5" />
         <Outlet />
       </main>
 
       <footer className="border-t border-line bg-panel/60">
         <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-3 px-4 py-6 text-sm text-muted md:flex-row">
           <div>© {new Date().getFullYear()} Chống Tối Cổ. Bảo lưu mọi quyền.</div>
-          <div className="flex flex-wrap gap-4">
+          <div className="flex flex-wrap justify-center gap-4">
+            <Link to="/noi-quy" className="hover:text-white">
+              Nội quy
+            </Link>
             <Link to="/dieu-khoan" className="hover:text-white">
               Điều khoản
+            </Link>
+            <Link to="/go-noi-dung" className="hover:text-white">
+              Yêu cầu gỡ nội dung
             </Link>
             <Link to="/quyen-rieng-tu" className="hover:text-white">
               Quyền riêng tư

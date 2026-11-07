@@ -1,13 +1,15 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { api, errorMessage } from "../api";
 import { isStaff, useAuth } from "../auth";
 import Editor from "../components/Editor";
+import { ReportButton } from "../components/Extras";
 import { Avatar, ErrorBox, Pagination, PostContent, RoleBadge, Spinner, UserLink } from "../components/ui";
+import { VideoGrid } from "../components/VideoCard";
 import { formatDate, formatNumber, roleLabel } from "../format";
 import { usePage } from "../usePage";
 import { useFetch } from "../useFetch";
-import type { Post, ThreadItem } from "../types";
+import type { Post, ThreadItem, VideoItem } from "../types";
 
 interface ThreadData {
   thread: ThreadItem;
@@ -136,7 +138,8 @@ function PostCard({ post, canModerate, onChanged, onReply }: { post: Post; canMo
               ❝ Trích dẫn
             </button>
           )}
-          <div className="ml-auto flex gap-2">
+          <div className="ml-auto flex items-center gap-2">
+            {!isOwner && <ReportButton targetType="post" targetId={post.id} className="btn px-3 py-1 text-xs text-muted hover:text-red-300" />}
             {(isOwner || canModerate) && !editing && (
               <button onClick={() => setEditing(true)} className="btn px-3 py-1 text-muted hover:text-white">
                 Sửa
@@ -159,6 +162,7 @@ export default function ThreadPage() {
   const [page, setPage] = usePage();
   const { user } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const { data, error, loading, reload } = useFetch<ThreadData>(`/api/forum/threads/${id}?page=${page}`);
   const [reply, setReply] = useState("");
   const [sending, setSending] = useState(false);
@@ -171,6 +175,12 @@ export default function ThreadPage() {
       setScrollTo(null);
     }
   }, [data, scrollTo]);
+
+  useEffect(() => {
+    if (!data || !location.hash.startsWith("#p")) return;
+    const t = setTimeout(() => document.getElementById(location.hash.slice(1))?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+    return () => clearTimeout(t);
+  }, [data, location.hash]);
 
   if (loading && !data) return <Spinner />;
   if (error || !data) return <ErrorBox message={error} />;
@@ -290,6 +300,38 @@ export default function ThreadPage() {
           <div className="text-sm text-muted">{user.isBanned ? "Tài khoản đang bị khoá." : "Chủ đề đã bị khoá, không thể trả lời."}</div>
         )}
       </section>
+
+      <RandomVideos />
     </div>
   );
+}
+
+function RandomVideos() {
+  const [tick, setTick] = useState(0);
+  const { data } = useFetch<{ videos: VideoItem[] }>(`/api/videos/random?limit=8&r=${tick}`);
+  if (!data?.videos.length) return null;
+  return (
+    <section className="space-y-3">
+      <div className="flex items-center justify-between gap-3 border-b border-line pb-2">
+        <h2 className="text-lg font-black">🎬 Video đề xuất</h2>
+        <button className="btn-ghost px-2.5 py-1 text-xs" onClick={() => setTick((t) => t + 1)}>
+          🔀 Đổi video khác
+        </button>
+      </div>
+      <VideoGrid videos={data.videos} />
+    </section>
+  );
+}
+
+/** Notification links point at a post id; resolve its thread and page. */
+export function PostRedirect() {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    api<{ threadId: number; page: number }>(`/api/forum/posts/${id}/locate`)
+      .then((r) => navigate(`/chu-de/${r.threadId}${r.page > 1 ? `?trang=${r.page}` : ""}#p${id}`, { replace: true }))
+      .catch((e) => setError(errorMessage(e)));
+  }, [id, navigate]);
+  return error ? <ErrorBox message={error} /> : <Spinner />;
 }

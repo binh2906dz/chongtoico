@@ -1,13 +1,14 @@
-import { and, asc, desc, eq, gt, ilike, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, ilike, inArray, lte, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { author, authorColumns, isStaff, requireActive } from "../auth.js";
 import { config } from "../config.js";
 import { db } from "../db/index.js";
-import { categories, postLikes, posts, threads, threadWatches, uploads, users } from "../db/schema.js";
+import { categories, postLikes, posts, threads, threadWatches, uploads, userFollows, users } from "../db/schema.js";
 import { badRequest, forbidden, idParam, notFound, ok, pageQuery, paginate, parse } from "../http.js";
 import { storeImage } from "../media.js";
+import { notify, quotedUsernames, usersByLowerNames } from "../notify.js";
 
 const THREADS_PER_PAGE = 20;
 const POSTS_PER_PAGE = 20;
@@ -132,7 +133,25 @@ export async function deleteThread(threadId: number) {
   });
 }
 
+/** Returns the ids that were notified so the caller can skip a duplicate "reply" notification. */
+async function notifyQuotes(content: string, actorId: number, threadId: number, postId: number | null) {
+  const targets = await usersByLowerNames(quotedUsernames(content));
+  await notify(targets.map((t) => ({ userId: t.id, type: "quote" as const, actorId, threadId, postId })));
+  return new Set(targets.map((t) => t.id));
+}
+
 export default async function forumRoutes(app: FastifyInstance) {
+  app.get("/api/forum/posts/:id/locate", async (req) => {
+    const { id } = parse(idParam, req.params);
+    const [post] = await db.select({ threadId: posts.threadId }).from(posts).where(eq(posts.id, id)).limit(1);
+    if (!post) throw notFound("Bài viết không tồn tại hoặc đã bị xoá.");
+    const [{ n }] = await db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(posts)
+      .where(and(eq(posts.threadId, post.threadId), lte(posts.id, id)));
+    return { threadId: post.threadId, page: Math.max(1, Math.ceil(n / POSTS_PER_PAGE)) };
+  });
+
   app.get("/api/forum/categories", async () => {
     const cats = await db.select().from(categories).orderBy(asc(categories.sortOrder), asc(categories.id));
     const latest = await db
@@ -284,6 +303,15 @@ export default async function forumRoutes(app: FastifyInstance) {
         await tx.insert(threadWatches).values({ userId: user.id, threadId: t.id }).onConflictDoNothing();
         return t.id;
       });
+      if (!cat.staffOnly) {
+        const followers = await db
+          .select({ id: userFollows.followerId })
+          .from(userFollows)
+          .where(eq(userFollows.followingId, user.id))
+          .limit(2000);
+        await notify(followers.map((f) => ({ userId: f.id, type: "new_thread" as const, actorId: user.id, threadId })));
+      }
+      await notifyQuotes(body.content, user.id, threadId, null);
       return { thread: await loadThread(threadId) };
     },
   );
@@ -364,6 +392,17 @@ export default async function forumRoutes(app: FastifyInstance) {
         await tx.insert(threadWatches).values({ userId: user.id, threadId: id }).onConflictDoNothing();
         return p;
       });
+      const quoted = await notifyQuotes(body.content, user.id, id, post.id);
+      const watchers = await db
+        .select({ id: threadWatches.userId })
+        .from(threadWatches)
+        .where(eq(threadWatches.threadId, id))
+        .limit(2000);
+      await notify(
+        watchers
+          .filter((w) => !quoted.has(w.id))
+          .map((w) => ({ userId: w.id, type: "reply" as const, actorId: user.id, threadId: id, postId: post.id })),
+      );
       const position = thread.replyCount + 2;
       return { post: { id: post.id }, page: Math.ceil(position / POSTS_PER_PAGE) };
     },

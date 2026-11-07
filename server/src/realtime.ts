@@ -12,6 +12,8 @@ let io: Server | null = null;
 interface Presence {
   userId: number | null;
   username: string | null;
+  /** Identifies one guest across tabs: guest cookie, else client IP. */
+  guestId: string;
 }
 
 const presence = new Map<string, Presence>();
@@ -35,15 +37,15 @@ export function parseCookies(header: string | undefined): Record<string, string>
 
 export function getOnline() {
   const members = new Map<number, string>();
-  let guests = 0;
+  const guests = new Set<string>();
   for (const p of presence.values()) {
     if (p.userId !== null && p.username) members.set(p.userId, p.username);
-    else guests += 1;
+    else guests.add(p.guestId);
   }
   return {
     members: members.size,
-    guests,
-    total: members.size + guests,
+    guests: guests.size,
+    total: members.size + guests.size,
     usernames: [...members.values()].slice(0, 50),
   };
 }
@@ -77,7 +79,10 @@ export function initRealtime(server: HttpServer) {
       user = null;
     }
     const guestKey = cookies[GUEST_COOKIE];
-    presence.set(socket.id, { userId: user?.id ?? null, username: user?.username ?? null });
+    // X-Real-IP is overwritten by Nginx; the app port is bound to 127.0.0.1 so clients cannot reach it directly.
+    const realIp = socket.handshake.headers["x-real-ip"];
+    const guestId = guestKey ? `k:${guestKey}` : `ip:${typeof realIp === "string" && realIp ? realIp : socket.handshake.address}`;
+    presence.set(socket.id, { userId: user?.id ?? null, username: user?.username ?? null, guestId });
     scheduleOnlineBroadcast();
     socket.emit("online", getOnline());
 

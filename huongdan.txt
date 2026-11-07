@@ -44,39 +44,81 @@ Thư mục:
 - server/src/db/index.ts     — chọn driver: "postgres://" (thật) hoặc
                                "pglite:<thư mục>|memory" (chạy thử / test)
 - server/src/auth.ts         — phiên đăng nhập (bảng sessions), quyền, khoá TK
-- server/src/realtime.ts     — Socket.IO: đếm online, phòng chat, phòng CSKH
+- server/src/realtime.ts     — Socket.IO: đếm online (khách đếm theo cookie
+                               khách / IP, không theo tab), phòng chat, CSKH,
+                               phòng user:<id> (thông báo), staff (báo vi phạm)
 - server/src/media.ts        — xử lý ảnh bằng sharp (webp, thumbnail, ảnh bìa
-                               video), kiểm tra file video (byte đầu)
+                               video, ảnh quảng cáo), kiểm tra file video (byte đầu)
+- server/src/ffmpeg.ts       — ffmpeg (không bắt buộc): faststart mp4/mov, lấy
+                               thời lượng + ảnh bìa khi trình duyệt không gửi
+- server/src/notify.ts       — tạo thông báo + đẩy realtime
+- server/src/settings.ts     — cài đặt trang (bảng site_settings, JSON): thanh
+                               thông báo, ô quảng cáo, nội dung Nội quy / Gỡ nội dung
+- server/src/maintenance.ts  — dọn định kỳ 6 giờ/lần: phiên hết hạn, ảnh trình
+                               soạn thảo không còn dùng (>1 ngày), lượt xem theo
+                               ngày >60 ngày, thông báo đã đọc >90 ngày
 - server/src/routes/*.ts     — auth, forum, chat, albums, members (thống kê,
                                trang cá nhân, trang chủ), support (CSKH), admin, media,
-                               videos (video + thể loại + bình chọn + bình luận +
-                               lịch sử), follow (theo dõi chủ đề / thành viên)
+                               videos (video, thể loại, tag, bình chọn, bình luận
+                               + trả lời + vote, lịch sử, yêu thích / xem sau),
+                               follow (theo dõi), notifications, site (cài đặt
+                               trang + báo vi phạm)
 - server/test/api.test.ts    — kiểm thử API trên PGlite trong bộ nhớ (CHƯA có
-                               bài cho video / theo dõi)
-- frontend/src/pages/        — Home (video là chính), Videos, VideoPage,
-                               VideoHistory, Following, Forum, CategoryPage,
-                               ThreadPage, NewThread, WhatsNew, Albums, AlbumView,
-                               Chat, Member, Search, AuthPages, StaticPages, admin/*
+                               bài cho video / theo dõi / thông báo / báo vi phạm)
+- frontend/src/pages/        — Home (video là chính), Videos (+ VideoTags),
+                               VideoPage, VideoHistory, SavedVideos, Notifications,
+                               Following, Forum, CategoryPage, ThreadPage (+
+                               PostRedirect), NewThread, WhatsNew, Albums,
+                               AlbumView, Chat, Member, Search, AuthPages,
+                               StaticPages (+ Nội quy, Gỡ nội dung), admin/*
 - frontend/src/components/   — Layout, ChatBox, SupportWidget, Sidebar, Editor
-                               (BBCode), VideoCard, ui (PostContent = bộ hiển thị
-                               BBCode)
-- scripts/install.sh, update.sh
+                               (BBCode), VideoCard, NotificationBell, Extras
+                               (Modal, ReportButton, ShareBar, AdBanner,
+                               NoticeBar), ui (PostContent = bộ hiển thị BBCode)
+- frontend/src/site.tsx      — context cài đặt trang (GET /api/site)
+- scripts/install.sh, update.sh, backup.sh
 
-Đường dẫn giao diện: / , /video , /video/the-loai/:slug , /video/:id ,
-/video/da-xem , /dang-theo-doi , /dien-dan , /dien-dan/:slug , /chu-de/:id ,
-/tao-chu-de , /moi , /album , /album/:id , /chat , /thanh-vien/:ten , /tim-kiem ,
-/dang-nhap , /dang-ky , /quan-tri (?tab=videos ...) , /dieu-khoan ,
-/quyen-rieng-tu , /lien-he
+Đường dẫn giao diện: / , /video , /video/the-loai/:slug , /video/tag ,
+/video/tag/:slug , /video/:id , /video/da-xem , /video/yeu-thich (?ds=xem-sau) ,
+/thong-bao , /bai/:id (chuyển tới bài trong chủ đề) , /dang-theo-doi ,
+/dien-dan , /dien-dan/:slug , /chu-de/:id , /tao-chu-de , /moi , /album ,
+/album/:id , /chat , /thanh-vien/:ten , /tim-kiem , /dang-nhap , /dang-ky ,
+/quan-tri (?tab=reports|videos|settings ...) , /noi-quy , /go-noi-dung ,
+/dieu-khoan , /quyen-rieng-tu , /lien-he
 
 Video:
 - Chỉ admin đăng (Quản trị > Video). Trình duyệt admin đọc thời lượng, kích
-  thước và chụp 1 khung hình làm ảnh bìa rồi gửi kèm => VPS không cần ffmpeg,
-  KHÔNG chuyển mã. Nhận mp4 / webm / mov; nên đăng mp4 H.264 để mọi trình duyệt
-  phát được (HEVC/H.265 nhiều máy không phát).
+  thước và chụp 1 khung hình làm ảnh bìa rồi gửi kèm. KHÔNG chuyển mã. Nhận
+  mp4 / webm / mov; nên đăng mp4 H.264 (HEVC/H.265 nhiều máy không phát).
+- Sau khi tải lên (chạy nền, không chặn phản hồi): nếu có ffmpeg (Docker có
+  sẵn) => mp4/mov chưa "faststart" được remux `-c copy -movflags +faststart`
+  (chỉ sắp lại, không giảm chất lượng; cần thêm dung lượng trống bằng cỡ file
+  trong lúc chạy). Thiếu thời lượng / ảnh bìa => ffprobe / ffmpeg tự lấy.
+  Máy không có ffmpeg => bỏ qua, video vẫn dùng được.
 - File video: /media/v/<mã>.<đuôi> (@fastify/static, hỗ trợ tua bằng HTTP
-  Range). Ảnh bìa: /media/t/<mã>.webp.
-- "Xem nhiều hôm nay" / "Hot nhất" dựa trên bảng video_view_days (lượt xem theo
-  ngày, giờ Việt Nam); lượt xem chống đếm trùng 30 phút / IP (trong bộ nhớ).
+  Range). Ảnh bìa: /media/t/<mã>.webp. Ảnh quảng cáo: /media/b/<mã>.webp.
+- Video "chỉ thành viên" (videos.visibility = members): khách thấy thẻ + ảnh
+  bìa nhưng trang xem bị khoá, file /media/v/ trả 403. Danh sách mã file bị
+  khoá giữ trong bộ nhớ (membersOnlyKeys, nạp lúc khởi động, cập nhật khi
+  đăng / sửa / xoá).
+- Sắp xếp: today / hot (bảng video_view_days, giờ Việt Nam — video có lượt
+  trong kỳ lên trước, còn lại theo tổng lượt xem), week (tỉ lệ thích của phiếu
+  bầu trong 7 ngày), best, new, random. "Đang được xem" = video được mở trong
+  30 phút gần nhất (bộ nhớ). Lượt xem chống đếm trùng 30 phút / IP.
+- Gợi ý ngẫu nhiên để video cũ không bị chìm: video đề xuất = tối đa 6 cùng
+  thể loại + phần còn lại ngẫu nhiên (nút "Đổi video khác"); trang chủ có khung
+  "Có thể bạn chưa xem"; trang chủ đề có khung "Video đề xuất" ngẫu nhiên.
+- Tag: bảng video_tags + video_tag_links; nhập dạng "a, b, c" (tối đa 15),
+  slug bỏ dấu tiếng Việt.
+
+Thông báo (bảng notifications, realtime sự kiện "notification" vào user:<id>):
+- reply (trả lời chủ đề đang theo dõi; gộp: chỉ giữ 1 thông báo chưa đọc / chủ
+  đề), quote ([quote=tên]), new_thread (người mình theo dõi đăng chủ đề — trừ
+  chuyên mục chỉ BQT), comment_reply (trả lời bình luận video), follow.
+
+Báo vi phạm (bảng reports): video / bình luận video / bài viết / "site" (form
+Yêu cầu gỡ nội dung, cần email liên hệ). Khách cũng gửi được (10/giờ/IP).
+Hàng chờ: Quản trị > Báo vi phạm (mod + admin).
 
 --------------------------------------------------------------------------------
 2) TRIỂN KHAI (VPS)
@@ -92,6 +134,16 @@ Video:
     curl -s http://127.0.0.1:8090/healthz          (mong đợi {"ok":true})
 - HTTPS: certbot --nginx -d <tên miền phụ>, rồi đặt COOKIE_SECURE=true trong
   .env và chạy `docker compose up -d`.
+- Sao lưu: bash /opt/chongtoico/scripts/backup.sh  (DB + ảnh, giữ 7 bản ở
+  /opt/chongtoico-backups; thêm --with-videos để gồm video). Tự động mỗi ngày:
+    crontab -e  =>  0 3 * * * bash /opt/chongtoico/scripts/backup.sh >> /var/log/chongtoico-backup.log 2>&1
+  Nên chép thư mục sao lưu ra nơi khác (mất VPS là mất cả bản sao lưu).
+- Khôi phục (cẩn thận — ghi đè dữ liệu hiện tại):
+    cd /opt/chongtoico
+    gunzip -c /opt/chongtoico-backups/db-<ngày>.sql.gz | docker compose exec -T db psql -U chongtoico -d chongtoico
+      (phải làm trên DB trống: docker compose down; docker volume rm chongtoico_pgdata
+       (xem tên đúng bằng `docker volume ls`); docker compose up -d db; chạy lệnh trên; docker compose up -d)
+    docker compose exec -T app tar -C /data/uploads -xzf - < /opt/chongtoico-backups/files-<ngày>.tar.gz
 
 --------------------------------------------------------------------------------
 3) BIẾN MÔI TRƯỜNG (.env — xem .env.example)
@@ -109,6 +161,11 @@ Video:
   Site Nginx tạo trước bản này (chưa có khối /api/admin/videos) => chỉ nhận
   200M; xoá /etc/nginx/sites-available/chongtoico rồi chạy lại install.sh,
   hoặc thêm khối đó bằng tay theo scripts/install.sh.
+- TRUST_PROXY       : IP/dải mạng của proxy được tin để đọc X-Forwarded-For.
+  Để trống = 127.0.0.1, ::1, 10/8, 172.16/12, 192.168/16 (Nginx trên VPS vào
+  container qua Docker bridge 172.x). "false" = không tin proxy nào. TUYỆT ĐỐI
+  không đặt tin mọi IP (trước 2026-11-08 là "true" => giả mạo IP được, vượt
+  giới hạn đăng nhập).
 
 --------------------------------------------------------------------------------
 4) BẢO MẬT ĐÃ CÓ
@@ -123,7 +180,11 @@ Video:
 - Ảnh: kiểm tra bằng sharp, chuyển sang webp, bỏ metadata EXIF; tên file ngẫu
   nhiên; album "chỉ thành viên" chặn cả file ảnh với khách.
 - Quyền: member < mod (kiểm duyệt nội dung, khoá thành viên thường, CSKH,
-  album) < admin (thêm: đổi quyền, chuyên mục, kênh chat, tính lại bộ đếm).
+  album, báo vi phạm) < admin (thêm: đổi quyền, chuyên mục, kênh chat, tính lại
+  bộ đếm, video, cài đặt trang, đặt lại mật khẩu thành viên — không áp dụng cho
+  admin khác; đặt lại => đăng xuất mọi thiết bị của người đó).
+- IP thật: chỉ tin X-Forwarded-For từ proxy trong TRUST_PROXY (xem mục 3).
+- Quảng cáo chỉ là ảnh + link (rel="sponsored"), không chèn mã script.
 - Tài khoản bị khoá vẫn đăng nhập, đọc, nhắn CSKH được nhưng không đăng bài,
   chat, thích.
 
@@ -146,9 +207,14 @@ Video:
   (PostContent trong ui.tsx) dựng phần tử React, KHÔNG render HTML; [url] chỉ
   nhận http/https. Thêm thẻ mới phải sửa TAG_RE + renderNodes + nút trong Editor.
 - Đăng / trả lời chủ đề tự thêm vào thread_watches (theo dõi).
-- Video: bộ đếm like_count / dislike_count / comment_count của videos và
-  video_count của video_categories cũng cập nhật thủ công ("Tính lại bộ đếm"
-  có tính lại các số này).
+- Video: bộ đếm like_count / dislike_count / comment_count của videos,
+  video_count của video_categories và video_tags, like/dislike của
+  video_comments cũng cập nhật thủ công ("Tính lại bộ đếm" có tính lại các số
+  này). comment_count tính cả trả lời; xoá bình luận gốc xoá luôn trả lời.
+- Ảnh chèn bằng trình soạn thảo (bảng uploads) bị maintenance.ts xoá nếu sau 1
+  ngày không còn nằm trong posts.content, site_settings.value hoặc
+  videos.description. Thêm chỗ mới dùng [img:..] => thêm điều kiện vào đó.
+- Cài đặt trang được cache trong bộ nhớ (settings.ts), xoá cache khi lưu.
 - PowerShell 5.1 trên máy dev: không sửa file bằng Set-Content (chèn BOM).
 - Socket: client tự kết nối lại sau đăng nhập/đăng xuất và sau tin CSKH đầu
   tiên của khách (để server đọc lại cookie và cho vào đúng phòng).
@@ -159,8 +225,11 @@ Video:
 --------------------------------------------------------------------------------
 - Chủ dự án chỉnh sửa / thêm chức năng sau khi xem bản đầu.
 - Giai đoạn kiểm thử (khi chủ dự án yêu cầu): viết bài test cho video / theo
-  dõi / BBCode; thử tải + phát + tua video thật; thử Nginx với file lớn.
-- Chưa làm: thông báo, tin nhắn riêng, báo vi phạm.
+  dõi / BBCode / thông báo / báo vi phạm / tag / yêu thích; thử tải + phát +
+  tua video thật; thử Nginx với file lớn; thử ffmpeg faststart trong Docker;
+  thử backup.sh + khôi phục trên VPS.
+- Chưa làm: tin nhắn riêng; ảnh / tiêu đề xem trước khi chia sẻ link (og:meta —
+  chủ dự án chưa chọn).
 - App Android: chưa rõ còn làm không (thẻ ứng dụng / nút cài PWA ở trang chủ
   đã bỏ 2026-11-08).
 - Kết nối Telegram / chuyển dữ liệu cũ từ data.db: chờ chủ dự án chọn dữ liệu.
@@ -195,6 +264,13 @@ b22c5f7 feat: scaffold new platform (đã thay thế — xoá ở bản Node.js)
   0001_video_follow.sql. Nginx thêm khối /api/admin/videos (2100M, không đệm).
 [2026-11-08] Bỏ bảng xếp hạng (giao diện + /api/members/rankings) và thẻ ứng
   dụng ở trang chủ.
+[2026-11-08] Bản "lai" sau đánh giá: sửa TRUST_PROXY (chống giả mạo IP), đếm
+  online theo người, dọn định kỳ (maintenance.ts), admin đặt lại mật khẩu,
+  backup.sh, ffmpeg faststart (Dockerfile cài ffmpeg). Thêm: tag, yêu thích /
+  xem sau, chia sẻ, báo vi phạm + hàng chờ, thông báo realtime, trả lời + vote
+  bình luận video, video chỉ thành viên, Hay nhất tuần / Đang được xem / ngẫu
+  nhiên, Album mới ở trang chủ, thanh thông báo, ô quảng cáo, trang Nội quy +
+  Yêu cầu gỡ nội dung. Migration 0002_engagement.sql.
 
 ================================================================================
 Hết — lưu ý: không lưu mật khẩu / token thật trong file này.

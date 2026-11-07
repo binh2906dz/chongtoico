@@ -132,23 +132,66 @@ export interface VideoItem {
   dislikeCount: number;
   commentCount: number;
   rating: number | null;
+  membersOnly: boolean;
   createdAt: string;
   category: { id: number; slug: string; name: string } | null;
   viewedAt?: string;
+  recentViews?: number;
+}
+
+export interface VideoTag {
+  id: number;
+  slug: string;
+  name: string;
+  videoCount?: number;
 }
 
 export interface VideoDetail extends VideoItem {
   description: string;
-  videoUrl: string;
+  videoUrl: string | null;
+  locked: boolean;
   author: Author;
+  tags: VideoTag[];
 }
 
 export interface VideoComment {
   id: number;
+  parentId: number | null;
   content: string;
+  likeCount: number;
+  dislikeCount: number;
+  myVote: number;
   createdAt: string;
   author: Author;
+  replies: VideoComment[];
 }
+
+export type NotificationType = "reply" | "quote" | "comment_reply" | "follow" | "new_thread";
+
+export interface NotificationItem {
+  id: number;
+  type: NotificationType;
+  isRead: boolean;
+  createdAt: string;
+  threadId: number | null;
+  postId: number | null;
+  videoId: number | null;
+  commentId: number | null;
+  threadTitle: string | null;
+  videoTitle: string | null;
+  actor: Author | null;
+}
+
+export type AdSlot = "top" | "home" | "video" | "sidebar";
+
+export interface SiteInfo {
+  notice: { text: string; tone: "info" | "warn" | "success"; link: string } | null;
+  ads: Partial<Record<AdSlot, { imageUrl: string; link: string; alt: string }>>;
+  rules: string;
+  takedown: string;
+}
+
+export type ReportTarget = "video" | "video_comment" | "post" | "site";
 
 export interface FollowStats {
   followerCount: number;

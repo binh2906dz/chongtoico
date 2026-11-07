@@ -66,6 +66,11 @@ export async function hotAlbums(loggedIn: boolean, limit: number) {
   return rows.map((r) => mapAlbum(r, loggedIn));
 }
 
+export async function latestAlbums(loggedIn: boolean, limit: number) {
+  const rows = await albumSelect().orderBy(desc(albums.createdAt), desc(albums.id)).limit(limit);
+  return rows.map((r) => mapAlbum(r, loggedIn));
+}
+
 async function getAlbum(id: number) {
   const [album] = await db.select().from(albums).where(eq(albums.id, id)).limit(1);
   if (!album) throw notFound("Album không tồn tại.");

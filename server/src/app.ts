@@ -17,8 +17,10 @@ import followRoutes from "./routes/follow.js";
 import forumRoutes from "./routes/forum.js";
 import mediaRoutes from "./routes/media.js";
 import memberRoutes from "./routes/members.js";
+import notificationRoutes from "./routes/notifications.js";
+import siteRoutes from "./routes/site.js";
 import supportRoutes from "./routes/support.js";
-import videoRoutes from "./routes/videos.js";
+import videoRoutes, { membersOnlyKeys } from "./routes/videos.js";
 
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 export const CSRF_HEADER = "x-requested-with";
@@ -46,7 +48,14 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
     req.user = null;
     const url = req.url;
     if (!url.startsWith("/api/") && !url.startsWith("/media/")) return;
-    if (url.startsWith("/media/v/")) return;
+    if (url.startsWith("/media/v/")) {
+      const key = /^\/media\/v\/([a-f0-9]{32})\./.exec(url)?.[1];
+      if (key && membersOnlyKeys.has(key)) {
+        req.user = await userFromToken(req.cookies[SESSION_COOKIE]);
+        if (!req.user) throw new HttpError(403, "Video chỉ dành cho thành viên.");
+      }
+      return;
+    }
     if (url.startsWith("/api/") && !SAFE_METHODS.has(req.method) && req.headers[CSRF_HEADER] !== CSRF_VALUE) {
       throw new HttpError(403, "Yêu cầu không hợp lệ.");
     }
@@ -76,6 +85,8 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
   await app.register(adminRoutes);
   await app.register(videoRoutes);
   await app.register(followRoutes);
+  await app.register(notificationRoutes);
+  await app.register(siteRoutes);
   await app.register(mediaRoutes);
 
   mkdirSync(VIDEO_DIR(), { recursive: true });
@@ -85,8 +96,9 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
     decorateReply: false,
     index: false,
     allowedPath: (pathName) => !pathName.endsWith(".part"),
-    setHeaders(res) {
-      res.header("Cache-Control", "public, max-age=31536000, immutable");
+    setHeaders(res, filePath) {
+      const key = path.basename(filePath).split(".")[0];
+      res.header("Cache-Control", membersOnlyKeys.has(key) ? "private, max-age=86400" : "public, max-age=31536000, immutable");
       res.header("X-Content-Type-Options", "nosniff");
     },
   });

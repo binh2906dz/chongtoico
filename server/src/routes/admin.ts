@@ -1,7 +1,7 @@
 import { asc, count, desc, eq, gt, ilike, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { isAdmin, profileUser, requireAdmin, requireStaff, ROLES } from "../auth.js";
+import { hashPassword, isAdmin, profileUser, requireAdmin, requireStaff, ROLES } from "../auth.js";
 import { db } from "../db/index.js";
 import {
   albums,
@@ -9,6 +9,7 @@ import {
   chatChannels,
   chatMessages,
   posts,
+  reports,
   sessions,
   supportConversations,
   threads,
@@ -45,7 +46,7 @@ export default async function adminRoutes(app: FastifyInstance) {
   app.get("/api/admin/overview", async (req) => {
     requireStaff(req);
     const dayAgo = new Date(Date.now() - 86400_000);
-    const [[u], [u24], [t], [p], [v], [a], [m], [openSupport]] = await Promise.all([
+    const [[u], [u24], [t], [p], [v], [a], [m], [openSupport], [openReports]] = await Promise.all([
       db.select({ n: count() }).from(users),
       db.select({ n: count() }).from(users).where(gt(users.createdAt, dayAgo)),
       db.select({ n: count() }).from(threads),
@@ -54,6 +55,7 @@ export default async function adminRoutes(app: FastifyInstance) {
       db.select({ n: count() }).from(albums),
       db.select({ n: count() }).from(chatMessages),
       db.select({ n: count() }).from(supportConversations).where(eq(supportConversations.status, "open")),
+      db.select({ n: count() }).from(reports).where(eq(reports.status, "open")),
     ]);
     return {
       members: u.n,
@@ -64,6 +66,7 @@ export default async function adminRoutes(app: FastifyInstance) {
       albums: a.n,
       chatMessages: m.n,
       openSupport: openSupport.n,
+      openReports: openReports.n,
     };
   });
 
@@ -132,6 +135,22 @@ export default async function adminRoutes(app: FastifyInstance) {
       .returning();
     if (!user) throw notFound("Thành viên không tồn tại.");
     return { user: profileUser(user) };
+  });
+
+  app.post("/api/admin/users/:id/password", async (req) => {
+    const me = requireAdmin(req);
+    const { id } = parse(idParam, req.params);
+    const { password } = parse(
+      z.object({ password: z.string().min(6, "Mật khẩu cần ít nhất 6 ký tự.").max(100, "Mật khẩu tối đa 100 ký tự.") }),
+      req.body,
+    );
+    const [target] = await db.select().from(users).where(eq(users.id, id)).limit(1);
+    if (!target) throw notFound("Thành viên không tồn tại.");
+    if (target.id === me.id) throw badRequest("Hãy đổi mật khẩu của chính mình trong trang tài khoản.");
+    if (target.role === "admin") throw forbidden("Không thể đặt lại mật khẩu của quản trị viên khác.");
+    await db.update(users).set({ passwordHash: await hashPassword(password) }).where(eq(users.id, id));
+    await db.delete(sessions).where(eq(sessions.userId, id));
+    return { ok: true };
   });
 
   app.post("/api/admin/users/:id/logout", async (req, reply) => {
@@ -245,6 +264,12 @@ export default async function adminRoutes(app: FastifyInstance) {
         like_count = (select count(*) from video_votes x where x.video_id = v.id and x.value = 1),
         dislike_count = (select count(*) from video_votes x where x.video_id = v.id and x.value = -1),
         comment_count = (select count(*) from video_comments c where c.video_id = v.id)`);
+    await db.execute(sql`
+      update video_comments c set
+        like_count = (select count(*) from video_comment_votes x where x.comment_id = c.id and x.value = 1),
+        dislike_count = (select count(*) from video_comment_votes x where x.comment_id = c.id and x.value = -1)`);
+    await db.execute(sql`
+      update video_tags t set video_count = (select count(*) from video_tag_links l where l.tag_id = t.id)`);
     return ok(reply);
   });
 }

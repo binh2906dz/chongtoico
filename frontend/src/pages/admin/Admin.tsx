@@ -7,10 +7,12 @@ import { formatDate, formatNumber } from "../../format";
 import { useFetch } from "../../useFetch";
 import type { Category, Channel, Profile, VideoCategory } from "../../types";
 import AdminAlbums from "./AdminAlbums";
+import AdminReports from "./AdminReports";
+import AdminSettings from "./AdminSettings";
 import AdminSupport from "./AdminSupport";
 import AdminVideos from "./AdminVideos";
 
-const TABS = ["overview", "videos", "videoCategories", "users", "categories", "channels", "albums", "support"] as const;
+const TABS = ["overview", "reports", "videos", "videoCategories", "users", "categories", "channels", "albums", "support", "settings"] as const;
 type Tab = (typeof TABS)[number];
 
 function Overview() {
@@ -28,6 +30,7 @@ function Overview() {
     ["Album", data.albums],
     ["Tin nhắn chat", data.chatMessages],
     ["CSKH đang mở", data.openSupport],
+    ["Báo vi phạm chờ xử lý", data.openReports],
   ] as const;
   return (
     <div className="space-y-4">
@@ -94,6 +97,15 @@ function Users() {
       return;
     }
     void act(() => api(`/api/admin/users/${u.id}/ban`, { body: { reason, days } }));
+  }
+
+  function resetPassword(u: Profile) {
+    const password = prompt(`Mật khẩu mới cho ${u.username} (ít nhất 6 ký tự). Thành viên sẽ bị đăng xuất khỏi mọi thiết bị:`);
+    if (!password) return;
+    void act(async () => {
+      await api(`/api/admin/users/${u.id}/password`, { body: { password } });
+      alert(`Đã đặt lại mật khẩu cho ${u.username}. Hãy gửi mật khẩu mới cho thành viên qua CSKH.`);
+    });
   }
 
   return (
@@ -163,6 +175,11 @@ function Users() {
                     )}
                   </td>
                   <td className="px-4 py-2 text-right whitespace-nowrap">
+                    {me?.role === "admin" && u.id !== me.id && u.role !== "admin" && (
+                      <button className="btn-ghost mr-2 px-3 py-1" onClick={() => resetPassword(u)}>
+                        Đặt lại MK
+                      </button>
+                    )}
                     {u.id !== me?.id &&
                       (u.isBanned ? (
                         <button className="btn-ghost px-3 py-1" onClick={() => act(() => api(`/api/admin/users/${u.id}/unban`, { method: "POST" }))}>
@@ -338,6 +355,7 @@ export default function Admin() {
       <Tabs
         tabs={[
           { id: "overview", label: "Tổng quan" },
+          { id: "reports", label: "Báo vi phạm" },
           { id: "videos", label: "Video" },
           { id: "videoCategories", label: "Thể loại video" },
           { id: "users", label: "Thành viên" },
@@ -345,11 +363,14 @@ export default function Admin() {
           { id: "channels", label: "Kênh chat" },
           { id: "albums", label: "Album" },
           { id: "support", label: "CSKH" },
+          ...(admin ? [{ id: "settings" as const, label: "Cài đặt trang" }] : []),
         ]}
         value={tab}
         onChange={setTab}
       />
       {tab === "overview" && <Overview />}
+      {tab === "reports" && <AdminReports />}
+      {tab === "settings" && admin && <AdminSettings />}
       {tab === "videos" && <AdminVideos isAdmin={admin} />}
       {tab === "videoCategories" && (
         <CrudList<VideoCategory>

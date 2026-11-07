@@ -6,13 +6,17 @@ import ChatBox from "../components/ChatBox";
 import { StatsPanel } from "../components/Sidebar";
 import { ErrorBox, Spinner, Tabs, ThreadRows } from "../components/ui";
 import { VideoGrid } from "../components/VideoCard";
+import { AdBanner } from "../components/Extras";
 import { useFetch } from "../useFetch";
-import { VideoCategoryBar } from "./Videos";
-import type { Album, Channel, Stats, ThreadItem, VideoItem } from "../types";
+import { AlbumCard } from "./Albums";
+import { TagCloud, VideoCategoryBar } from "./Videos";
+import type { Album, Channel, Stats, ThreadItem, VideoItem, VideoTag } from "../types";
 
 interface HomeData {
-  videos: { today: VideoItem[]; newest: VideoItem[] };
+  videos: { today: VideoItem[]; week: VideoItem[]; newest: VideoItem[]; random: VideoItem[]; watching: VideoItem[] };
+  tags: VideoTag[];
   hotAlbums: Album[];
+  latestAlbums: Album[];
   feeds: { latest: ThreadItem[]; hot: ThreadItem[]; trending: ThreadItem[] };
   stats: Stats;
 }
@@ -40,17 +44,45 @@ function HotAlbumsBanner({ albums }: { albums: Album[] }) {
   );
 }
 
-function VideoSection({ title, more, children }: { title: string; more: string; children: ReactNode }) {
+function VideoSection({ title, more, action, children }: { title: string; more?: string; action?: ReactNode; children: ReactNode }) {
   return (
     <section className="space-y-3">
       <div className="flex items-center justify-between gap-3 border-b border-line pb-2">
         <h2 className="text-lg font-black">{title}</h2>
-        <Link to={more} className="text-sm text-brand hover:underline">
-          Xem thêm →
-        </Link>
+        {action}
+        {more && (
+          <Link to={more} className="text-sm text-brand hover:underline">
+            Xem thêm →
+          </Link>
+        )}
       </div>
       {children}
     </section>
+  );
+}
+
+function RandomSection({ initial }: { initial: VideoItem[] }) {
+  const [videos, setVideos] = useState(initial);
+  const [loading, setLoading] = useState(false);
+  async function shuffle() {
+    setLoading(true);
+    try {
+      setVideos((await api<{ videos: VideoItem[] }>("/api/videos/random?limit=8")).videos);
+    } finally {
+      setLoading(false);
+    }
+  }
+  return (
+    <VideoSection
+      title="🎲 Có thể bạn chưa xem"
+      action={
+        <button className="btn-ghost px-2.5 py-1 text-xs" onClick={shuffle} disabled={loading}>
+          🔀 {loading ? "Đang đổi..." : "Đổi video khác"}
+        </button>
+      }
+    >
+      <VideoGrid videos={videos} />
+    </VideoSection>
   );
 }
 
@@ -88,12 +120,37 @@ export default function Home() {
       ) : (
         <>
           <VideoSection title="🔥 Xem nhiều hôm nay" more="/video?sap-xep=hom-nay">
-            <VideoGrid videos={data.videos.today} />
+            <VideoGrid videos={data.videos.today} showRecent />
           </VideoSection>
+          {data.videos.watching.length > 0 && (
+            <VideoSection title="👀 Đang được xem">
+              <VideoGrid videos={data.videos.watching} />
+            </VideoSection>
+          )}
+          <AdBanner slot="home" />
           <VideoSection title="🆕 Video mới nhất" more="/video">
             <VideoGrid videos={data.videos.newest} />
           </VideoSection>
+          <VideoSection title="🏆 Hay nhất tuần" more="/video?sap-xep=tuan">
+            <VideoGrid videos={data.videos.week} />
+          </VideoSection>
+          <RandomSection initial={data.videos.random} />
+          {data.tags.length > 0 && (
+            <VideoSection title="🏷️ Thẻ phổ biến" more="/video/tag">
+              <TagCloud tags={data.tags} />
+            </VideoSection>
+          )}
         </>
+      )}
+
+      {data.latestAlbums.length > 0 && (
+        <VideoSection title="🖼️ Album mới" more="/album">
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
+            {data.latestAlbums.map((a) => (
+              <AlbumCard key={a.id} album={a} />
+            ))}
+          </div>
+        </VideoSection>
       )}
 
       <div className="grid gap-5 lg:grid-cols-3">
