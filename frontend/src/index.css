@@ -1,13 +1,13 @@
 @import "tailwindcss";
 
 @theme {
-  --color-bg: #0b0f17;
-  --color-panel: #121826;
-  --color-panel-2: #182033;
-  --color-line: #232c42;
-  --color-muted: #8b95ad;
-  --color-brand: #f59e0b;
-  --color-brand-2: #f97316;
+  --color-bg: #09090c;
+  --color-panel: #121216;
+  --color-panel-2: #1a1a20;
+  --color-line: #26262e;
+  --color-muted: #9796a6;
+  --color-brand: #ff2d55;
+  --color-brand-2: #ff4fa3;
   --font-sans: "Inter", "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif;
 }
 
@@ -15,16 +15,22 @@
   html,
   body {
     background: var(--color-bg);
-    color: #e5e9f2;
+    color: #ececf1;
   }
 
   body {
     -webkit-font-smoothing: antialiased;
+    background-image: radial-gradient(1200px 500px at 50% -200px, rgb(255 45 85 / 0.09), transparent 70%);
+    background-repeat: no-repeat;
   }
 
   a {
     color: inherit;
     text-decoration: none;
+  }
+
+  ::selection {
+    background: rgb(255 45 85 / 0.35);
   }
 }
 
@@ -41,7 +47,7 @@
 }
 
 @utility btn-primary {
-  @apply btn bg-gradient-to-r from-brand to-brand-2 text-slate-950 hover:brightness-110;
+  @apply btn bg-gradient-to-r from-brand to-brand-2 text-white shadow-lg shadow-brand/20 hover:brightness-110;
 }
 
 @utility btn-ghost {
@@ -65,7 +71,7 @@
 }
 
 @utility tab-active {
-  @apply bg-panel-2 text-brand hover:text-brand;
+  @apply bg-brand/15 text-brand hover:text-brand;
 }
 
 @utility text-gradient {
@@ -75,4 +81,19 @@
 @utility scroll-thin {
   scrollbar-width: thin;
   scrollbar-color: var(--color-line) transparent;
+}
+
+@utility skeleton {
+  @apply animate-pulse rounded-lg bg-panel-2;
+}
+
+@utility badge {
+  @apply rounded px-1.5 py-0.5 text-[10px] leading-none font-black tracking-wide uppercase shadow-sm shadow-black/40;
+}
+
+@utility no-scrollbar {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
 }

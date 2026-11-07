@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { ErrorBox, Spinner, UserLink } from "../components/ui";
+import { ErrorBox, UserLink } from "../components/ui";
 import { formatDate, formatNumber } from "../format";
 import { useFetch } from "../useFetch";
 import type { Album, AlbumImage } from "../types";
@@ -59,7 +59,19 @@ export default function AlbumView() {
   const [open, setOpen] = useState<number | null>(null);
   const close = useCallback(() => setOpen(null), []);
 
-  if (loading && !data) return <Spinner />;
+  if (loading && !data) {
+    return (
+      <div className="space-y-4">
+        <div className="skeleton h-4 w-48" />
+        <div className="skeleton h-8 w-2/3" />
+        <div className="columns-2 gap-3 sm:columns-3 lg:columns-4">
+          {[260, 180, 220, 300, 200, 240, 170, 280].map((h, i) => (
+            <div key={i} className="skeleton mb-3 w-full" style={{ height: h }} />
+          ))}
+        </div>
+      </div>
+    );
+  }
   if (error || !data) return <ErrorBox message={error} />;
   const { album, images } = data;
 

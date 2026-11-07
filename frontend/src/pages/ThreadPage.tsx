@@ -4,7 +4,7 @@ import { api, errorMessage } from "../api";
 import { isStaff, useAuth } from "../auth";
 import Editor from "../components/Editor";
 import { ReportButton } from "../components/Extras";
-import { Avatar, ErrorBox, Pagination, PostContent, RoleBadge, Spinner, UserLink } from "../components/ui";
+import { Avatar, ErrorBox, ListSkeleton, Pagination, PostContent, RoleBadge, Spinner, UserLink } from "../components/ui";
 import { VideoGrid } from "../components/VideoCard";
 import { formatDate, formatNumber, roleLabel } from "../format";
 import { usePage } from "../usePage";
@@ -182,7 +182,7 @@ export default function ThreadPage() {
     return () => clearTimeout(t);
   }, [data, location.hash]);
 
-  if (loading && !data) return <Spinner />;
+  if (loading && !data) return <ListSkeleton rows={4} />;
   if (error || !data) return <ErrorBox message={error} />;
   const { thread } = data;
   const staff = isStaff(user);

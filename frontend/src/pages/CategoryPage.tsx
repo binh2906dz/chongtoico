@@ -1,5 +1,5 @@
 import { Link, useParams } from "react-router-dom";
-import { ErrorBox, Pagination, Spinner, ThreadRows } from "../components/ui";
+import { ErrorBox, ListSkeleton, Pagination, ThreadRows } from "../components/ui";
 import { usePage } from "../usePage";
 import { useFetch } from "../useFetch";
 import type { Category, ThreadItem } from "../types";
@@ -10,7 +10,7 @@ export default function CategoryPage() {
   const { data, error, loading } = useFetch<{ category: Category; threads: ThreadItem[]; page: number; totalPages: number }>(
     `/api/forum/categories/${slug}?page=${page}`,
   );
-  if (loading && !data) return <Spinner />;
+  if (loading && !data) return <ListSkeleton rows={8} />;
   if (error || !data) return <ErrorBox message={error} />;
   const { category } = data;
   return (

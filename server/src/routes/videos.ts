@@ -70,11 +70,37 @@ const cardColumns = {
 };
 
 type CardRow = {
+  id: number;
   thumbKey: string | null;
   likeCount: number;
   dislikeCount: number;
   visibility: string;
 } & Record<string, unknown>;
+
+/** Most viewed videos of the last 7 days (at least HOT_MIN_VIEWS), shown with a HOT badge; refreshed every 5 minutes. */
+const HOT_COUNT = 12;
+const HOT_MIN_VIEWS = 10;
+let hotIds = new Set<number>();
+let hotLoadedAt = 0;
+
+async function refreshHotIds() {
+  if (Date.now() - hotLoadedAt < 5 * 60_000) return;
+  hotLoadedAt = Date.now();
+  try {
+    const total = sql<number>`sum(${videoViewDays.views})`;
+    const rows = await db
+      .select({ videoId: videoViewDays.videoId })
+      .from(videoViewDays)
+      .where(gte(videoViewDays.day, vnDay(6)))
+      .groupBy(videoViewDays.videoId)
+      .having(sql`${total} >= ${HOT_MIN_VIEWS}`)
+      .orderBy(desc(total))
+      .limit(HOT_COUNT);
+    hotIds = new Set(rows.map((r) => r.videoId));
+  } catch {
+    // keep the previous set; retried after the next interval
+  }
+}
 
 function mapCard<T extends CardRow>(row: T) {
   const { thumbKey, visibility, ...rest } = row;
@@ -83,6 +109,7 @@ function mapCard<T extends CardRow>(row: T) {
     ...rest,
     thumbUrl: videoThumbUrl(thumbKey),
     membersOnly: visibility === "members",
+    hot: hotIds.has(row.id),
     rating: votes ? Math.round((row.likeCount * 100) / votes) : null,
   };
 }
@@ -163,6 +190,7 @@ export async function listVideos(opts: {
   q?: string;
   excludeIds?: number[];
 }) {
+  await refreshHotIds();
   const conds: SQL[] = [];
   if (opts.categoryId) conds.push(eq(videos.categoryId, opts.categoryId));
   if (opts.tagId) {
@@ -248,6 +276,7 @@ export async function listVideos(opts: {
 
 export async function videosByIds(ids: number[]) {
   if (!ids.length) return [];
+  await refreshHotIds();
   const rows = await db
     .select(cardColumns)
     .from(videos)

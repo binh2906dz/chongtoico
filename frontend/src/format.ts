@@ -33,4 +33,9 @@ export function formatBytes(bytes: number): string {
   return `${Math.ceil(bytes / 1024)} KB`;
 }
 
+/** Size variants served by /media: `s` ≈ 480px wide, `m` ≈ 1280px (albums), `t` = album thumbnail. */
+export const imageVariant = (url: string, variant: "s" | "m" | "t") => url.replace(/(_[tsm])?\.webp$/, `_${variant}.webp`);
+
+export const isNew = (createdAt: string, hours = 48) => Date.now() - new Date(createdAt).getTime() < hours * 3600_000;
+
 export const roleLabel: Record<string, string> = { admin: "Quản trị viên", mod: "Điều hành viên", member: "Thành viên" };

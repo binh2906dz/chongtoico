@@ -1,12 +1,12 @@
 import { Link } from "react-router-dom";
-import { ErrorBox, Spinner, UserLink } from "../components/ui";
+import { ErrorBox, ListSkeleton, UserLink } from "../components/ui";
 import { formatNumber, timeAgo } from "../format";
 import { useFetch } from "../useFetch";
 import type { Category } from "../types";
 
 export default function Forum() {
   const { data, error, loading } = useFetch<{ categories: Category[] }>("/api/forum/categories");
-  if (loading && !data) return <Spinner />;
+  if (loading && !data) return <ListSkeleton rows={8} />;
   if (error || !data) return <ErrorBox message={error} />;
   return (
     <div className="space-y-4">

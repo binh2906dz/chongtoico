@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import sharp from "sharp";
 import { config } from "./config.js";
@@ -43,7 +43,7 @@ export async function storeImage(kind: MediaKind, input: Buffer): Promise<Stored
     return { key, width: out.info.width, height: out.info.height };
   }
 
-  const maxSide = kind === "albums" ? 2000 : kind === "thumbs" ? 640 : 1600;
+  const maxSide = kind === "albums" ? 2000 : kind === "thumbs" ? 1280 : 1600;
   const full = await base
     .clone()
     .resize(maxSide, maxSide, { fit: "inside", withoutEnlargement: true })
@@ -55,13 +55,46 @@ export async function storeImage(kind: MediaKind, input: Buffer): Promise<Stored
     const thumb = await base.clone().resize(480, 480, { fit: "inside", withoutEnlargement: true }).webp({ quality: 75 }).toBuffer();
     await writeFile(mediaPath(kind, `${key}_t.webp`), thumb);
   }
+  if (kind === "thumbs") {
+    const small = await sharp(full.data).resize({ width: VARIANTS.s.width, withoutEnlargement: true }).webp({ quality: 74 }).toBuffer();
+    await writeFile(mediaPath(kind, `${key}_s.webp`), small);
+  }
   return { key, width: full.info.width, height: full.info.height };
+}
+
+/** Extra sizes generated from the full image: `_s` for cards on phones, `_m` for large banners. */
+export const VARIANTS = {
+  s: { width: 480, kinds: ["thumbs", "albums"] as MediaKind[] },
+  m: { width: 1280, kinds: ["albums"] as MediaKind[] },
+};
+export type Variant = keyof typeof VARIANTS;
+
+/** Returns the path of a size variant, creating it from the full image on first request (older uploads have none). */
+export async function ensureVariant(kind: MediaKind, key: string, variant: Variant): Promise<string | null> {
+  if (!KEY_RE.test(key) || !VARIANTS[variant].kinds.includes(kind)) return null;
+  const file = mediaPath(kind, `${key}_${variant}.webp`);
+  try {
+    await stat(file);
+    return file;
+  } catch {
+    // not generated yet
+  }
+  const source = mediaPath(kind, `${key}.webp`);
+  try {
+    await stat(source);
+  } catch {
+    return null;
+  }
+  const out = await sharp(source).resize({ width: VARIANTS[variant].width, withoutEnlargement: true }).webp({ quality: 76 }).toBuffer();
+  const tmp = `${file}.${randomBytes(4).toString("hex")}.part`;
+  await writeFile(tmp, out);
+  await rename(tmp, file);
+  return file;
 }
 
 export async function removeImage(kind: MediaKind, key: string) {
   if (!KEY_RE.test(key)) return;
-  await rm(mediaPath(kind, `${key}.webp`), { force: true });
-  if (kind === "albums") await rm(mediaPath(kind, `${key}_t.webp`), { force: true });
+  for (const suffix of ["", "_t", "_s", "_m"]) await rm(mediaPath(kind, `${key}${suffix}.webp`), { force: true });
 }
 
 export const albumImageUrl = (key: string, thumb = false) => `/media/a/${key}${thumb ? "_t" : ""}.webp`;

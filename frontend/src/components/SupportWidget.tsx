@@ -85,7 +85,7 @@ export default function SupportWidget() {
     <div className="fixed right-4 bottom-4 z-50 flex flex-col items-end gap-3">
       {open && (
         <div className="panel flex h-[480px] max-h-[75vh] w-[340px] max-w-[calc(100vw-2rem)] flex-col overflow-hidden shadow-2xl shadow-black/50">
-          <div className="flex items-center justify-between bg-gradient-to-r from-brand to-brand-2 px-4 py-3 text-slate-950">
+          <div className="flex items-center justify-between bg-gradient-to-r from-brand to-brand-2 px-4 py-3 text-white">
             <div>
               <div className="font-bold">CSKH Chống Tối Cổ</div>
               <div className="text-xs opacity-80">Bạn cần hỗ trợ gì? Chúng tôi trả lời sớm nhất.</div>
@@ -104,7 +104,7 @@ export default function SupportWidget() {
               <div key={m.id} className={`flex ${m.fromStaff ? "justify-start" : "justify-end"}`}>
                 <div
                   className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm whitespace-pre-wrap ${
-                    m.fromStaff ? "bg-panel-2 text-slate-100" : "bg-brand text-slate-950"
+                    m.fromStaff ? "bg-panel-2 text-slate-100" : "bg-brand text-white"
                   }`}
                 >
                   {m.fromStaff && <div className="mb-0.5 text-[11px] font-bold text-brand">{m.staff?.username || "Hỗ trợ"}</div>}
@@ -130,7 +130,7 @@ export default function SupportWidget() {
       )}
       <button
         onClick={() => setOpen((o) => !o)}
-        className="relative flex cursor-pointer items-center gap-2 rounded-full bg-gradient-to-r from-brand to-brand-2 px-4 py-3 font-bold text-slate-950 shadow-lg shadow-black/40 hover:brightness-110"
+        className="relative flex cursor-pointer items-center gap-2 rounded-full bg-gradient-to-r from-brand to-brand-2 px-4 py-3 font-bold text-white shadow-lg shadow-brand/30 hover:brightness-110"
       >
         <span>💬</span>
         <span className="hidden sm:inline">CSKH</span>

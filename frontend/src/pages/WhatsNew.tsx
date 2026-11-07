@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ErrorBox, Pagination, Spinner, Tabs, ThreadRows } from "../components/ui";
+import { ErrorBox, ListSkeleton, Pagination, Tabs, ThreadRows } from "../components/ui";
 import { usePage } from "../usePage";
 import { useFetch } from "../useFetch";
 import type { ThreadItem } from "../types";
@@ -28,7 +28,7 @@ export default function WhatsNew() {
             }}
           />
         </div>
-        {loading && !data ? <Spinner /> : error ? <ErrorBox message={error} /> : <ThreadRows threads={data?.threads ?? []} empty="Không có bài viết nào." />}
+        {loading && !data ? <ListSkeleton rows={8} /> : error ? <ErrorBox message={error} /> : <ThreadRows threads={data?.threads ?? []} empty="Không có bài viết nào." />}
       </section>
       <Pagination page={page} totalPages={hasNext ? page + 1 : page} onPage={setPage} />
     </div>

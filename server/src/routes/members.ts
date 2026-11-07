@@ -27,41 +27,58 @@ export async function forumStats() {
   };
 }
 
+async function homeData(loggedIn: boolean) {
+  const [albums, newAlbums, today, week, newest, random, watching, videoCategories, tags, latest, hot, trending, stats] =
+    await Promise.all([
+      hotAlbums(loggedIn, 8),
+      latestAlbums(loggedIn, 12),
+      listVideos({ sort: "today", limit: 8 }),
+      listVideos({ sort: "week", limit: 8 }),
+      listVideos({ sort: "new", limit: 24 }),
+      listVideos({ sort: "random", limit: 8 }),
+      videosByIds(watchingNowIds(8)),
+      listVideoCategories(),
+      db
+        .select({ id: videoTags.id, slug: videoTags.slug, name: videoTags.name, videoCount: videoTags.videoCount })
+        .from(videoTags)
+        .where(gt(videoTags.videoCount, 0))
+        .orderBy(desc(videoTags.videoCount))
+        .limit(30),
+      threadFeed("latest", 8),
+      threadFeed("hot", 8),
+      threadFeed("trending", 8),
+      forumStats(),
+    ]);
+  return {
+    videos: { today: today.rows, week: week.rows, newest: newest.rows, random: random.rows, watching },
+    videoCategories,
+    tags,
+    hotAlbums: albums,
+    latestAlbums: newAlbums,
+    feeds: { latest, hot, trending },
+    stats,
+  };
+}
+
+/** Guests all get the same home page, so it is built at most once per HOME_CACHE_MS. */
+const HOME_CACHE_MS = 30_000;
+let guestHome: { at: number; data: Promise<Awaited<ReturnType<typeof homeData>>> } | null = null;
+
+function cachedGuestHome() {
+  if (!guestHome || Date.now() - guestHome.at > HOME_CACHE_MS) {
+    const entry = { at: Date.now(), data: homeData(false) };
+    entry.data.catch(() => {
+      if (guestHome === entry) guestHome = null;
+    });
+    guestHome = entry;
+  }
+  return guestHome.data;
+}
+
 export default async function memberRoutes(app: FastifyInstance) {
   app.get("/api/stats", async () => forumStats());
 
-  app.get("/api/home", async (req) => {
-    const [albums, newAlbums, today, week, newest, random, watching, videoCategories, tags, latest, hot, trending, stats] =
-      await Promise.all([
-        hotAlbums(!!req.user, 8),
-        latestAlbums(!!req.user, 6),
-        listVideos({ sort: "today", limit: 8 }),
-        listVideos({ sort: "week", limit: 8 }),
-        listVideos({ sort: "new", limit: 24 }),
-        listVideos({ sort: "random", limit: 8 }),
-        videosByIds(watchingNowIds(8)),
-        listVideoCategories(),
-        db
-          .select({ id: videoTags.id, slug: videoTags.slug, name: videoTags.name, videoCount: videoTags.videoCount })
-          .from(videoTags)
-          .where(gt(videoTags.videoCount, 0))
-          .orderBy(desc(videoTags.videoCount))
-          .limit(30),
-        threadFeed("latest", 10),
-        threadFeed("hot", 10),
-        threadFeed("trending", 10),
-        forumStats(),
-      ]);
-    return {
-      videos: { today: today.rows, week: week.rows, newest: newest.rows, random: random.rows, watching },
-      videoCategories,
-      tags,
-      hotAlbums: albums,
-      latestAlbums: newAlbums,
-      feeds: { latest, hot, trending },
-      stats,
-    };
-  });
+  app.get("/api/home", async (req) => (req.user ? homeData(true) : cachedGuestHome()));
 
   app.get("/api/members/:username", async (req) => {
     const { username } = parse(z.object({ username: z.string().max(32) }), req.params);

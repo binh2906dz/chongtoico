@@ -3,10 +3,11 @@ import { Link } from "react-router-dom";
 import { api } from "../api";
 import { useAuth } from "../auth";
 import ChatBox from "../components/ChatBox";
-import { StatsPanel } from "../components/Sidebar";
-import { ErrorBox, Spinner, Tabs, ThreadRows } from "../components/ui";
-import { VideoGrid } from "../components/VideoCard";
 import { AdBanner } from "../components/Extras";
+import Hero, { buildHeroSlides } from "../components/Hero";
+import { StatsPanel } from "../components/Sidebar";
+import { AlbumGridSkeleton, ErrorBox, SectionHeader, Spinner, Tabs, ThreadRows, VideoGridSkeleton } from "../components/ui";
+import { VideoGrid } from "../components/VideoCard";
 import { useFetch } from "../useFetch";
 import { AlbumCard } from "./Albums";
 import { TagCloud, VideoCategoryBar } from "./Videos";
@@ -23,39 +24,10 @@ interface HomeData {
 
 type FeedTab = "latest" | "hot" | "trending";
 
-function HotAlbumsBanner({ albums }: { albums: Album[] }) {
-  const covers = albums.filter((a) => a.coverUrl).slice(0, 4);
-  return (
-    <Link to="/album" className="panel group relative block overflow-hidden">
-      <div className="absolute inset-0 grid grid-cols-4 opacity-40 transition group-hover:opacity-55">
-        {covers.map((a) => (
-          <img key={a.id} src={a.coverUrl!} alt="" className="h-full w-full object-cover" />
-        ))}
-      </div>
-      <div className="relative bg-gradient-to-r from-bg via-bg/85 to-transparent p-5">
-        <span className="rounded bg-red-600 px-2 py-0.5 text-xs font-black tracking-wider text-white uppercase">Hot albums</span>
-        <h2 className="mt-2 text-xl font-black">
-          <span className="text-gradient">ALBUM NỔI BẬT</span>
-        </h2>
-        <p className="mt-1 text-sm text-slate-300">Tuyển tập bộ ảnh được xem nhiều nhất.</p>
-        <span className="btn-primary mt-3">Vào kho album →</span>
-      </div>
-    </Link>
-  );
-}
-
-function VideoSection({ title, more, action, children }: { title: string; more?: string; action?: ReactNode; children: ReactNode }) {
+function Section({ title, more, action, children }: { title: ReactNode; more?: string; action?: ReactNode; children: ReactNode }) {
   return (
     <section className="space-y-3">
-      <div className="flex items-center justify-between gap-3 border-b border-line pb-2">
-        <h2 className="text-lg font-black">{title}</h2>
-        {action}
-        {more && (
-          <Link to={more} className="text-sm text-brand hover:underline">
-            Xem thêm →
-          </Link>
-        )}
-      </div>
+      <SectionHeader title={title} more={more} action={action} />
       {children}
     </section>
   );
@@ -73,22 +45,52 @@ function RandomSection({ initial }: { initial: VideoItem[] }) {
     }
   }
   return (
-    <VideoSection
+    <Section
       title="🎲 Có thể bạn chưa xem"
       action={
-        <button className="btn-ghost px-2.5 py-1 text-xs" onClick={shuffle} disabled={loading}>
+        <button className="btn-ghost rounded-full px-3 py-1 text-xs" onClick={shuffle} disabled={loading}>
           🔀 {loading ? "Đang đổi..." : "Đổi video khác"}
         </button>
       }
     >
-      <VideoGrid videos={videos} />
-    </VideoSection>
+      {loading ? <VideoGridSkeleton count={videos.length || 8} /> : <VideoGrid videos={videos} />}
+    </Section>
   );
 }
 
-export default function Home() {
-  const { user } = useAuth();
-  const { data, error, loading } = useFetch<HomeData>("/api/home");
+function AlbumRow({ albums }: { albums: Album[] }) {
+  return (
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">
+      {albums.map((a, i) => (
+        <div key={a.id} className={i >= 6 ? "hidden lg:block" : i >= 4 ? "sm:hidden lg:block" : ""}>
+          <AlbumCard album={a} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function HomeSkeleton() {
+  return (
+    <div className="space-y-7">
+      <div className="grid gap-4 lg:grid-cols-3">
+        <div className="skeleton aspect-[16/10] rounded-2xl sm:aspect-[16/8] lg:col-span-2 lg:aspect-auto lg:h-[420px]" />
+        <div className="skeleton hidden h-[420px] rounded-xl lg:block" />
+      </div>
+      <div className="flex gap-2 overflow-hidden">
+        {Array.from({ length: 8 }, (_, i) => (
+          <div key={i} className="skeleton h-9 w-24 shrink-0 rounded-full" />
+        ))}
+      </div>
+      <div className="skeleton h-6 w-56" />
+      <VideoGridSkeleton count={8} />
+      <div className="skeleton h-6 w-40" />
+      <AlbumGridSkeleton count={4} />
+    </div>
+  );
+}
+
+function CommunityBlock({ data }: { data: HomeData }) {
   const [tab, setTab] = useState<FeedTab>("latest");
   const [channel, setChannel] = useState<Channel | null>(null);
 
@@ -98,13 +100,66 @@ export default function Home() {
       .catch(() => {});
   }, []);
 
-  if (loading && !data) return <Spinner />;
+  return (
+    <section className="space-y-3">
+      <SectionHeader title="💬 Cộng đồng" more="/dien-dan" />
+      <div className="grid gap-4 lg:grid-cols-3">
+        <div className="panel lg:col-span-2">
+          <div className="panel-head flex-wrap">
+            <h3 className="font-bold">Chủ đề</h3>
+            <Tabs
+              tabs={[
+                { id: "latest", label: "Mới ra lò" },
+                { id: "hot", label: "Hot trong ngày" },
+                { id: "trending", label: "Trending tuần" },
+              ]}
+              value={tab}
+              onChange={setTab}
+            />
+          </div>
+          <ThreadRows
+            threads={data.feeds[tab]}
+            empty={tab === "latest" ? "Chưa có chủ đề nào." : "Chưa có chủ đề nào sôi nổi trong khoảng thời gian này."}
+          />
+          <div className="flex items-center justify-between border-t border-line px-4 py-2">
+            <Link to="/tao-chu-de" className="text-sm font-semibold text-slate-300 hover:text-brand">
+              ✍️ Đăng chủ đề mới
+            </Link>
+            <Link to="/moi" className="text-sm text-brand hover:underline">
+              Xem tất cả →
+            </Link>
+          </div>
+        </div>
+        <div className="space-y-4">
+          <div className="panel">
+            <div className="panel-head">
+              <h3 className="truncate font-bold">Chat {channel && <span className="text-muted">#{channel.name}</span>}</h3>
+              <Link to="/chat" className="shrink-0 text-sm text-brand hover:underline">
+                Mở rộng →
+              </Link>
+            </div>
+            {channel ? <ChatBox channel={channel} height={260} /> : <Spinner />}
+          </div>
+          <StatsPanel stats={data.stats} />
+        </div>
+      </div>
+    </section>
+  );
+}
+
+export default function Home() {
+  const { user } = useAuth();
+  const { data, error, loading } = useFetch<HomeData>("/api/home");
+
+  if (loading && !data) return <HomeSkeleton />;
   if (error || !data) return <ErrorBox message={error || "Không tải được dữ liệu."} />;
 
   const noVideos = !data.videos.newest.length;
+  const slides = buildHeroSlides(data.videos.today, data.hotAlbums);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
+      <Hero slides={slides} top={data.videos.week} />
       <VideoCategoryBar />
 
       {noVideos ? (
@@ -118,90 +173,47 @@ export default function Home() {
           )}
         </div>
       ) : (
+        <Section title="🔥 Xem nhiều hôm nay" more="/video?sap-xep=hom-nay">
+          <VideoGrid videos={data.videos.today} showRecent />
+        </Section>
+      )}
+
+      {data.latestAlbums.length > 0 && (
+        <Section title="📸 Album mới" more="/album">
+          <AlbumRow albums={data.latestAlbums} />
+        </Section>
+      )}
+
+      {!noVideos && (
         <>
-          <VideoSection title="🔥 Xem nhiều hôm nay" more="/video?sap-xep=hom-nay">
-            <VideoGrid videos={data.videos.today} showRecent />
-          </VideoSection>
           {data.videos.watching.length > 0 && (
-            <VideoSection title="👀 Đang được xem">
+            <Section
+              title={
+                <span className="inline-flex items-center gap-2">
+                  <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-brand" /> Đang được xem
+                </span>
+              }
+            >
               <VideoGrid videos={data.videos.watching} />
-            </VideoSection>
+            </Section>
           )}
           <AdBanner slot="home" />
-          <VideoSection title="🆕 Video mới nhất" more="/video">
+          <Section title="🆕 Video mới nhất" more="/video">
             <VideoGrid videos={data.videos.newest} />
-          </VideoSection>
-          <VideoSection title="🏆 Hay nhất tuần" more="/video?sap-xep=tuan">
+          </Section>
+          <Section title="🏆 Hay nhất tuần" more="/video?sap-xep=tuan">
             <VideoGrid videos={data.videos.week} />
-          </VideoSection>
+          </Section>
           <RandomSection initial={data.videos.random} />
           {data.tags.length > 0 && (
-            <VideoSection title="🏷️ Thẻ phổ biến" more="/video/tag">
+            <Section title="🏷️ Thẻ phổ biến" more="/video/tag">
               <TagCloud tags={data.tags} />
-            </VideoSection>
+            </Section>
           )}
         </>
       )}
 
-      {data.latestAlbums.length > 0 && (
-        <VideoSection title="🖼️ Album mới" more="/album">
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
-            {data.latestAlbums.map((a) => (
-              <AlbumCard key={a.id} album={a} />
-            ))}
-          </div>
-        </VideoSection>
-      )}
-
-      <div className="grid gap-5 lg:grid-cols-3">
-        <div className="space-y-5 lg:col-span-2">
-          <section className="panel">
-            <div className="panel-head flex-wrap">
-              <h2 className="font-bold">🔥 Chủ đề</h2>
-              <Tabs
-                tabs={[
-                  { id: "latest", label: "Mới ra lò" },
-                  { id: "hot", label: "Hot trong ngày" },
-                  { id: "trending", label: "Trending tuần" },
-                ]}
-                value={tab}
-                onChange={setTab}
-              />
-            </div>
-            <ThreadRows
-              threads={data.feeds[tab]}
-              empty={tab === "latest" ? "Chưa có chủ đề nào." : "Chưa có chủ đề nào sôi nổi trong khoảng thời gian này."}
-            />
-            <div className="border-t border-line px-4 py-2 text-right">
-              <Link to="/moi" className="text-sm text-brand hover:underline">
-                Xem tất cả →
-              </Link>
-            </div>
-          </section>
-
-          <section className="panel">
-            <div className="panel-head">
-              <h2 className="font-bold">💬 Diễn đàn Chat {channel && <span className="text-muted">#{channel.name}</span>}</h2>
-              <Link to="/chat" className="text-sm text-brand hover:underline">
-                Vào kênh chat →
-              </Link>
-            </div>
-            {channel ? <ChatBox channel={channel} height={340} /> : <Spinner />}
-          </section>
-        </div>
-
-        <div className="space-y-5">
-          <HotAlbumsBanner albums={data.hotAlbums} />
-          <Link to="/tao-chu-de" className="panel flex items-center gap-3 p-4 hover:border-brand/50">
-            <span className="text-3xl">✍️</span>
-            <div>
-              <div className="font-bold">Đăng chủ đề mới</div>
-              <div className="text-xs text-muted">Chia sẻ, hỏi đáp, tán gẫu cùng mọi người.</div>
-            </div>
-          </Link>
-          <StatsPanel stats={data.stats} />
-        </div>
-      </div>
+      <CommunityBlock data={data} />
     </div>
   );
 }

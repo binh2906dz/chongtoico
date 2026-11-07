@@ -133,6 +133,7 @@ export interface VideoItem {
   commentCount: number;
   rating: number | null;
   membersOnly: boolean;
+  hot?: boolean;
   createdAt: string;
   category: { id: number; slug: string; name: string } | null;
   viewedAt?: string;

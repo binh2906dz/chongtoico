@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { api, errorMessage } from "../api";
 import { useAuth } from "../auth";
-import { ErrorBox, Pagination, Spinner, Tabs } from "../components/ui";
+import { ErrorBox, Pagination, Tabs, VideoGridSkeleton } from "../components/ui";
 import { VideoGrid } from "../components/VideoCard";
 import type { VideoItem } from "../types";
 
@@ -34,7 +34,7 @@ export default function SavedVideos() {
     }
   }
 
-  if (loading) return <Spinner />;
+  if (loading) return <VideoGridSkeleton />;
   if (!user) {
     return (
       <div className="panel mx-auto max-w-lg p-8 text-center">
@@ -62,7 +62,7 @@ export default function SavedVideos() {
       />
       <ErrorBox message={error} />
       {!data ? (
-        <Spinner />
+        <VideoGridSkeleton />
       ) : (
         <>
           <VideoGrid

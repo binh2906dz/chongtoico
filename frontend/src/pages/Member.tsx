@@ -2,7 +2,7 @@ import { useRef, useState, type FormEvent } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api, errorMessage } from "../api";
 import { useAuth } from "../auth";
-import { Avatar, ErrorBox, RoleBadge, Spinner } from "../components/ui";
+import { Avatar, ErrorBox, ListSkeleton, RoleBadge } from "../components/ui";
 import { formatDate, formatNumber, roleLabel, timeAgo } from "../format";
 import { useFetch } from "../useFetch";
 import type { FollowStats, Profile } from "../types";
@@ -134,7 +134,7 @@ export default function Member() {
   const { username } = useParams();
   const { user: me } = useAuth();
   const { data, error, loading, reload } = useFetch<MemberData>(`/api/members/${username}`);
-  if (loading && !data) return <Spinner />;
+  if (loading && !data) return <ListSkeleton rows={5} />;
   if (error || !data) return <ErrorBox message={error} />;
   const { user } = data;
   const isMe = me?.id === user.id;

@@ -1,25 +1,49 @@
+import { lazy as reactLazy, type ComponentType } from "react";
 import { Route, Routes } from "react-router-dom";
 import Layout from "./components/Layout";
-import Admin from "./pages/admin/Admin";
-import AlbumView from "./pages/AlbumView";
 import Albums from "./pages/Albums";
-import { Login, Register } from "./pages/AuthPages";
-import CategoryPage from "./pages/CategoryPage";
-import Chat from "./pages/Chat";
-import Following from "./pages/Following";
-import Forum from "./pages/Forum";
 import Home from "./pages/Home";
-import Member from "./pages/Member";
-import NewThread from "./pages/NewThread";
-import Notifications from "./pages/Notifications";
-import SavedVideos from "./pages/SavedVideos";
-import Search from "./pages/Search";
-import { Contact, NotFound, Privacy, Rules, Takedown, Terms } from "./pages/StaticPages";
-import ThreadPage, { PostRedirect } from "./pages/ThreadPage";
-import VideoHistory from "./pages/VideoHistory";
-import VideoPage from "./pages/VideoPage";
 import Videos, { VideoTags } from "./pages/Videos";
-import WhatsNew from "./pages/WhatsNew";
+
+/** After a deploy, an open tab may ask for chunk files that no longer exist; reload once to get the new build. */
+function lazy<T extends ComponentType>(loader: () => Promise<{ default: T }>) {
+  return reactLazy(() =>
+    loader().catch((err) => {
+      const last = Number(sessionStorage.getItem("chunk-reload") || 0);
+      if (Date.now() - last > 10_000) {
+        sessionStorage.setItem("chunk-reload", String(Date.now()));
+        location.reload();
+        return new Promise<{ default: T }>(() => {});
+      }
+      throw err;
+    }),
+  );
+}
+
+const Admin = lazy(() => import("./pages/admin/Admin"));
+const AlbumView = lazy(() => import("./pages/AlbumView"));
+const CategoryPage = lazy(() => import("./pages/CategoryPage"));
+const Chat = lazy(() => import("./pages/Chat"));
+const Following = lazy(() => import("./pages/Following"));
+const Forum = lazy(() => import("./pages/Forum"));
+const Member = lazy(() => import("./pages/Member"));
+const NewThread = lazy(() => import("./pages/NewThread"));
+const Notifications = lazy(() => import("./pages/Notifications"));
+const SavedVideos = lazy(() => import("./pages/SavedVideos"));
+const Search = lazy(() => import("./pages/Search"));
+const ThreadPage = lazy(() => import("./pages/ThreadPage"));
+const VideoHistory = lazy(() => import("./pages/VideoHistory"));
+const VideoPage = lazy(() => import("./pages/VideoPage"));
+const WhatsNew = lazy(() => import("./pages/WhatsNew"));
+const PostRedirect = lazy(() => import("./pages/ThreadPage").then((m) => ({ default: m.PostRedirect })));
+const Login = lazy(() => import("./pages/AuthPages").then((m) => ({ default: m.Login })));
+const Register = lazy(() => import("./pages/AuthPages").then((m) => ({ default: m.Register })));
+const Rules = lazy(() => import("./pages/StaticPages").then((m) => ({ default: m.Rules })));
+const Takedown = lazy(() => import("./pages/StaticPages").then((m) => ({ default: m.Takedown })));
+const Terms = lazy(() => import("./pages/StaticPages").then((m) => ({ default: m.Terms })));
+const Privacy = lazy(() => import("./pages/StaticPages").then((m) => ({ default: m.Privacy })));
+const Contact = lazy(() => import("./pages/StaticPages").then((m) => ({ default: m.Contact })));
+const NotFound = lazy(() => import("./pages/StaticPages").then((m) => ({ default: m.NotFound })));
 
 export default function App() {
   return (

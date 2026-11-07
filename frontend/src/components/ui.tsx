@@ -51,6 +51,74 @@ export function Spinner({ label = "Đang tải..." }: { label?: string }) {
   );
 }
 
+export function SectionHeader({ title, more, action }: { title: ReactNode; more?: string; action?: ReactNode }) {
+  return (
+    <div className="flex items-center gap-3">
+      <span className="h-6 w-1.5 shrink-0 rounded-full bg-gradient-to-b from-brand to-brand-2" />
+      <h2 className="min-w-0 truncate text-lg font-black tracking-tight sm:text-xl">{title}</h2>
+      <div className="ml-auto flex shrink-0 items-center gap-3">
+        {action}
+        {more && (
+          <Link to={more} className="rounded-full border border-line px-3 py-1 text-xs font-semibold text-slate-300 transition hover:border-brand/60 hover:text-brand">
+            Xem thêm ›
+          </Link>
+        )}
+      </div>
+    </div>
+  );
+}
+
+const gridCols = (dense: boolean) => `grid grid-cols-2 gap-x-3 gap-y-5 sm:grid-cols-3 ${dense ? "" : "lg:grid-cols-4"}`;
+
+export function VideoGridSkeleton({ count = 8, dense = false }: { count?: number; dense?: boolean }) {
+  return (
+    <div className={gridCols(dense)}>
+      {Array.from({ length: count }, (_, i) => (
+        <div key={i}>
+          <div className="skeleton aspect-video rounded-xl" />
+          <div className="skeleton mt-2.5 h-3.5 w-11/12" />
+          <div className="skeleton mt-1.5 h-3 w-1/2" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export function AlbumGridSkeleton({ count = 8 }: { count?: number }) {
+  return (
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+      {Array.from({ length: count }, (_, i) => (
+        <div key={i} className="skeleton aspect-[3/4] rounded-xl" />
+      ))}
+    </div>
+  );
+}
+
+export function ListSkeleton({ rows = 6 }: { rows?: number }) {
+  return (
+    <div className="panel divide-y divide-line">
+      {Array.from({ length: rows }, (_, i) => (
+        <div key={i} className="flex items-center gap-3 px-4 py-3">
+          <div className="skeleton h-10 w-10 shrink-0 rounded-full" />
+          <div className="flex-1 space-y-2">
+            <div className="skeleton h-3.5 w-3/4" />
+            <div className="skeleton h-3 w-1/3" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export function PageSkeleton() {
+  return (
+    <div className="space-y-4">
+      <div className="skeleton h-7 w-64" />
+      <VideoGridSkeleton count={8} />
+    </div>
+  );
+}
+
 export function Empty({ children }: { children: ReactNode }) {
   return <div className="px-4 py-10 text-center text-sm text-muted">{children}</div>;
 }

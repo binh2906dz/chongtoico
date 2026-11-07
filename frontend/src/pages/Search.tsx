@@ -1,5 +1,5 @@
 import { Link, useSearchParams } from "react-router-dom";
-import { ErrorBox, Spinner, ThreadRows } from "../components/ui";
+import { ErrorBox, Spinner, ThreadRows, VideoGridSkeleton } from "../components/ui";
 import { VideoGrid } from "../components/VideoCard";
 import { useFetch } from "../useFetch";
 import type { ThreadItem, VideoItem } from "../types";
@@ -28,7 +28,7 @@ export default function Search() {
                 </Link>
               )}
             </div>
-            {videos.loading ? <Spinner /> : videos.error ? <ErrorBox message={videos.error} /> : <VideoGrid videos={videos.data?.videos ?? []} empty="Không tìm thấy video nào." />}
+            {videos.loading ? <VideoGridSkeleton /> : videos.error ? <ErrorBox message={videos.error} /> : <VideoGrid videos={videos.data?.videos ?? []} empty="Không tìm thấy video nào." />}
           </section>
           <section className="panel">
             <div className="panel-head">

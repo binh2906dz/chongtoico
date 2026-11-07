@@ -1,11 +1,11 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { Suspense, useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { isStaff, useAuth } from "../auth";
 import { useOnline } from "../socket";
 import { AdBanner, NoticeBar } from "./Extras";
 import NotificationBell from "./NotificationBell";
 import SupportWidget from "./SupportWidget";
-import { Avatar } from "./ui";
+import { Avatar, PageSkeleton } from "./ui";
 
 const NAV = [
   { to: "/", label: "Trang chủ", end: true },
@@ -117,8 +117,8 @@ export default function Layout() {
 
   return (
     <div className="flex min-h-screen flex-col">
-      <header className="sticky top-0 z-30 border-b border-line bg-bg/90 backdrop-blur">
-        <div className="mx-auto flex h-14 max-w-6xl items-center gap-4 px-4">
+      <header className="sticky top-0 z-30 border-b border-line bg-bg/80 backdrop-blur-xl">
+        <div className="mx-auto flex h-14 max-w-7xl items-center gap-4 px-4">
           <button className="cursor-pointer text-2xl lg:hidden" onClick={() => setMenuOpen((o) => !o)} aria-label="Menu">
             ☰
           </button>
@@ -129,14 +129,26 @@ export default function Layout() {
                 key={n.to}
                 to={n.to}
                 end={n.end}
-                className={({ isActive }) => `rounded-lg px-3 py-1.5 text-sm font-semibold ${isActive ? "bg-panel-2 text-brand" : "text-slate-300 hover:text-white"}`}
+                className={({ isActive }) =>
+                  `relative rounded-lg px-3 py-1.5 text-sm font-bold transition ${
+                    isActive
+                      ? "text-white after:absolute after:inset-x-3 after:-bottom-[9px] after:h-0.5 after:rounded-full after:bg-gradient-to-r after:from-brand after:to-brand-2"
+                      : "text-slate-400 hover:text-white"
+                  }`
+                }
               >
                 {n.label}
               </NavLink>
             ))}
           </nav>
-          <form onSubmit={search} className="ml-auto hidden md:block">
-            <input className="input w-52 py-1.5" placeholder="Tìm video, chủ đề..." value={q} onChange={(e) => setQ(e.target.value)} />
+          <form onSubmit={search} className="relative ml-auto hidden md:block">
+            <span className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-sm text-muted">🔍</span>
+            <input
+              className="input w-56 rounded-full bg-panel py-1.5 pl-9 transition-all focus:w-72"
+              placeholder="Tìm video, chủ đề..."
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+            />
           </form>
           <div className="ml-auto flex items-center gap-1 md:ml-0">
             <NotificationBell />
@@ -153,7 +165,7 @@ export default function Layout() {
                 key={n.to}
                 to={n.to}
                 end={n.end}
-                className={({ isActive }) => `block rounded-lg px-3 py-2 text-sm font-semibold ${isActive ? "bg-panel-2 text-brand" : "text-slate-300"}`}
+                className={({ isActive }) => `block rounded-lg px-3 py-2 text-sm font-bold ${isActive ? "bg-brand/15 text-brand" : "text-slate-300"}`}
               >
                 {n.label}
               </NavLink>
@@ -164,22 +176,24 @@ export default function Layout() {
 
       <NoticeBar />
 
-      <div className="border-b border-line bg-panel/60">
-        <div className="mx-auto flex max-w-6xl items-center gap-2 px-4 py-1.5 text-xs text-muted">
-          <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-400" />
+      <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-5">
+        <div className="mb-4 flex items-center gap-2 text-xs text-muted">
+          <span className="relative flex h-2 w-2">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400" />
+          </span>
           <span>
-            Đang online: <b className="text-slate-200">{online.total}</b> ({online.members} thành viên, {online.guests} khách)
+            <b className="text-slate-200">{online.total}</b> người đang online ({online.members} thành viên, {online.guests} khách)
           </span>
         </div>
-      </div>
-
-      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-5">
         <AdBanner slot="top" className="mb-5" />
-        <Outlet />
+        <Suspense fallback={<PageSkeleton />}>
+          <Outlet />
+        </Suspense>
       </main>
 
       <footer className="border-t border-line bg-panel/60">
-        <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-3 px-4 py-6 text-sm text-muted md:flex-row">
+        <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-3 px-4 py-6 text-sm text-muted md:flex-row">
           <div>© {new Date().getFullYear()} Chống Tối Cổ. Bảo lưu mọi quyền.</div>
           <div className="flex flex-wrap justify-center gap-4">
             <Link to="/noi-quy" className="hover:text-white">

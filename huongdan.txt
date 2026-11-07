@@ -71,7 +71,11 @@ Thư mục:
                                PostRedirect), NewThread, WhatsNew, Albums,
                                AlbumView, Chat, Member, Search, AuthPages,
                                StaticPages (+ Nội quy, Gỡ nội dung), admin/*
-- frontend/src/components/   — Layout, ChatBox, SupportWidget, Sidebar, Editor
+- frontend/src/App.tsx       — các trang (trừ trang chủ / Video / Album) tải
+                               riêng khi cần (React.lazy); tab cũ sau khi cập
+                               nhật web tự tải lại 1 lần nếu thiếu file trang
+- frontend/src/components/   — Layout, Hero (banner trượt + Hay nhất tuần),
+                               ChatBox, SupportWidget, Sidebar, Editor
                                (BBCode), VideoCard, NotificationBell, Extras
                                (Modal, ReportButton, ShareBar, AdBanner,
                                NoticeBar), ui (PostContent = bộ hiển thị BBCode)
@@ -97,6 +101,14 @@ Video:
   Máy không có ffmpeg => bỏ qua, video vẫn dùng được.
 - File video: /media/v/<mã>.<đuôi> (@fastify/static, hỗ trợ tua bằng HTTP
   Range). Ảnh bìa: /media/t/<mã>.webp. Ảnh quảng cáo: /media/b/<mã>.webp.
+- Ảnh nhiều cỡ: ảnh bìa video lưu tối đa 1280px + bản _s (480px) cho thẻ trên
+  điện thoại; ảnh album có _t (480px, thẻ / lưới), _s (480px), _m (1280px,
+  banner trang chủ). Bản _s / _m của ảnh cũ được tạo lần đầu có người xem
+  (ensureVariant trong media.ts) rồi lưu lại trên đĩa. Xoá ảnh xoá mọi cỡ.
+- Nhãn HOT trên thẻ video = 12 video nhiều lượt xem nhất 7 ngày (tối thiểu 10
+  lượt), tính lại 5 phút / lần. Nhãn MỚI = đăng trong 48 giờ (giao diện tính).
+- /api/home: khách dùng chung một bản nhớ tạm 30 giây (giảm tải DB khi đông);
+  thành viên luôn lấy mới.
 - Video "chỉ thành viên" (videos.visibility = members): khách thấy thẻ + ảnh
   bìa nhưng trang xem bị khoá, file /media/v/ trả 403. Danh sách mã file bị
   khoá giữ trong bộ nhớ (membersOnlyKeys, nạp lúc khởi động, cập nhật khi
@@ -272,6 +284,11 @@ b22c5f7 feat: scaffold new platform (đã thay thế — xoá ở bản Node.js)
   bình luận video, video chỉ thành viên, Hay nhất tuần / Đang được xem / ngẫu
   nhiên, Album mới ở trang chủ, thanh thông báo, ô quảng cáo, trang Nội quy +
   Yêu cầu gỡ nội dung. Migration 0002_engagement.sql.
+[2026-11-08] Làm đẹp giao diện + tối ưu: màu đỏ – hồng trên nền đen, banner
+  trượt (components/Hero.tsx), thẻ video / album mới (nhãn HOT / MỚI / HD),
+  skeleton lúc tải, trang chủ ảnh + video lên trên. Tách code theo trang
+  (React.lazy), máy chủ nhớ tạm /api/home 30 giây cho khách, ảnh nhiều cỡ
+  (_s / _m, tạo lúc tải hoặc lần đầu có người xem). Không đổi DB.
 
 ================================================================================
 Hết — lưu ý: không lưu mật khẩu / token thật trong file này.

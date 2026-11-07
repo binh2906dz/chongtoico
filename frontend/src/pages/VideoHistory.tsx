@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, errorMessage } from "../api";
 import { useAuth } from "../auth";
-import { ErrorBox, Pagination, Spinner } from "../components/ui";
+import { ErrorBox, Pagination, VideoGridSkeleton } from "../components/ui";
 import { VideoGrid } from "../components/VideoCard";
 import { forgetVideo, localHistory } from "../videoHistory";
 import type { VideoItem } from "../types";
@@ -28,7 +28,7 @@ function MemberHistory() {
   }
 
   if (error) return <ErrorBox message={error} />;
-  if (!data) return <Spinner />;
+  if (!data) return <VideoGridSkeleton />;
   return (
     <>
       {data.videos.length > 0 && (
@@ -58,7 +58,7 @@ function GuestHistory() {
   }, []);
 
   if (error) return <ErrorBox message={error} />;
-  if (!videos) return <Spinner />;
+  if (!videos) return <VideoGridSkeleton />;
   return (
     <>
       <p className="text-sm text-muted">Lịch sử được lưu trên trình duyệt này. Đăng nhập để lưu theo tài khoản.</p>
@@ -90,7 +90,7 @@ export default function VideoHistory() {
   return (
     <div className="space-y-4">
       <h1 className="text-2xl font-black">Video đã xem</h1>
-      {loading ? <Spinner /> : user ? <MemberHistory /> : <GuestHistory />}
+      {loading ? <VideoGridSkeleton /> : user ? <MemberHistory /> : <GuestHistory />}
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
-import { ErrorBox, Pagination, Spinner, Tabs } from "../components/ui";
+import { ErrorBox, Pagination, Tabs, VideoGridSkeleton } from "../components/ui";
 import { VideoGrid } from "../components/VideoCard";
 import { formatNumber } from "../format";
 import { useFetch } from "../useFetch";
@@ -23,15 +23,17 @@ export function VideoCategoryBar({ active }: { active?: string }) {
     <Link
       key={to}
       to={to}
-      className={`shrink-0 rounded-full border px-3 py-1 text-sm whitespace-nowrap ${
-        on ? "border-brand bg-brand/15 font-semibold text-brand" : "border-line text-slate-300 hover:border-brand/50 hover:text-white"
+      className={`shrink-0 rounded-full border px-4 py-1.5 text-sm font-semibold whitespace-nowrap transition ${
+        on
+          ? "border-transparent bg-gradient-to-r from-brand to-brand-2 text-white shadow-md shadow-brand/25"
+          : "border-line bg-panel text-slate-300 hover:border-brand/60 hover:text-white"
       }`}
     >
       {label}
     </Link>
   );
   return (
-    <div className="scroll-thin flex gap-2 overflow-x-auto pb-1">
+    <div className="no-scrollbar -mx-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0">
       {chip("/video", "Tất cả", !active)}
       {data.categories.map((c) => chip(`/video/the-loai/${c.slug}`, c.name, active === c.slug))}
     </div>
@@ -49,7 +51,7 @@ export function TagCloud({ tags, limit }: { tags: VideoTag[]; limit?: number }) 
           <Link
             key={t.id}
             to={`/video/tag/${t.slug}`}
-            className="rounded-full border border-line px-2.5 py-0.5 text-slate-300 hover:border-brand/50 hover:text-brand"
+            className="rounded-full border border-line bg-panel px-3 py-1 text-slate-300 transition hover:border-brand/60 hover:bg-brand/10 hover:text-brand"
             style={{ fontSize: `${0.75 + weight * 0.35}rem` }}
           >
             #{t.name}
@@ -67,7 +69,11 @@ export function VideoTags() {
     <div className="space-y-4">
       <h1 className="text-2xl font-black">🏷️ Thẻ video</h1>
       {loading && !data ? (
-        <Spinner />
+        <div className="panel flex flex-wrap gap-2 p-4">
+          {Array.from({ length: 24 }, (_, i) => (
+            <div key={i} className="skeleton h-7 w-20 rounded-full" />
+          ))}
+        </div>
       ) : error ? (
         <ErrorBox message={error} />
       ) : data?.tags.length ? (
@@ -163,8 +169,8 @@ export default function Videos() {
           </button>
         )}
       </div>
-      {loading && !data ? (
-        <Spinner />
+      {loading ? (
+        <VideoGridSkeleton count={12} />
       ) : error ? (
         <ErrorBox message={error} />
       ) : (

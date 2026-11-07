@@ -203,7 +203,7 @@ export function NoticeBar() {
   if (!notice || hidden === notice.text) return null;
   return (
     <div className={`border-b ${TONES[notice.tone]}`}>
-      <div className="mx-auto flex max-w-6xl items-start gap-3 px-4 py-2 text-sm">
+      <div className="mx-auto flex max-w-7xl items-start gap-3 px-4 py-2 text-sm">
         <span>📢</span>
         <div className="flex-1 whitespace-pre-wrap">
           {notice.text}

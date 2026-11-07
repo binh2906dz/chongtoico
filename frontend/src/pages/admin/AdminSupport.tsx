@@ -80,7 +80,7 @@ function Conversation({ id, onChanged }: { id: number; onChanged: () => void }) 
       <div ref={listRef} className="scroll-thin flex-1 space-y-2 overflow-y-auto p-4">
         {messages.map((m) => (
           <div key={m.id} className={`flex ${m.fromStaff ? "justify-end" : "justify-start"}`}>
-            <div className={`max-w-[75%] rounded-2xl px-3 py-2 text-sm whitespace-pre-wrap ${m.fromStaff ? "bg-brand text-slate-950" : "bg-panel-2"}`}>
+            <div className={`max-w-[75%] rounded-2xl px-3 py-2 text-sm whitespace-pre-wrap ${m.fromStaff ? "bg-brand text-white" : "bg-panel-2"}`}>
               {m.fromStaff && <div className="text-[11px] font-bold">{m.staff?.username}</div>}
               {m.content}
               <div className={`mt-0.5 text-[10px] ${m.fromStaff ? "text-slate-800" : "text-muted"}`}>{timeAgo(m.createdAt)}</div>

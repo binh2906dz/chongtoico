@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { api, errorMessage } from "../api";
 import { isStaff, useAuth } from "../auth";
 import { AdBanner, ReportButton, ShareBar } from "../components/Extras";
-import { Avatar, ErrorBox, Pagination, PostContent, Spinner, UserLink } from "../components/ui";
+import { Avatar, ErrorBox, Pagination, PostContent, SectionHeader, UserLink } from "../components/ui";
 import { VideoCard } from "../components/VideoCard";
 import { formatDate, formatNumber, timeAgo } from "../format";
 import { useFetch } from "../useFetch";
@@ -338,13 +338,21 @@ function Recommended({ videoId, initial }: { videoId: number; initial: VideoItem
 
   return (
     <>
-      <div className="flex items-center justify-between">
-        <h2 className="font-bold">Video đề xuất</h2>
-        <button className="btn-ghost px-2.5 py-1 text-xs" onClick={shuffle} disabled={loading}>
-          🔀 {loading ? "Đang đổi..." : "Đổi video khác"}
-        </button>
-      </div>
-      {list.length === 0 ? (
+      <SectionHeader
+        title="Video đề xuất"
+        action={
+          <button className="btn-ghost rounded-full px-2.5 py-1 text-xs" onClick={shuffle} disabled={loading}>
+            🔀 {loading ? "Đang đổi..." : "Đổi video khác"}
+          </button>
+        }
+      />
+      {loading ? (
+        <div className="grid grid-cols-2 gap-x-3 gap-y-5 lg:grid-cols-1">
+          {Array.from({ length: 4 }, (_, i) => (
+            <div key={i} className="skeleton aspect-video rounded-xl" />
+          ))}
+        </div>
+      ) : list.length === 0 ? (
         <div className="panel p-6 text-center text-sm text-muted">Chưa có video nào khác.</div>
       ) : (
         <div className="grid grid-cols-2 gap-x-3 gap-y-5 lg:grid-cols-1">
@@ -367,7 +375,23 @@ export default function VideoPage() {
     if (data && !user && !data.video.locked) rememberVideo(data.video.id);
   }, [data, user]);
 
-  if (loading && !data) return <Spinner />;
+  if (loading && !data) {
+    return (
+      <div className="grid gap-5 lg:grid-cols-3">
+        <div className="space-y-3 lg:col-span-2">
+          <div className="skeleton aspect-video rounded-xl" />
+          <div className="skeleton h-7 w-3/4" />
+          <div className="skeleton h-4 w-1/3" />
+        </div>
+        <div className="space-y-3">
+          <div className="skeleton h-6 w-40" />
+          {Array.from({ length: 3 }, (_, i) => (
+            <div key={i} className="skeleton aspect-video rounded-xl" />
+          ))}
+        </div>
+      </div>
+    );
+  }
   if (error || !data) return <ErrorBox message={error} />;
   const { video } = data;
 
