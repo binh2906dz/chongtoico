@@ -12,7 +12,13 @@
 
 ## 1. Mục tiêu hệ thống
 
-_Chưa có — chờ chủ dự án mô tả._
+Nền tảng cộng đồng có **bộ chức năng tham khảo theo shiperx.net**, sửa một ít, gồm: diễn đàn (chủ đề, bài viết, "Có gì mới", hot trong ngày / trending tuần), kênh chat cộng đồng thời gian thực, kho album ảnh, bảng xếp hạng thành viên, khung chat CSKH, app Android.
+
+- **Nội dung hợp pháp** — không phải nội dung người lớn (xem N1).
+- **Tên và giao diện riêng** — chỉ học bố cục / chức năng, không chép tên, logo, chữ, mã nguồn của shiperx (xem N2).
+- Hệ thống mới nhưng **dùng lại một số dữ liệu cũ** từ `data.db` (cụ thể dữ liệu nào: xem mục 7).
+
+_Chi tiết từng chức năng: chờ chủ dự án mô tả._
 
 ## 2. Cách hoạt động
 
@@ -28,7 +34,12 @@ _Chưa có — chờ chủ dự án mô tả._
 
 ## 4. Luật nghiệp vụ bất biến
 
-_Chưa có — chờ chủ dự án mô tả._ Đánh số `N1`, `N2`, … để tham chiếu.
+Đánh số `N1`, `N2`, … để tham chiếu.
+
+- **N1 — Nội dung hợp pháp.** Hệ thống không dùng cho nội dung khiêu dâm / người lớn, không có cơ chế lách chặn tên miền.
+- **N2 — Thương hiệu riêng.** Không sao chép tên, logo, giao diện y hệt, nội dung chữ hay mã nguồn của shiperx.net.
+- **N3 — Không đụng hệ thống cũ đang chạy.** Trong lúc xây hệ thống mới: web / bot cũ phải chạy bình thường. Không dừng service `bot`, không chiếm cổng 80/443 của Nginx cũ, không đổi DNS tên miền chính, không ghi vào `data.db` thật (chỉ đọc từ bản sao).
+- **N4 — Hoàn thành rồi mới thay.** Chỉ chuyển tên miền chính sang hệ thống mới khi hệ thống mới đã xong, đã chạy thử đầy đủ và **chủ dự án đồng ý** chuyển. Hệ thống cũ được giữ lại để quay về nếu có sự cố.
 
 ## 5. Luật làm việc với AI
 
@@ -57,12 +68,17 @@ _Chưa có — chờ chủ dự án mô tả._ Đánh số `N1`, `N2`, … để
 | 2026-11-07 | Dữ liệu hệ thống cũ (`data.db`) sẽ được chuyển sang hệ thống mới — làm sau khi chốt cấu trúc dữ liệu. |
 | 2026-11-07 | Chủ dự án giao AI chọn công nghệ và cách triển khai — **cần xem lại** sau khi có mô tả hệ thống (xem mục 7). |
 | 2026-11-07 | Luật và bối cảnh nằm trong **một file duy nhất** là file này; nhật ký làm việc cũng ghi tại đây (mục 10). |
+| 2026-11-07 | Bộ chức năng tham khảo shiperx.net (làm giống hầu hết, sửa một ít), **nội dung hợp pháp**, **tên và giao diện riêng** (N1, N2). |
+| 2026-11-07 | Hệ thống mới có liên quan đến **một số dữ liệu cũ**. |
+| 2026-11-07 | Hệ thống cũ **tiếp tục chạy** trong lúc xây hệ thống mới; chỉ thay khi hệ thống mới hoàn thành và chủ dự án đồng ý (N3, N4). |
 
 ## 7. Câu hỏi còn mở
 
-- Hệ thống mới làm gì, cho ai, luồng hoạt động ra sao? (mục 1–4)
+- ~~Hệ thống mới làm gì?~~ (đã trả lời một phần ở mục 1, ngày 2026-11-07). Còn mở: chủ đề cộng đồng / loại nội dung cụ thể là gì? Chi tiết từng chức năng và phần "sửa một ít" so với shiperx?
+- Tên thương hiệu mới?
+- Dùng lại **những dữ liệu cũ nào** (người dùng Telegram, bot, album, người đăng ký, …)?
+- Chạy thử hệ thống mới ở đâu trong lúc hệ thống cũ vẫn chạy: tên miền phụ trên cùng VPS (Nginx cũ chuyển tiếp vào cổng nội bộ) hay VPS khác? (N3)
 - Bộ khung code đã đẩy ở commit `b22c5f7` (FastAPI + aiogram 3 + PostgreSQL + Redis + React + Caddy, theo giả định "quản lý nhiều bot Telegram") được tạo **trước khi** có mô tả hệ thống → giữ, sửa hay xoá?
-- Tên miền dùng cho hệ thống mới? Cùng VPS với hệ thống cũ hay VPS khác? (ảnh hưởng cổng 80/443)
 
 ## 8. Bối cảnh môi trường
 
@@ -112,4 +128,11 @@ Mẫu mỗi mục:
 ### 2026-11-07 — Thay đổi — Bổ sung luật bắt buộc
 - Việc đã làm: nâng L1 thành "Luật số 1" ở đầu file; thêm L12 (mọi thay đổi phải ghi nhật ký, sửa lỗi phải ghi nguyên nhân + bài học), L13 (liên tục kiểm tra, cập nhật bối cảnh); thêm mục 9 (Bài học) với B1–B5 rút từ phiên làm việc, mục 10 (Nhật ký làm việc) có mẫu ghi.
 - Lý do: chủ dự án yêu cầu.
+- File / commit: `642218b`.
+
+### 2026-11-07 — Quyết định — Định hướng hệ thống và cách thay hệ thống cũ
+- Việc đã làm: ghi mục tiêu (mục 1), luật nghiệp vụ N1–N4, quyết định mới (mục 6), cập nhật câu hỏi mở (mục 7).
+- Lý do: chủ dự án chốt: bộ chức năng tham khảo shiperx.net với nội dung hợp pháp, tên/giao diện riêng, dùng một số dữ liệu cũ; hệ thống cũ chạy tiếp đến khi hệ thống mới hoàn thành.
+- Bài học / cách tránh: shiperx.net là trang nội dung người lớn đội lốt cộng đồng tài xế → chỉ tham khảo chức năng, không tham khảo nội dung (N1, N2).
+- Đã kiểm tra: chỉ sửa tài liệu, không có code.
 - File / commit: commit này.
