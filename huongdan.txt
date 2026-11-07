@@ -171,6 +171,7 @@ Video:
 7) LỊCH SỬ GIT (oneline — cập nhật sau mỗi lần push)
 --------------------------------------------------------------------------------
 (xem `git log --oneline`; các commit chính)
+fe65946 feat: remove rankings and app card from home
 23920b4 feat: video section (admin upload, today/new/best/hot, votes, comments, history), follow threads/members, BBCode editor
 2c5ee49 docs(luat): code first, test later
 c9bc793 feat: Chong Toi Co v1 - forum, realtime chat, albums, rankings, support chat, admin

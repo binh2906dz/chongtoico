@@ -228,4 +228,4 @@ Mẫu mỗi mục:
 - Việc đã làm: xoá `RankingsPanel` (Sidebar.tsx), kiểu `Rankings`/`RankUser`, thẻ `AppCard` (nút cài PWA + "App Android sắp ra mắt") khỏi trang chủ; máy chủ xoá hàm `rankings()`, route `/api/members/rankings`, trường `rankings` trong `/api/home`; 2 bài kiểm thử đổi sang kiểm tra trạng thái khoá trên trang cá nhân thay cho bảng xếp hạng. File `manifest.webmanifest` vẫn giữ (trình duyệt vẫn cho "thêm vào màn hình chính").
 - Lý do: chủ dự án yêu cầu "xóa phần bảng xếp hạng và ứng dụng".
 - Đã kiểm tra: `tsc` máy chủ và `npm run build` giao diện không lỗi; không còn chỗ nào dùng `rankings` / `AppCard`. **Chưa chạy** `npm test`, chưa xem trên trình duyệt.
-- File / commit: commit này.
+- File / commit: `fe65946`.
