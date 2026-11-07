@@ -1,0 +1,115 @@
+================================================================================
+HƯỚNG DẪN / HANDOFF — Chongtoico
+================================================================================
+Mục đích: phiên chat / AI mới đọc file này để nắm nhanh bối cảnh, kiến trúc,
+cách deploy và các điểm dễ gây lỗi trước khi sửa code.
+
+Repo: https://github.com/binh2906dz/chongtoico (nhánh: main)
+Hệ thống cũ (không dùng code chung): https://github.com/binh2906dz/telegram-bot-dashboard
+
+--------------------------------------------------------------------------------
+0) QUY TẮC BẮT BUỘC — ĐỌC TRƯỚC, GHI SAU
+--------------------------------------------------------------------------------
+- Trước khi sửa code / cấu hình / deploy: đọc hết file này.
+- Sau mỗi thay đổi đáng kể: thêm một mục vào "8) NHẬT KÝ THAY ĐỔI" (ngày ISO,
+  tóm tắt, file/commit chính). KHÔNG ghi mật khẩu / token thật.
+- Có commit mới lên main: cập nhật mục "7) LỊCH SỬ GIT".
+- Chủ dự án làm việc trực tiếp trên GitHub và chạy server qua Termius:
+  mỗi lần xong việc phải push lên main và đưa lệnh cập nhật cho chủ dự án.
+
+--------------------------------------------------------------------------------
+1) KIẾN TRÚC
+--------------------------------------------------------------------------------
+Docker Compose gồm 4 dịch vụ:
+- web      : Caddy 2 — tự cấp HTTPS cho DOMAIN, phục vụ giao diện React (/srv),
+             chuyển /api/* và /tg/* sang backend:8000.
+- backend  : FastAPI (uvicorn, 1 worker) + aiogram 3. Khi khởi động: chạy
+             `alembic upgrade head`, tạo admin đầu tiên nếu bảng admins trống,
+             rồi BotManager bật webhook cho mọi bot is_active.
+- db       : PostgreSQL 16 (volume pgdata).
+- redis    : Redis 7 — FSM storage của aiogram, đếm số lần đăng nhập sai.
+
+Thư mục:
+- backend/app/main.py            — tạo app, lifespan (start/stop BotManager)
+- backend/app/config.py          — đọc biến môi trường (pydantic-settings)
+- backend/app/models.py          — bảng: admins, bots, telegram_users, bot_subscribers
+- backend/app/bots/manager.py    — BotManager: giữ Bot sống, set_webhook, nhận update
+- backend/app/bots/handlers.py   — handler Telegram (/start, chặn/bỏ chặn bot)
+- backend/app/services/          — logic dùng chung (subscribers, admins)
+- backend/app/routers/           — API: auth, bots, stats, webhook
+- backend/alembic/versions/      — migration DB (đánh số 0001, 0002, ...)
+- frontend/src/                  — React + Vite + Tailwind (pages/, components/)
+- scripts/install.sh, update.sh  — cài đặt / cập nhật trên VPS
+
+--------------------------------------------------------------------------------
+2) TRIỂN KHAI (VPS)
+--------------------------------------------------------------------------------
+- Yêu cầu: Ubuntu/Debian, quyền root, DNS A của DOMAIN trỏ về VPS, cổng 80/443
+  trống (Caddy cần cả hai để xin chứng chỉ).
+- Cài lần đầu:
+    curl -fsSL https://raw.githubusercontent.com/binh2906dz/chongtoico/main/scripts/install.sh | bash
+  (code nằm ở /opt/chongtoico, .env tạo tự động với SECRET_KEY + mật khẩu DB ngẫu nhiên)
+- Cập nhật sau mỗi lần push:
+    bash /opt/chongtoico/scripts/update.sh
+- Kiểm tra:
+    cd /opt/chongtoico && docker compose ps
+    docker compose logs -f backend
+    curl -s https://DOMAIN/api/health      (mong đợi {"ok":true})
+
+--------------------------------------------------------------------------------
+3) BIẾN MÔI TRƯỜNG (.env — xem .env.example)
+--------------------------------------------------------------------------------
+- DOMAIN           : tên miền; webhook = https://DOMAIN/tg/webhook/<bot_id>
+- PUBLIC_URL       : (tuỳ chọn) ghi đè URL công khai
+- SECRET_KEY       : ký cookie đăng nhập (JWT). Đổi => mọi phiên bị đăng xuất.
+- ADMIN_USERNAME / ADMIN_PASSWORD : chỉ dùng để tạo owner đầu tiên khi bảng
+  admins trống; đổi sau đó KHÔNG đổi mật khẩu admin đã có.
+- POSTGRES_DB / POSTGRES_USER / POSTGRES_PASSWORD
+- COOKIE_SECURE    : true khi chạy HTTPS (mặc định)
+
+--------------------------------------------------------------------------------
+4) BẢO MẬT ĐÃ CÓ
+--------------------------------------------------------------------------------
+- Webhook KHÔNG chứa token trong URL; mỗi bot có webhook_secret riêng, Telegram
+  gửi qua header X-Telegram-Bot-Api-Secret-Token, so sánh hằng thời gian.
+- Đăng nhập: bcrypt, cookie httpOnly + SameSite=Strict (chống CSRF), JWT hết
+  hạn sau SESSION_DAYS (mặc định 7), khoá IP sau 10 lần sai / 5 phút (Redis).
+- API không bao giờ trả token bot đầy đủ (chỉ token_hint).
+- Vai trò: owner (toàn quyền), manager (xem). Route ghi dữ liệu dùng owner_required.
+
+--------------------------------------------------------------------------------
+5) ĐIỂM NHẠY KHI SỬA CODE
+--------------------------------------------------------------------------------
+- Backend phải chạy 1 worker: BotManager giữ Bot trong bộ nhớ tiến trình. Muốn
+  nhiều worker thì phải tách BotManager ra trước.
+- Mọi thay đổi bảng DB phải có migration mới trong backend/alembic/versions/
+  (không sửa migration đã chạy trên server).
+- Handler Telegram nhận `bot_db_id` (id bot trong DB) qua dp.feed_update(...).
+- Webhook trả 200 cho bot không tồn tại / update lỗi để Telegram không gửi lại
+  mãi; chỉ trả 403 khi secret sai.
+- Hệ thống cũ (Nginx) cũng chiếm cổng 80/443 nếu cùng VPS — phải tắt Nginx hoặc
+  dùng VPS khác trước khi chạy Caddy.
+
+--------------------------------------------------------------------------------
+6) VIỆC CÒN LẠI / KẾ HOẠCH
+--------------------------------------------------------------------------------
+- Tính năng nghiệp vụ: chủ dự án sẽ mô tả dần.
+- Script chuyển dữ liệu từ data.db (SQLite hệ thống cũ) sang PostgreSQL: làm
+  sau khi chốt cấu trúc dữ liệu mới.
+
+--------------------------------------------------------------------------------
+7) LỊCH SỬ GIT (oneline — cập nhật sau mỗi lần push)
+--------------------------------------------------------------------------------
+34a3792 Initial commit
+
+--------------------------------------------------------------------------------
+8) NHẬT KÝ THAY ĐỔI (mới nhất ở dưới cùng)
+--------------------------------------------------------------------------------
+[2026-11-07] Dựng khung hệ thống mới: Docker Compose (Caddy + FastAPI + PostgreSQL
+  + Redis), aiogram 3 multi-bot qua webhook có secret, migration 0001 (admins,
+  bots, telegram_users, bot_subscribers), API auth/bots/stats, giao diện React
+  (đăng nhập, tổng quan, quản lý bot), scripts/install.sh + update.sh.
+
+================================================================================
+Hết — lưu ý: không lưu mật khẩu / token thật trong file này.
+================================================================================

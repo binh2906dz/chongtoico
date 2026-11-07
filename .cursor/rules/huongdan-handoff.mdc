@@ -1,0 +1,10 @@
+---
+description: Read and update huongdan.txt around every substantive change
+alwaysApply: true
+---
+
+# Handoff — `huongdan.txt`
+
+1. **Before** any substantive change (code, migrations, Docker/Caddy config, scripts, security): read **`huongdan.txt`** at the repo root end-to-end, especially sections **0** and **5**.
+2. **After** each meaningful change: append a dated entry to **`huongdan.txt` → section `8) NHẬT KÝ THAY ĐỔI`** (ISO date, summary, main files/commits). Never paste real passwords or bot tokens.
+3. After pushing to `main`, refresh **section `7)`** with recent `git log --oneline`, and give the owner the VPS update command (`bash /opt/chongtoico/scripts/update.sh`).
