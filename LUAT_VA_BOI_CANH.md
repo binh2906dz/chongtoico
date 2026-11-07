@@ -18,19 +18,29 @@ Nền tảng cộng đồng có **bộ chức năng tham khảo theo shiperx.net
 - **Tên và giao diện riêng** — chỉ học bố cục / chức năng, không chép tên, logo, chữ, mã nguồn của shiperx (xem N2).
 - Hệ thống mới nhưng **dùng lại một số dữ liệu cũ** từ `data.db` (cụ thể dữ liệu nào: xem mục 7).
 
-_Chi tiết từng chức năng: chờ chủ dự án mô tả._
+_Chi tiết từng chức năng: ~~chờ chủ dự án mô tả~~ → bản đầu đã code theo shiperx (2026-11-07), chủ dự án sẽ chỉnh sửa / thêm sau._
 
 ## 2. Cách hoạt động
 
-_Chưa có — chờ chủ dự án mô tả._
-
 Đã biết chắc: hệ thống mới **hoạt động hoàn toàn khác** hệ thống cũ. Không được suy luận cách hoạt động từ hệ thống cũ.
+
+Bản đầu (2026-11-07), chi tiết kỹ thuật ở `huongdan.txt`:
+- **Khách** xem được diễn đàn, chat, album công khai, xếp hạng; nhắn CSKH được. Muốn đăng bài / chat / thích / xem album "chỉ thành viên" phải đăng ký, đăng nhập.
+- **Diễn đàn:** chuyên mục → chủ đề → bài trả lời. Thích bài (không tự thích). Chủ bài sửa / xoá bài mình; xoá bài đầu = xoá cả chủ đề. Trang chủ có 3 tab: Mới ra lò, Hot trong ngày (nhiều bài trong 24 giờ), Trending tuần (7 ngày).
+- **Chat cộng đồng:** nhiều kênh, tin đến ngay (realtime), đếm người online. Kênh "chỉ BQT" thì thành viên chỉ đọc.
+- **Kho album:** BQT (mod / admin) tạo album, tải ảnh, đánh dấu HOT (hiện ở banner trang chủ), đặt công khai hoặc chỉ thành viên.
+- **Bảng xếp hạng:** Vinh danh (được thích nhiều), Cao thủ phím (nhiều bài), Lính mới, Phòng giam (đang bị khoá + lý do).
+- **CSKH:** nút nổi góc phải; khách / thành viên nhắn, BQT trả lời trong Quản trị > CSKH, tin đến ngay.
+- **Quản trị:** tổng quan số liệu, thành viên (đổi quyền, khoá có thời hạn / vĩnh viễn, mở khoá), chuyên mục, kênh chat, album, CSKH.
 
 ## 3. Thuật ngữ
 
 | Thuật ngữ | Nghĩa |
 |---|---|
-| _(chưa có)_ | |
+| BQT | Ban quản trị = vai trò `mod` (điều hành viên) và `admin` (quản trị viên) |
+| Khoá tài khoản | Thành viên vẫn đăng nhập / đọc / nhắn CSKH, nhưng không đăng bài, chat, thích. Hiện ở "Phòng giam" |
+| Album HOT | Album hiện ở banner trang chủ |
+| Tên miền phụ | Vd `beta.<tên miền cũ>` — nơi chạy thử hệ thống mới trước ngày thay hệ thống cũ |
 
 ## 4. Luật nghiệp vụ bất biến
 
@@ -74,21 +84,28 @@ _Chưa có — chờ chủ dự án mô tả._
 | 2026-11-07 | Chủ đề: **cộng đồng chung, nhiều chủ đề**. |
 | 2026-11-07 | Chạy thử hệ thống mới trên **VPS hiện tại** (cùng VPS với hệ thống cũ). Chủ dự án chưa có tên miền mới. |
 | 2026-11-07 | Tên thương hiệu: **Chống Tối Cổ** (repo `chongtoico`). |
+| 2026-11-07 | Chủ dự án: **code toàn bộ chức năng như shiperx trước**, sau đó chủ dự án tự chỉnh sửa / thêm chức năng. App Android và kết nối Telegram / dữ liệu cũ làm sau. |
+| 2026-11-07 | Công nghệ (AI chọn, thay bộ khung `b22c5f7`): máy chủ **Node.js 22 + TypeScript + Fastify + Socket.IO + Drizzle ORM + PostgreSQL 16**; giao diện **React + Vite + Tailwind**. Chạy thử tại máy bằng **PGlite** (PostgreSQL chạy trong Node, không cần cài). Lý do: máy chủ dự án chỉ có Node → AI chạy thử được toàn bộ (L10); một ngôn ngữ cho cả hai phía; chat thời gian thực sẵn có. Bỏ Python/aiogram/Redis/Caddy. |
+| 2026-11-07 | Triển khai: Docker Compose (`app` + `db`) trên VPS hiện tại, `app` chỉ mở `127.0.0.1:8090`; Nginx cũ thêm một khối `server` cho tên miền phụ chuyển vào cổng này (N3). |
 | 2026-11-07 | Dữ liệu cũ cần dùng: chủ dự án **chọn sau**. Bộ khung `b22c5f7`: AI **đánh giá lại khi đã rõ chức năng** rồi đề xuất giữ / sửa / xoá. |
+| 2026-11-07 | Bộ khung `b22c5f7` (Python): **đã xoá**, thay bằng bản Node.js. Phiên bản thực tế trong Docker: **Node 24**, **PostgreSQL 17** (dòng "Node.js 22 / PostgreSQL 16" ở trên đã thay thế bởi dòng này). |
 
 ## 7. Câu hỏi còn mở
 
 - ~~Hệ thống mới làm gì?~~ (đã trả lời một phần ở mục 1, ngày 2026-11-07). ~~Chủ đề?~~ → cộng đồng chung (mục 6). Còn mở: chi tiết từng chức năng và phần "sửa một ít" so với shiperx?
 - ~~Tên thương hiệu mới?~~ → **Chống Tối Cổ** (mục 6).
-- Duyệt bản nháp danh sách chức năng (tài khoản, diễn đàn, chat cộng đồng, kho album, bảng xếp hạng, chat CSKH, quản trị, app Android làm sau, kết nối Telegram) — chờ chủ dự án sửa / duyệt.
+- ~~Duyệt bản nháp danh sách chức năng~~ → chủ dự án chọn "code toàn bộ như shiperx trước" (mục 6). Còn mở: chủ dự án xem bản đầu rồi báo chỗ cần sửa / thêm.
 - Dùng lại **những dữ liệu cũ nào** (người dùng Telegram, bot, album, người đăng ký, …)? — chủ dự án chọn sau.
-- ~~Chạy thử ở đâu?~~ → VPS hiện tại (mục 6). Còn mở: địa chỉ chạy thử — tên miền phụ của tên miền đang có (vd `beta.<tên miền cũ>`, chỉ cần thêm 1 bản ghi DNS) hay tạm truy cập bằng IP:cổng? Lưu ý: webhook Telegram bắt buộc HTTPS nên chạy bằng IP thì chưa thử được bot.
-- Bộ khung code `b22c5f7` (FastAPI + aiogram 3 + PostgreSQL + Redis + React + Caddy, theo giả định "quản lý nhiều bot Telegram") → AI đánh giá lại khi đã rõ chức năng (mục 6). Nếu giữ: phải bỏ Caddy chiếm cổng 80/443, để Nginx cũ chuyển tiếp vào cổng nội bộ (N3).
+- ~~Chạy thử ở đâu?~~ → VPS hiện tại (mục 6). Còn mở: tên miền phụ cụ thể (vd `beta.<tên miền cũ>`) — chủ dự án tạo bản ghi DNS A rồi chạy `scripts/install.sh`.
+- ~~Bộ khung code `b22c5f7`~~ → đã xoá, thay bằng bản Node.js (mục 6).
+- Hệ thống cũ có đang dùng Cloudflare / HTTPS kiểu gì? (ảnh hưởng cách cấp HTTPS cho tên miền phụ; `install.sh` mặc định dùng certbot.)
 
 ## 8. Bối cảnh môi trường
 
 - Chủ dự án làm việc trực tiếp trên GitHub, chạy server qua **Termius**, đã có sẵn **hosting và tên miền**.
-- Máy Windows của chủ dự án: có Git, Node.js; **không** có Python, Docker, GitHub CLI → AI không chạy thử backend tại máy được.
+- Máy Windows của chủ dự án: có Git, Node.js v26 / npm 11; **không** có Python, Docker, GitHub CLI. ~~AI không chạy thử backend tại máy được~~ → từ bản Node.js: chạy thử được toàn bộ bằng PGlite (`server/data/`, đã gitignore); **không** chạy thử được Docker / Nginx / certbot.
+- VPS: hệ thống cũ = service systemd `bot` (Gunicorn `127.0.0.1:5000`) sau Nginx, thư mục `/root/telegram-bot-dashboard`, Nginx site `/etc/nginx/sites-available/bot`. Hệ thống mới: `/opt/chongtoico`, cổng `127.0.0.1:8090`, Nginx site `chongtoico`.
+- npm 11 trên máy **không chạy script cài đặt** (install scripts) mặc định — `sharp`, `tsx`, PGlite vẫn chạy được vì dùng gói dựng sẵn.
 - Thư mục repo trên máy: `C:\Users\Binh2\OneDrive\Desktop\chongtoico` (nằm trong OneDrive).
 - Git commit trong repo này dùng tên `binh2906dz <binh2906dz@users.noreply.github.com>` (đã cấu hình riêng cho repo).
 - Để rule Cursor tự nạp file này, cần mở **thư mục `chongtoico`** làm workspace trong Cursor.
@@ -103,6 +120,9 @@ Mỗi dòng: **lỗi / tình huống** → **cách tránh**.
 - **B3 — `git fetch` trong repo cũ báo "Permission denied" với `.git/FETCH_HEAD`.** Nghi do OneDrive khoá file. Push vẫn chạy. → Nếu pull/fetch lỗi, thử lại hoặc tạm dừng đồng bộ OneDrive; không kết luận mất quyền GitHub.
 - **B4 — Pyright bỏ qua đường dẫn tuyệt đối trong `include`.** Chạy kiểm tra ra "0 lỗi" nhưng thực ra không quét file nào. → Chạy `npx pyright` ngay trong thư mục `backend` với đường dẫn tương đối; luôn kiểm tra danh sách file đã quét.
 - **B5 — Pyright báo nhầm `alembic` "unknown import symbol".** Do thư mục `alembic/` của dự án trùng tên thư viện chưa cài trên máy. → Đây là báo nhầm khi máy thiếu thư viện, không phải lỗi code.
+- **B6 — App không khởi động: "Method 'GET' already declared for route '/favicon.svg'".** `@fastify/static` với `wildcard: false` đã tự tạo route cho mọi file trong thư mục giao diện; khai báo tay thêm route trùng. → Không tự khai báo route cho file tĩnh; nhớ rằng file giao diện chỉ được nạp lúc khởi động (build lại phải restart app). Kiểm thử bằng `app.inject` không bắt được lỗi này vì test không có thư mục giao diện → luôn chạy thử app thật (`npm run dev`) sau khi sửa `app.ts`.
+- **B7 — Màu chữ Tailwind không ăn trên thẻ `<a>`.** CSS tự viết ngoài `@layer` (`a { color: inherit }`) luôn thắng class Tailwind v4 (nằm trong layer). → CSS nền tự viết phải đặt trong `@layer base { ... }`; class tái sử dụng dùng `@utility`.
+- **B8 — `setHeaders` của `@fastify/static` v10 nhận `FastifyReply`, không phải `ServerResponse`.** → Dùng `res.header(...)`, không dùng `res.setHeader(...)`.
 
 ## 10. Nhật ký làm việc
 
@@ -153,4 +173,22 @@ Mẫu mỗi mục:
 - Việc đã làm: ghi tên thương hiệu **Chống Tối Cổ** vào mục 6; cập nhật mục 7 (thêm việc chờ duyệt danh sách chức năng).
 - Lý do: chủ dự án chốt tên.
 - Đã kiểm tra: chỉ sửa tài liệu, không có code.
+- File / commit: `4ba45e3`.
+
+### 2026-11-07 — Thêm — Bản đầu hệ thống Chống Tối Cổ (toàn bộ chức năng như shiperx)
+- Việc đã làm:
+  - Xoá bộ khung Python `b22c5f7` (backend/, Caddyfile, giao diện quản lý bot).
+  - Máy chủ mới `server/` (Node.js + TypeScript + Fastify + Socket.IO + Drizzle + PostgreSQL): 13 bảng, migration `server/drizzle/0000_init.sql`; đăng ký / đăng nhập (phiên trong DB); diễn đàn (chuyên mục, chủ đề, trả lời, sửa / xoá, thích, ghim / khoá, hot 24h, trending 7 ngày, tìm kiếm, chèn ảnh); chat cộng đồng realtime nhiều kênh + đếm online; kho album (công khai / chỉ thành viên, HOT, ảnh bìa, ảnh webp + thumbnail); bảng xếp hạng 4 tab; thống kê; trang cá nhân (ảnh đại diện, giới thiệu, đổi mật khẩu); CSKH realtime cho khách và thành viên; quản trị (tổng quan, thành viên / quyền / khoá, chuyên mục, kênh chat, album, CSKH, tính lại bộ đếm); chống CSRF bằng header, rate limit.
+  - Giao diện mới `frontend/` (React): toàn bộ trang theo bố cục shiperx nhưng tên, logo, màu, chữ riêng (N2).
+  - Triển khai: `Dockerfile` một image, `docker-compose.yml` (app + db, chỉ mở 127.0.0.1:8090), `scripts/install.sh` (thêm site Nginx riêng cho tên miền phụ, certbot tuỳ chọn, không đụng site cũ — N3), `scripts/update.sh`.
+  - Viết lại `README.md`, `huongdan.txt`; cập nhật mục 1, 2, 3, 6, 7, 8, 9 file này.
+- Lý do: chủ dự án yêu cầu "code toàn bộ như bên shiperx, sau đó tự chỉnh sửa".
+- Nguyên nhân gốc (lỗi gặp khi làm): route file tĩnh bị khai báo trùng (B6); CSS ngoài layer đè màu Tailwind (B7); sai kiểu `setHeaders` (B8). Đều đã sửa trước khi push.
+- Bài học / cách tránh: B6, B7, B8.
+- Đã kiểm tra:
+  - `server`: `npm test` 16/16 bài kiểm thử API qua (PGlite trong bộ nhớ); `tsc` không lỗi.
+  - `frontend`: `npm run build` (tsc + vite) không lỗi.
+  - Chạy app thật tại máy (PGlite trên đĩa) + trình duyệt: trang chủ, đăng nhập, trang chủ đề, gửi trả lời, kho album, quản trị hiển thị và hoạt động đúng.
+  - Script socket: tin chat đẩy realtime tới người khác, đếm online đúng, CSKH admin trả lời đẩy realtime tới khách.
+  - **Chưa chạy thử:** `docker build` / `docker compose` (máy không có Docker), `install.sh` / `update.sh` / Nginx / certbot trên VPS thật, PostgreSQL thật (chỉ PGlite), giao diện trên điện thoại thật.
 - File / commit: commit này.

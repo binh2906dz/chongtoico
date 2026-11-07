@@ -1,44 +1,60 @@
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
-import { api, type Admin } from "./api";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { api } from "./api";
+import { reconnectSocket } from "./socket";
+import type { Profile } from "./types";
 
-type AuthState = {
-  admin: Admin | null;
+interface AuthState {
+  user: Profile | null;
   loading: boolean;
-  login: (username: string, password: string) => Promise<void>;
+  setUser: (u: Profile | null) => void;
+  refresh: () => Promise<void>;
   logout: () => Promise<void>;
-};
+}
 
 const AuthContext = createContext<AuthState | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [admin, setAdmin] = useState<Admin | null>(null);
+  const [user, setUserState] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    api<Admin>("/auth/me")
-      .then(setAdmin)
-      .catch(() => setAdmin(null))
-      .finally(() => setLoading(false));
+  const refresh = useCallback(async () => {
+    try {
+      const res = await api<{ user: Profile | null }>("/api/auth/me");
+      setUserState(res.user);
+    } catch {
+      setUserState(null);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  const login = useCallback(async (username: string, password: string) => {
-    const me = await api<Admin>("/auth/login", {
-      method: "POST",
-      body: JSON.stringify({ username, password }),
-    });
-    setAdmin(me);
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  const userIdRef = useRef<number | null>(null);
+  useEffect(() => {
+    userIdRef.current = user?.id ?? null;
+  }, [user]);
+
+  const setUser = useCallback((u: Profile | null) => {
+    if (userIdRef.current !== (u?.id ?? null)) reconnectSocket();
+    userIdRef.current = u?.id ?? null;
+    setUserState(u);
   }, []);
 
   const logout = useCallback(async () => {
-    await api<void>("/auth/logout", { method: "POST" }).catch(() => undefined);
-    setAdmin(null);
-  }, []);
+    await api("/api/auth/logout", { method: "POST" });
+    setUser(null);
+  }, [setUser]);
 
-  return <AuthContext.Provider value={{ admin, loading, login, logout }}>{children}</AuthContext.Provider>;
+  return <AuthContext.Provider value={{ user, loading, setUser, refresh, logout }}>{children}</AuthContext.Provider>;
 }
 
-export function useAuth(): AuthState {
+export function useAuth() {
   const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error("useAuth must be used inside AuthProvider");
+  if (!ctx) throw new Error("useAuth outside AuthProvider");
   return ctx;
 }
+
+export const isStaff = (u: Profile | null) => !!u && (u.role === "admin" || u.role === "mod");

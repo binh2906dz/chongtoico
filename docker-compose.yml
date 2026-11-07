@@ -1,63 +1,38 @@
 services:
   db:
-    image: postgres:16-alpine
+    image: postgres:17-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: chongtoico
+      POSTGRES_USER: chongtoico
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Thiếu POSTGRES_PASSWORD trong .env}
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      test: ["CMD-SHELL", "pg_isready -U chongtoico -d chongtoico"]
       interval: 5s
       timeout: 5s
-      retries: 10
+      retries: 20
 
-  redis:
-    image: redis:7-alpine
+  app:
+    build: .
     restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes"]
-    volumes:
-      - redisdata:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-
-  backend:
-    build: ./backend
-    restart: unless-stopped
-    env_file: .env
     environment:
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
-      REDIS_URL: redis://redis:6379/0
+      DATABASE_URL: postgres://chongtoico:${POSTGRES_PASSWORD}@db:5432/chongtoico
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      TRUST_PROXY: "true"
+      MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-15}
+    # Only reachable from the VPS itself; the existing Nginx proxies the subdomain here.
+    ports:
+      - "127.0.0.1:${APP_PORT:-8090}:8090"
+    volumes:
+      - uploads:/data/uploads
     depends_on:
       db:
         condition: service_healthy
-      redis:
-        condition: service_healthy
-
-  web:
-    build:
-      context: .
-      dockerfile: frontend/Dockerfile
-    restart: unless-stopped
-    environment:
-      DOMAIN: ${DOMAIN}
-    ports:
-      - "80:80"
-      - "443:443"
-      - "443:443/udp"
-    volumes:
-      - caddy_data:/data
-      - caddy_config:/config
-    depends_on:
-      - backend
 
 volumes:
   pgdata:
-  redisdata:
-  caddy_data:
-  caddy_config:
+  uploads:

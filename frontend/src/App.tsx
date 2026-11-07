@@ -1,33 +1,43 @@
-import { Navigate, Route, Routes } from "react-router-dom";
-import { useAuth } from "./auth";
+import { Route, Routes } from "react-router-dom";
 import Layout from "./components/Layout";
-import Bots from "./pages/Bots";
-import Dashboard from "./pages/Dashboard";
-import Login from "./pages/Login";
+import Admin from "./pages/admin/Admin";
+import AlbumView from "./pages/AlbumView";
+import Albums from "./pages/Albums";
+import { Login, Register } from "./pages/AuthPages";
+import CategoryPage from "./pages/CategoryPage";
+import Chat from "./pages/Chat";
+import Forum from "./pages/Forum";
+import Home from "./pages/Home";
+import Member from "./pages/Member";
+import NewThread from "./pages/NewThread";
+import Search from "./pages/Search";
+import { Contact, NotFound, Privacy, Terms } from "./pages/StaticPages";
+import ThreadPage from "./pages/ThreadPage";
+import WhatsNew from "./pages/WhatsNew";
 
 export default function App() {
-  const { admin, loading } = useAuth();
-
-  if (loading) {
-    return <div className="grid min-h-screen place-items-center text-slate-500">Đang tải…</div>;
-  }
-
-  if (!admin) {
-    return (
-      <Routes>
-        <Route path="/login" element={<Login />} />
-        <Route path="*" element={<Navigate to="/login" replace />} />
-      </Routes>
-    );
-  }
-
   return (
     <Routes>
       <Route element={<Layout />}>
-        <Route index element={<Dashboard />} />
-        <Route path="bots" element={<Bots />} />
+        <Route index element={<Home />} />
+        <Route path="dien-dan" element={<Forum />} />
+        <Route path="dien-dan/:slug" element={<CategoryPage />} />
+        <Route path="chu-de/:id" element={<ThreadPage />} />
+        <Route path="tao-chu-de" element={<NewThread />} />
+        <Route path="moi" element={<WhatsNew />} />
+        <Route path="album" element={<Albums />} />
+        <Route path="album/:id" element={<AlbumView />} />
+        <Route path="chat" element={<Chat />} />
+        <Route path="thanh-vien/:username" element={<Member />} />
+        <Route path="tim-kiem" element={<Search />} />
+        <Route path="dang-nhap" element={<Login />} />
+        <Route path="dang-ky" element={<Register />} />
+        <Route path="quan-tri" element={<Admin />} />
+        <Route path="dieu-khoan" element={<Terms />} />
+        <Route path="quyen-rieng-tu" element={<Privacy />} />
+        <Route path="lien-he" element={<Contact />} />
+        <Route path="*" element={<NotFound />} />
       </Route>
-      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 }

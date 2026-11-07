@@ -3,15 +3,12 @@
 .env.*
 !.env.example
 
-# Python
-__pycache__/
-*.pyc
-.venv/
-venv/
-
 # Node
 node_modules/
 dist/
+
+# Local data (PGlite database, uploaded images)
+server/data/
 
 # OS / editor
 .DS_Store

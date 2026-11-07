@@ -1,48 +1,41 @@
 export class ApiError extends Error {
-  status: number;
-
-  constructor(status: number, message: string) {
+  constructor(
+    message: string,
+    public status: number,
+  ) {
     super(message);
-    this.status = status;
   }
 }
 
-export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const res = await fetch(`/api${path}`, {
-    credentials: "same-origin",
-    ...init,
-    headers: { "Content-Type": "application/json", ...init.headers },
-  });
-  if (res.status === 204) return undefined as T;
+type Options = { method?: string; body?: unknown; form?: FormData; signal?: AbortSignal };
 
-  const data = await res.json().catch(() => null);
+export async function api<T = unknown>(path: string, opts: Options = {}): Promise<T> {
+  const headers: Record<string, string> = { "X-Requested-With": "ctc" };
+  let body: BodyInit | undefined;
+  if (opts.form) body = opts.form;
+  else if (opts.body !== undefined) {
+    headers["Content-Type"] = "application/json";
+    body = JSON.stringify(opts.body);
+  }
+  const res = await fetch(path, {
+    method: opts.method ?? (body ? "POST" : "GET"),
+    headers,
+    body,
+    credentials: "same-origin",
+    signal: opts.signal,
+  });
+  const text = await res.text();
+  let data: unknown = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    data = null;
+  }
   if (!res.ok) {
-    const detail = data?.detail;
-    const message = typeof detail === "string" ? detail : res.status === 422 ? "Dữ liệu không hợp lệ" : `Lỗi ${res.status}`;
-    throw new ApiError(res.status, message);
+    const msg = (data as { error?: string } | null)?.error || `Lỗi ${res.status}`;
+    throw new ApiError(msg, res.status);
   }
   return data as T;
 }
 
-export type Admin = { id: number; username: string; role: "owner" | "manager" };
-
-export type BotItem = {
-  id: number;
-  telegram_id: number;
-  username: string;
-  name: string;
-  token_hint: string;
-  is_active: boolean;
-  running: boolean;
-  subscribers: number;
-  created_at: string;
-};
-
-export type Stats = {
-  bots_total: number;
-  bots_active: number;
-  bots_running: number;
-  users_total: number;
-  subscriptions_active: number;
-  subscriptions_blocked: number;
-};
+export const errorMessage = (err: unknown) => (err instanceof Error ? err.message : "Có lỗi xảy ra.");

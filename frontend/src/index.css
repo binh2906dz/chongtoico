@@ -1,1 +1,78 @@
 @import "tailwindcss";
+
+@theme {
+  --color-bg: #0b0f17;
+  --color-panel: #121826;
+  --color-panel-2: #182033;
+  --color-line: #232c42;
+  --color-muted: #8b95ad;
+  --color-brand: #f59e0b;
+  --color-brand-2: #f97316;
+  --font-sans: "Inter", "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+@layer base {
+  html,
+  body {
+    background: var(--color-bg);
+    color: #e5e9f2;
+  }
+
+  body {
+    -webkit-font-smoothing: antialiased;
+  }
+
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+}
+
+@utility panel {
+  @apply rounded-xl border border-line bg-panel;
+}
+
+@utility panel-head {
+  @apply flex items-center justify-between gap-3 border-b border-line px-4 py-3;
+}
+
+@utility btn {
+  @apply inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50;
+}
+
+@utility btn-primary {
+  @apply btn bg-gradient-to-r from-brand to-brand-2 text-slate-950 hover:brightness-110;
+}
+
+@utility btn-ghost {
+  @apply btn border border-line bg-panel-2 text-slate-200 hover:border-brand/60 hover:text-white;
+}
+
+@utility btn-danger {
+  @apply btn bg-red-600/90 text-white hover:bg-red-600;
+}
+
+@utility input {
+  @apply w-full rounded-lg border border-line bg-bg px-3 py-2 text-sm text-slate-100 outline-none placeholder:text-muted focus:border-brand/70;
+}
+
+@utility label {
+  @apply mb-1 block text-xs font-semibold tracking-wide text-muted uppercase;
+}
+
+@utility tab {
+  @apply cursor-pointer rounded-lg px-3 py-1.5 text-sm font-semibold whitespace-nowrap text-muted transition hover:text-white;
+}
+
+@utility tab-active {
+  @apply bg-panel-2 text-brand hover:text-brand;
+}
+
+@utility text-gradient {
+  @apply bg-gradient-to-r from-brand to-brand-2 bg-clip-text text-transparent;
+}
+
+@utility scroll-thin {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-line) transparent;
+}

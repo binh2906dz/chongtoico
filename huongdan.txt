@@ -1,8 +1,8 @@
 ================================================================================
-HƯỚNG DẪN / HANDOFF — Chongtoico
+HƯỚNG DẪN / HANDOFF — Chống Tối Cổ (repo chongtoico)
 ================================================================================
-Mục đích: phiên chat / AI mới đọc file này để nắm nhanh bối cảnh, kiến trúc,
-cách deploy và các điểm dễ gây lỗi trước khi sửa code.
+Mục đích: phiên chat / AI mới đọc file này để nắm nhanh kiến trúc, cách deploy
+và các điểm dễ gây lỗi trước khi sửa code.
 
 Repo: https://github.com/binh2906dz/chongtoico (nhánh: main)
 Hệ thống cũ (không dùng code chung): https://github.com/binh2906dz/telegram-bot-dashboard
@@ -11,108 +11,143 @@ Hệ thống cũ (không dùng code chung): https://github.com/binh2906dz/telegr
 0) QUY TẮC BẮT BUỘC — ĐỌC TRƯỚC, GHI SAU
 --------------------------------------------------------------------------------
 - ĐỌC LUAT_VA_BOI_CANH.md TRƯỚC TIÊN — file luật gốc, ưu tiên hơn file này.
-- Trước khi sửa code / cấu hình / deploy: đọc hết file này.
-- Nhật ký làm việc + bài học ghi ở LUAT_VA_BOI_CANH.md (mục 9, 10). Mục 8 dưới đây
-  chỉ ghi thay đổi kiến trúc / deploy. KHÔNG ghi mật khẩu / token thật.
+- Nhật ký làm việc + bài học ghi ở LUAT_VA_BOI_CANH.md (mục 9, 10). File này chỉ
+  ghi kiến trúc / deploy. KHÔNG ghi mật khẩu / token thật.
 - Có commit mới lên main: cập nhật mục "7) LỊCH SỬ GIT".
-- Chủ dự án làm việc trực tiếp trên GitHub và chạy server qua Termius:
-  mỗi lần xong việc phải push lên main và đưa lệnh cập nhật cho chủ dự án.
+- Xong việc: push lên main và đưa lệnh cập nhật server cho chủ dự án.
 
 --------------------------------------------------------------------------------
 1) KIẾN TRÚC
 --------------------------------------------------------------------------------
-Docker Compose gồm 4 dịch vụ:
-- web      : Caddy 2 — tự cấp HTTPS cho DOMAIN, phục vụ giao diện React (/srv),
-             chuyển /api/* và /tg/* sang backend:8000.
-- backend  : FastAPI (uvicorn, 1 worker) + aiogram 3. Khi khởi động: chạy
-             `alembic upgrade head`, tạo admin đầu tiên nếu bảng admins trống,
-             rồi BotManager bật webhook cho mọi bot is_active.
-- db       : PostgreSQL 16 (volume pgdata).
-- redis    : Redis 7 — FSM storage của aiogram, đếm số lần đăng nhập sai.
+Docker Compose, 2 dịch vụ:
+- app : 1 tiến trình Node 24 (Fastify) phục vụ API (/api/*), ảnh (/media/*),
+        realtime Socket.IO (/socket.io) và giao diện React đã build (SPA).
+        Khi khởi động: chạy migration Drizzle (server/drizzle/*.sql), tạo dữ
+        liệu mặc định (chuyên mục, kênh chat), tạo admin từ ADMIN_USERNAME/
+        ADMIN_PASSWORD nếu chưa có tên đó.
+        Chỉ mở 127.0.0.1:APP_PORT (mặc định 8090).
+- db  : PostgreSQL 17 (volume pgdata). Ảnh lưu ở volume uploads (/data/uploads).
+
+Nginx cũ của VPS thêm site /etc/nginx/sites-available/chongtoico cho tên miền
+phụ, proxy vào 127.0.0.1:APP_PORT (có header Upgrade cho websocket).
+Hệ thống cũ (service "bot", Gunicorn 127.0.0.1:5000) không bị đụng tới.
 
 Thư mục:
-- backend/app/main.py            — tạo app, lifespan (start/stop BotManager)
-- backend/app/config.py          — đọc biến môi trường (pydantic-settings)
-- backend/app/models.py          — bảng: admins, bots, telegram_users, bot_subscribers
-- backend/app/bots/manager.py    — BotManager: giữ Bot sống, set_webhook, nhận update
-- backend/app/bots/handlers.py   — handler Telegram (/start, chặn/bỏ chặn bot)
-- backend/app/services/          — logic dùng chung (subscribers, admins)
-- backend/app/routers/           — API: auth, bots, stats, webhook
-- backend/alembic/versions/      — migration DB (đánh số 0001, 0002, ...)
-- frontend/src/                  — React + Vite + Tailwind (pages/, components/)
-- scripts/install.sh, update.sh  — cài đặt / cập nhật trên VPS
+- server/src/index.ts        — khởi động: DB, seed, Fastify, Socket.IO
+- server/src/app.ts          — tạo Fastify: cookie, multipart, rate-limit, chống
+                               CSRF, gắn req.user, xử lý lỗi, phục vụ SPA
+- server/src/config.ts       — biến môi trường
+- server/src/db/schema.ts    — bảng (Drizzle). Đổi bảng => `npm run db:generate`
+                               tạo migration mới trong server/drizzle/
+- server/src/db/index.ts     — chọn driver: "postgres://" (thật) hoặc
+                               "pglite:<thư mục>|memory" (chạy thử / test)
+- server/src/auth.ts         — phiên đăng nhập (bảng sessions), quyền, khoá TK
+- server/src/realtime.ts     — Socket.IO: đếm online, phòng chat, phòng CSKH
+- server/src/media.ts        — xử lý ảnh bằng sharp (webp, thumbnail)
+- server/src/routes/*.ts     — auth, forum, chat, albums, members (xếp hạng,
+                               thống kê, trang chủ), support (CSKH), admin, media
+- server/test/api.test.ts    — kiểm thử toàn bộ API trên PGlite trong bộ nhớ
+- frontend/src/pages/        — Home, Forum, CategoryPage, ThreadPage, NewThread,
+                               WhatsNew, Albums, AlbumView, Chat, Member, Search,
+                               AuthPages, StaticPages, admin/*
+- frontend/src/components/   — Layout, ChatBox, SupportWidget, Sidebar, Editor, ui
+- scripts/install.sh, update.sh
+
+Đường dẫn giao diện: / , /dien-dan , /dien-dan/:slug , /chu-de/:id , /tao-chu-de ,
+/moi , /album , /album/:id , /chat , /thanh-vien/:ten , /tim-kiem , /dang-nhap ,
+/dang-ky , /quan-tri , /dieu-khoan , /quyen-rieng-tu , /lien-he
 
 --------------------------------------------------------------------------------
 2) TRIỂN KHAI (VPS)
 --------------------------------------------------------------------------------
-- Yêu cầu: Ubuntu/Debian, quyền root, DNS A của DOMAIN trỏ về VPS, cổng 80/443
-  trống (Caddy cần cả hai để xin chứng chỉ).
-- Cài lần đầu:
+- DNS: bản ghi A cho tên miền phụ (vd beta.tenmiencu.com) trỏ về IP VPS.
+- Cài lần đầu (root):
     curl -fsSL https://raw.githubusercontent.com/binh2906dz/chongtoico/main/scripts/install.sh | bash
-  (code nằm ở /opt/chongtoico, .env tạo tự động với SECRET_KEY + mật khẩu DB ngẫu nhiên)
 - Cập nhật sau mỗi lần push:
     bash /opt/chongtoico/scripts/update.sh
 - Kiểm tra:
     cd /opt/chongtoico && docker compose ps
-    docker compose logs -f backend
-    curl -s https://DOMAIN/api/health      (mong đợi {"ok":true})
+    docker compose logs -f app
+    curl -s http://127.0.0.1:8090/healthz          (mong đợi {"ok":true})
+- HTTPS: certbot --nginx -d <tên miền phụ>, rồi đặt COOKIE_SECURE=true trong
+  .env và chạy `docker compose up -d`.
 
 --------------------------------------------------------------------------------
 3) BIẾN MÔI TRƯỜNG (.env — xem .env.example)
 --------------------------------------------------------------------------------
-- DOMAIN           : tên miền; webhook = https://DOMAIN/tg/webhook/<bot_id>
-- PUBLIC_URL       : (tuỳ chọn) ghi đè URL công khai
-- SECRET_KEY       : ký cookie đăng nhập (JWT). Đổi => mọi phiên bị đăng xuất.
-- ADMIN_USERNAME / ADMIN_PASSWORD : chỉ dùng để tạo owner đầu tiên khi bảng
-  admins trống; đổi sau đó KHÔNG đổi mật khẩu admin đã có.
-- POSTGRES_DB / POSTGRES_USER / POSTGRES_PASSWORD
-- COOKIE_SECURE    : true khi chạy HTTPS (mặc định)
+- DOMAIN            : tên miền phụ (dùng cho Nginx/certbot trong install.sh)
+- APP_PORT          : cổng nội bộ 127.0.0.1 (mặc định 8090; hệ thống cũ dùng 5000)
+- POSTGRES_PASSWORD : mật khẩu DB (sinh ngẫu nhiên)
+- ADMIN_USERNAME / ADMIN_PASSWORD : chỉ tạo tài khoản admin khi CHƯA có tên đó;
+  đổi sau không đổi mật khẩu admin đã có (đổi trong trang cá nhân).
+- COOKIE_SECURE     : true khi đã có HTTPS; false khi chạy http (nếu để true
+  trên http thì trình duyệt không lưu cookie => không đăng nhập được)
+- MAX_UPLOAD_MB     : dung lượng tối đa mỗi ảnh
 
 --------------------------------------------------------------------------------
 4) BẢO MẬT ĐÃ CÓ
 --------------------------------------------------------------------------------
-- Webhook KHÔNG chứa token trong URL; mỗi bot có webhook_secret riêng, Telegram
-  gửi qua header X-Telegram-Bot-Api-Secret-Token, so sánh hằng thời gian.
-- Đăng nhập: bcrypt, cookie httpOnly + SameSite=Strict (chống CSRF), JWT hết
-  hạn sau SESSION_DAYS (mặc định 7), khoá IP sau 10 lần sai / 5 phút (Redis).
-- API không bao giờ trả token bot đầy đủ (chỉ token_hint).
-- Vai trò: owner (toàn quyền), manager (xem). Route ghi dữ liệu dùng owner_required.
+- Mật khẩu bcrypt. Phiên đăng nhập = token ngẫu nhiên trong cookie httpOnly
+  SameSite=Lax, DB chỉ lưu SHA-256 của token (đổi mật khẩu => xoá mọi phiên).
+- Chống CSRF: mọi request ghi dữ liệu vào /api phải có header
+  "X-Requested-With: ctc" (trình duyệt không cho site khác gửi header này
+  khi không có CORS). Frontend api.ts tự thêm.
+- Rate limit: chung 300/phút/IP; đăng nhập 10/5 phút; đăng ký 5/giờ; đăng bài,
+  chat, CSKH, tải ảnh có giới hạn riêng.
+- Ảnh: kiểm tra bằng sharp, chuyển sang webp, bỏ metadata EXIF; tên file ngẫu
+  nhiên; album "chỉ thành viên" chặn cả file ảnh với khách.
+- Quyền: member < mod (kiểm duyệt nội dung, khoá thành viên thường, CSKH,
+  album) < admin (thêm: đổi quyền, chuyên mục, kênh chat, tính lại bộ đếm).
+- Tài khoản bị khoá vẫn đăng nhập, đọc, nhắn CSKH được nhưng không đăng bài,
+  chat, thích.
 
 --------------------------------------------------------------------------------
 5) ĐIỂM NHẠY KHI SỬA CODE
 --------------------------------------------------------------------------------
-- Backend phải chạy 1 worker: BotManager giữ Bot trong bộ nhớ tiến trình. Muốn
-  nhiều worker thì phải tách BotManager ra trước.
-- Mọi thay đổi bảng DB phải có migration mới trong backend/alembic/versions/
-  (không sửa migration đã chạy trên server).
-- Handler Telegram nhận `bot_db_id` (id bot trong DB) qua dp.feed_update(...).
-- Webhook trả 200 cho bot không tồn tại / update lỗi để Telegram không gửi lại
-  mãi; chỉ trả 403 khi secret sai.
-- Hệ thống cũ (Nginx) cũng chiếm cổng 80/443 nếu cùng VPS — phải tắt Nginx hoặc
-  dùng VPS khác trước khi chạy Caddy.
+- App chạy 1 tiến trình: số người online, chống spam chat, đếm lượt xem nằm
+  trong bộ nhớ. Muốn chạy nhiều tiến trình phải chuyển sang Redis + Socket.IO
+  adapter trước.
+- Đổi bảng DB: sửa server/src/db/schema.ts rồi `cd server && npm run db:generate`
+  => commit file migration mới. KHÔNG sửa migration đã chạy trên server.
+- Bộ đếm (post_count, like_count, thread_count, reply_count...) được cập nhật
+  thủ công trong từng route. Thêm thao tác mới phải cập nhật bộ đếm tương ứng.
+  Lệch số liệu: Quản trị > Tổng quan > "Tính lại bộ đếm".
+- @fastify/static (wildcard: false) chỉ nạp danh sách file giao diện lúc khởi
+  động => build lại giao diện thì phải khởi động lại app (Docker tự làm).
+- Nội dung bài viết là văn bản thuần; ảnh chèn bằng mã [img:<key>] (ảnh đã tải
+  qua /api/uploads/image), link http(s) tự thành liên kết. Không render HTML.
+- Socket: client tự kết nối lại sau đăng nhập/đăng xuất và sau tin CSKH đầu
+  tiên của khách (để server đọc lại cookie và cho vào đúng phòng).
+- Chạy test trước khi push: cd server && npm test ; cd frontend && npm run build
 
 --------------------------------------------------------------------------------
 6) VIỆC CÒN LẠI / KẾ HOẠCH
 --------------------------------------------------------------------------------
-- Tính năng nghiệp vụ: chủ dự án sẽ mô tả dần.
-- Script chuyển dữ liệu từ data.db (SQLite hệ thống cũ) sang PostgreSQL: làm
-  sau khi chốt cấu trúc dữ liệu mới.
+- Chủ dự án chỉnh sửa / thêm chức năng sau khi xem bản đầu.
+- App Android: làm sau (hiện có nút cài PWA khi trình duyệt hỗ trợ).
+- Kết nối Telegram / chuyển dữ liệu cũ từ data.db: chờ chủ dự án chọn dữ liệu.
+- Ngày thay hệ thống cũ: sao lưu, chuyển dữ liệu lần cuối, trỏ tên miền chính
+  (chỉ khi chủ dự án đồng ý — luật N4).
 
 --------------------------------------------------------------------------------
 7) LỊCH SỬ GIT (oneline — cập nhật sau mỗi lần push)
 --------------------------------------------------------------------------------
-b22c5f7 feat: scaffold new platform (FastAPI + aiogram 3 + PostgreSQL + Redis + React + Caddy)
+(xem `git log --oneline`; các commit chính)
+4ba45e3 docs(luat): brand name Chong Toi Co
+4e099bb docs(luat): record topic, staging on current VPS, old data later, scaffold re-evaluation
+ac604e9 docs(luat): record goals, N1-N4 (legal content, own brand, keep old system running until cutover)
+642218b docs(luat): rule #1, mandatory change log with lessons, continuous context updates
+a344d34 docs: add LUAT_VA_BOI_CANH.md as the master rules/context file
+b22c5f7 feat: scaffold new platform (đã thay thế — xoá ở bản Node.js)
 34a3792 Initial commit
 
 --------------------------------------------------------------------------------
-8) NHẬT KÝ THAY ĐỔI (mới nhất ở dưới cùng)
+8) NHẬT KÝ KIẾN TRÚC (mới nhất ở dưới cùng)
 --------------------------------------------------------------------------------
-[2026-11-07] Dựng khung hệ thống mới: Docker Compose (Caddy + FastAPI + PostgreSQL
-  + Redis), aiogram 3 multi-bot qua webhook có secret, migration 0001 (admins,
-  bots, telegram_users, bot_subscribers), API auth/bots/stats, giao diện React
-  (đăng nhập, tổng quan, quản lý bot), scripts/install.sh + update.sh. (commit b22c5f7)
-[2026-11-07] Thêm LUAT_VA_BOI_CANH.md (luật + bối cảnh, ưu tiên cao nhất); rule Cursor
-  chuyển sang bắt đọc file này trước. Bộ khung b22c5f7 đang chờ chủ dự án quyết giữ/sửa/xoá.
+[2026-11-07] Dựng khung FastAPI + aiogram + Caddy (b22c5f7) — ĐÃ THAY THẾ.
+[2026-11-07] Viết lại toàn bộ bằng Node.js/TypeScript: Fastify + Socket.IO +
+  Drizzle + PostgreSQL, giao diện React mới (diễn đàn, chat, album, xếp hạng,
+  CSKH, quản trị). Docker Compose app + db, chạy sau Nginx cũ bằng tên miền phụ.
 
 ================================================================================
 Hết — lưu ý: không lưu mật khẩu / token thật trong file này.
