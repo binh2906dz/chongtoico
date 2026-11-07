@@ -1,4 +1,4 @@
-import { and, count, desc, eq, gt, isNotNull, isNull, or } from "drizzle-orm";
+import { count, desc, eq } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { author, authorColumns, profileUser } from "../auth.js";
@@ -10,36 +10,6 @@ import { hotAlbums } from "./albums.js";
 import { followStats } from "./follow.js";
 import { threadFeed } from "./forum.js";
 import { listVideoCategories, listVideos } from "./videos.js";
-
-const RANK_LIMIT = 10;
-
-export async function rankings() {
-  const now = new Date();
-  const base = { ...authorColumns, postCount: users.postCount, likeCount: users.likeCount, createdAt: users.createdAt };
-  const [topLiked, topPosters, newest, banned] = await Promise.all([
-    db.select(base).from(users).where(gt(users.likeCount, 0)).orderBy(desc(users.likeCount), desc(users.postCount)).limit(RANK_LIMIT),
-    db.select(base).from(users).where(gt(users.postCount, 0)).orderBy(desc(users.postCount), desc(users.likeCount)).limit(RANK_LIMIT),
-    db.select(base).from(users).orderBy(desc(users.createdAt)).limit(RANK_LIMIT),
-    db
-      .select({ ...base, banReason: users.banReason, bannedUntil: users.bannedUntil })
-      .from(users)
-      .where(and(isNotNull(users.bannedAt), or(isNull(users.bannedUntil), gt(users.bannedUntil, now))))
-      .orderBy(desc(users.bannedAt))
-      .limit(RANK_LIMIT),
-  ]);
-  const map = (r: (typeof topLiked)[number]) => ({
-    ...author(r)!,
-    postCount: r.postCount,
-    likeCount: r.likeCount,
-    createdAt: r.createdAt,
-  });
-  return {
-    topLiked: topLiked.map(map),
-    topPosters: topPosters.map(map),
-    newest: newest.map(map),
-    banned: banned.map((r) => ({ ...map(r), banReason: r.banReason, bannedUntil: r.bannedUntil })),
-  };
-}
 
 export async function forumStats() {
   const [[t], [p], [u], [latest]] = await Promise.all([
@@ -58,12 +28,10 @@ export async function forumStats() {
 }
 
 export default async function memberRoutes(app: FastifyInstance) {
-  app.get("/api/members/rankings", async () => rankings());
-
   app.get("/api/stats", async () => forumStats());
 
   app.get("/api/home", async (req) => {
-    const [albums, today, newest, videoCategories, latest, hot, trending, ranks, stats] = await Promise.all([
+    const [albums, today, newest, videoCategories, latest, hot, trending, stats] = await Promise.all([
       hotAlbums(!!req.user, 8),
       listVideos({ sort: "today", limit: 8 }),
       listVideos({ sort: "new", limit: 24 }),
@@ -71,7 +39,6 @@ export default async function memberRoutes(app: FastifyInstance) {
       threadFeed("latest", 10),
       threadFeed("hot", 10),
       threadFeed("trending", 10),
-      rankings(),
       forumStats(),
     ]);
     return {
@@ -79,7 +46,6 @@ export default async function memberRoutes(app: FastifyInstance) {
       videoCategories,
       hotAlbums: albums,
       feeds: { latest, hot, trending },
-      rankings: ranks,
       stats,
     };
   });

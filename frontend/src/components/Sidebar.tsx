@@ -1,54 +1,7 @@
-import { useState } from "react";
-import { formatNumber, timeAgo } from "../format";
+import { formatNumber } from "../format";
 import { useOnline } from "../socket";
-import type { Rankings, Stats } from "../types";
-import { Avatar, Empty, Tabs, UserLink } from "./ui";
-
-type RankTab = "topLiked" | "topPosters" | "newest" | "banned";
-
-const RANK_TABS: { id: RankTab; label: string }[] = [
-  { id: "topLiked", label: "Vinh danh" },
-  { id: "topPosters", label: "Cao thủ phím" },
-  { id: "newest", label: "Lính mới" },
-  { id: "banned", label: "Phòng giam" },
-];
-
-export function RankingsPanel({ rankings }: { rankings: Rankings }) {
-  const [tab, setTab] = useState<RankTab>("topLiked");
-  const list = rankings[tab];
-  return (
-    <section className="panel">
-      <div className="panel-head">
-        <h2 className="font-bold">🏆 Bảng xếp hạng</h2>
-      </div>
-      <div className="px-3 pt-3">
-        <Tabs tabs={RANK_TABS} value={tab} onChange={setTab} />
-      </div>
-      {list.length === 0 ? (
-        <Empty>{tab === "banned" ? "Phòng giam đang trống!" : "Chưa có ai trên bảng."}</Empty>
-      ) : (
-        <ol className="space-y-1 p-3">
-          {list.map((u, i) => (
-            <li key={u.id} className="flex items-center gap-3 rounded-lg px-2 py-1.5 hover:bg-panel-2">
-              <span className={`w-5 text-center text-sm font-black ${i < 3 && tab !== "banned" && tab !== "newest" ? "text-brand" : "text-muted"}`}>{i + 1}</span>
-              <Avatar user={u} size={30} />
-              <div className="min-w-0 flex-1">
-                <UserLink user={u} className="block truncate text-sm" />
-                {tab === "banned" && u.banReason && <div className="truncate text-xs text-red-300">Lý do: {u.banReason}</div>}
-              </div>
-              <span className="shrink-0 text-xs text-muted">
-                {tab === "topLiked" && `${formatNumber(u.likeCount)} ❤`}
-                {tab === "topPosters" && `${formatNumber(u.postCount)} bài`}
-                {tab === "newest" && timeAgo(u.createdAt)}
-                {tab === "banned" && (u.bannedUntil ? `đến ${new Date(u.bannedUntil).toLocaleDateString("vi-VN")}` : "vĩnh viễn")}
-              </span>
-            </li>
-          ))}
-        </ol>
-      )}
-    </section>
-  );
-}
+import type { Stats } from "../types";
+import { UserLink } from "./ui";
 
 export function StatsPanel({ stats }: { stats: Stats }) {
   const online = useOnline();

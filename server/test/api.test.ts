@@ -165,7 +165,7 @@ describe("Chống Tối Cổ API", () => {
     assert.equal(profile.likeCount, 1);
   });
 
-  it("serves feeds, home, rankings and search", async () => {
+  it("serves feeds, home and search", async () => {
     for (const type of ["latest", "updated", "hot", "trending"]) {
       const feed = (await app.inject(`/api/forum/feed?type=${type}`)).json();
       assert.equal(feed.threads[0].id, threadId, type);
@@ -173,7 +173,6 @@ describe("Chống Tối Cổ API", () => {
     const home = (await app.inject("/api/home")).json();
     assert.equal(home.stats.threads, 1);
     assert.equal(home.stats.posts, 2);
-    assert.equal(home.rankings.topLiked[0].username, "alice");
     assert.equal(home.feeds.hot.length, 1);
     const search = (await app.inject(`/api/forum/search?q=${encodeURIComponent("chào")}`)).json();
     assert.equal(search.threads.length, 1);
@@ -370,7 +369,7 @@ describe("Chống Tối Cổ API", () => {
     assert.equal(mine.messages[1].staff.username, "boss");
   });
 
-  it("ban blocks posting and shows in rankings; unban restores", async () => {
+  it("ban blocks posting and shows on profile; unban restores", async () => {
     let res = await app.inject({
       method: "POST",
       url: `/api/admin/users/${bob.user.id}/ban`,
@@ -394,12 +393,12 @@ describe("Chống Tối Cổ API", () => {
       payload: { content: "vẫn nói" },
     });
     assert.equal(res.statusCode, 403);
-    const ranks = (await app.inject("/api/members/rankings")).json();
-    assert.equal(ranks.banned[0].username, "Bob_1");
-    assert.equal(ranks.banned[0].banReason, "Spam");
+    const profile = (await app.inject("/api/members/Bob_1")).json().user;
+    assert.equal(profile.isBanned, true);
+    assert.equal(profile.banReason, "Spam");
 
     await app.inject({ method: "POST", url: `/api/admin/users/${bob.user.id}/unban`, headers: { ...H, cookie: admin } });
-    assert.equal((await app.inject("/api/members/rankings")).json().banned.length, 0);
+    assert.equal((await app.inject("/api/members/Bob_1")).json().user.isBanned, false);
   });
 
   it("admin overview, users, roles, categories, recount", async () => {

@@ -47,8 +47,8 @@ Thư mục:
 - server/src/realtime.ts     — Socket.IO: đếm online, phòng chat, phòng CSKH
 - server/src/media.ts        — xử lý ảnh bằng sharp (webp, thumbnail, ảnh bìa
                                video), kiểm tra file video (byte đầu)
-- server/src/routes/*.ts     — auth, forum, chat, albums, members (xếp hạng,
-                               thống kê, trang chủ), support (CSKH), admin, media,
+- server/src/routes/*.ts     — auth, forum, chat, albums, members (thống kê,
+                               trang cá nhân, trang chủ), support (CSKH), admin, media,
                                videos (video + thể loại + bình chọn + bình luận +
                                lịch sử), follow (theo dõi chủ đề / thành viên)
 - server/test/api.test.ts    — kiểm thử API trên PGlite trong bộ nhớ (CHƯA có
@@ -161,7 +161,8 @@ Video:
 - Giai đoạn kiểm thử (khi chủ dự án yêu cầu): viết bài test cho video / theo
   dõi / BBCode; thử tải + phát + tua video thật; thử Nginx với file lớn.
 - Chưa làm: thông báo, tin nhắn riêng, báo vi phạm.
-- App Android: làm sau (hiện có nút cài PWA khi trình duyệt hỗ trợ).
+- App Android: chưa rõ còn làm không (thẻ ứng dụng / nút cài PWA ở trang chủ
+  đã bỏ 2026-11-08).
 - Kết nối Telegram / chuyển dữ liệu cũ từ data.db: chờ chủ dự án chọn dữ liệu.
 - Ngày thay hệ thống cũ: sao lưu, chuyển dữ liệu lần cuối, trỏ tên miền chính
   (chỉ khi chủ dự án đồng ý — luật N4).
@@ -191,6 +192,8 @@ b22c5f7 feat: scaffold new platform (đã thay thế — xoá ở bản Node.js)
 [2026-11-07] Thêm mảng video (admin đăng, lưu trên VPS, trang chủ video là
   chính), theo dõi chủ đề / thành viên, trình soạn thảo BBCode. Migration
   0001_video_follow.sql. Nginx thêm khối /api/admin/videos (2100M, không đệm).
+[2026-11-08] Bỏ bảng xếp hạng (giao diện + /api/members/rankings) và thẻ ứng
+  dụng ở trang chủ.
 
 ================================================================================
 Hết — lưu ý: không lưu mật khẩu / token thật trong file này.

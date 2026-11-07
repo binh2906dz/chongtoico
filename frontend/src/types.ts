@@ -97,21 +97,6 @@ export interface AlbumImage {
   thumbUrl: string;
 }
 
-export interface RankUser extends Author {
-  postCount: number;
-  likeCount: number;
-  createdAt: string;
-  banReason?: string | null;
-  bannedUntil?: string | null;
-}
-
-export interface Rankings {
-  topLiked: RankUser[];
-  topPosters: RankUser[];
-  newest: RankUser[];
-  banned: RankUser[];
-}
-
 export interface Online {
   members: number;
   guests: number;

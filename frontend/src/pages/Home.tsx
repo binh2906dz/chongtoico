@@ -3,26 +3,21 @@ import { Link } from "react-router-dom";
 import { api } from "../api";
 import { useAuth } from "../auth";
 import ChatBox from "../components/ChatBox";
-import { RankingsPanel, StatsPanel } from "../components/Sidebar";
+import { StatsPanel } from "../components/Sidebar";
 import { ErrorBox, Spinner, Tabs, ThreadRows } from "../components/ui";
 import { VideoGrid } from "../components/VideoCard";
 import { useFetch } from "../useFetch";
 import { VideoCategoryBar } from "./Videos";
-import type { Album, Channel, Rankings, Stats, ThreadItem, VideoItem } from "../types";
+import type { Album, Channel, Stats, ThreadItem, VideoItem } from "../types";
 
 interface HomeData {
   videos: { today: VideoItem[]; newest: VideoItem[] };
   hotAlbums: Album[];
   feeds: { latest: ThreadItem[]; hot: ThreadItem[]; trending: ThreadItem[] };
-  rankings: Rankings;
   stats: Stats;
 }
 
 type FeedTab = "latest" | "hot" | "trending";
-
-interface InstallPromptEvent extends Event {
-  prompt: () => Promise<void>;
-}
 
 function HotAlbumsBanner({ albums }: { albums: Album[] }) {
   const covers = albums.filter((a) => a.coverUrl).slice(0, 4);
@@ -56,34 +51,6 @@ function VideoSection({ title, more, children }: { title: string; more: string; 
       </div>
       {children}
     </section>
-  );
-}
-
-function AppCard() {
-  const [prompt, setPrompt] = useState<InstallPromptEvent | null>(null);
-  useEffect(() => {
-    const handler = (e: Event) => {
-      e.preventDefault();
-      setPrompt(e as InstallPromptEvent);
-    };
-    window.addEventListener("beforeinstallprompt", handler);
-    return () => window.removeEventListener("beforeinstallprompt", handler);
-  }, []);
-  return (
-    <div className="panel flex items-center gap-4 p-4">
-      <img src="/favicon.svg" alt="" className="h-12 w-12" />
-      <div className="min-w-0 flex-1">
-        <div className="font-bold">Ứng dụng Chống Tối Cổ</div>
-        <div className="text-xs text-muted">Xem album, diễn đàn, chat — cả cộng đồng trong tay bạn.</div>
-      </div>
-      {prompt ? (
-        <button className="btn-primary" onClick={() => prompt.prompt()}>
-          Cài đặt
-        </button>
-      ) : (
-        <span className="rounded-lg border border-line px-3 py-2 text-xs text-muted">App Android sắp ra mắt</span>
-      )}
-    </div>
   );
 }
 
@@ -168,7 +135,6 @@ export default function Home() {
 
         <div className="space-y-5">
           <HotAlbumsBanner albums={data.hotAlbums} />
-          <AppCard />
           <Link to="/tao-chu-de" className="panel flex items-center gap-3 p-4 hover:border-brand/50">
             <span className="text-3xl">✍️</span>
             <div>
@@ -176,7 +142,6 @@ export default function Home() {
               <div className="text-xs text-muted">Chia sẻ, hỏi đáp, tán gẫu cùng mọi người.</div>
             </div>
           </Link>
-          <RankingsPanel rankings={data.rankings} />
           <StatsPanel stats={data.stats} />
         </div>
       </div>

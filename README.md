@@ -1,6 +1,6 @@
 # Chống Tối Cổ
 
-Diễn đàn cộng đồng: diễn đàn (chủ đề, bài viết, thích, hot trong ngày / trending tuần), chat cộng đồng thời gian thực, kho album ảnh, bảng xếp hạng thành viên, chat CSKH, trang quản trị.
+Diễn đàn cộng đồng: diễn đàn (chủ đề, bài viết, thích, hot trong ngày / trending tuần), chat cộng đồng thời gian thực, kho album ảnh, video (admin đăng), theo dõi chủ đề / thành viên, chat CSKH, trang quản trị.
 
 Công nghệ: Node.js + TypeScript + Fastify + Socket.IO + Drizzle ORM + PostgreSQL, giao diện React + Vite + Tailwind. Chạy bằng Docker Compose, song song với hệ thống cũ trên cùng VPS (Nginx cũ chuyển tên miền phụ vào cổng nội bộ).
 

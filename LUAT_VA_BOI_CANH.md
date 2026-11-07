@@ -12,7 +12,7 @@
 
 ## 1. Mục tiêu hệ thống
 
-Nền tảng cộng đồng có **bộ chức năng tham khảo theo shiperx.net**, sửa một ít, gồm: diễn đàn (chủ đề, bài viết, "Có gì mới", hot trong ngày / trending tuần), kênh chat cộng đồng thời gian thực, kho album ảnh, bảng xếp hạng thành viên, khung chat CSKH, app Android.
+Nền tảng cộng đồng có **bộ chức năng tham khảo theo shiperx.net**, sửa một ít, gồm: diễn đàn (chủ đề, bài viết, "Có gì mới", hot trong ngày / trending tuần), kênh chat cộng đồng thời gian thực, kho album ảnh, ~~bảng xếp hạng thành viên~~ (đã bỏ 2026-11-08), khung chat CSKH, app Android.
 
 - **Nội dung hợp pháp** — không phải nội dung người lớn (xem N1).
 - **Tên và giao diện riêng** — chỉ học bố cục / chức năng, không chép tên, logo, chữ, mã nguồn của shiperx (xem N2).
@@ -25,16 +25,16 @@ _Chi tiết từng chức năng: ~~chờ chủ dự án mô tả~~ → bản đ�
 Đã biết chắc: hệ thống mới **hoạt động hoàn toàn khác** hệ thống cũ. Không được suy luận cách hoạt động từ hệ thống cũ.
 
 Bản đầu (2026-11-07), chi tiết kỹ thuật ở `huongdan.txt`:
-- **Khách** xem được diễn đàn, chat, album công khai, xếp hạng; nhắn CSKH được. Muốn đăng bài / chat / thích / xem album "chỉ thành viên" phải đăng ký, đăng nhập.
+- **Khách** xem được diễn đàn, chat, album công khai, ~~xếp hạng~~; nhắn CSKH được. Muốn đăng bài / chat / thích / xem album "chỉ thành viên" phải đăng ký, đăng nhập.
 - **Diễn đàn:** chuyên mục → chủ đề → bài trả lời. Thích bài (không tự thích). Chủ bài sửa / xoá bài mình; xoá bài đầu = xoá cả chủ đề. Trang chủ có 3 tab: Mới ra lò, Hot trong ngày (nhiều bài trong 24 giờ), Trending tuần (7 ngày).
 - **Chat cộng đồng:** nhiều kênh, tin đến ngay (realtime), đếm người online. Kênh "chỉ BQT" thì thành viên chỉ đọc.
 - **Kho album:** BQT (mod / admin) tạo album, tải ảnh, đánh dấu HOT (hiện ở banner trang chủ), đặt công khai hoặc chỉ thành viên.
-- **Bảng xếp hạng:** Vinh danh (được thích nhiều), Cao thủ phím (nhiều bài), Lính mới, Phòng giam (đang bị khoá + lý do).
+- ~~**Bảng xếp hạng:** Vinh danh (được thích nhiều), Cao thủ phím (nhiều bài), Lính mới, Phòng giam (đang bị khoá + lý do).~~ (đã bỏ 2026-11-08 — chủ dự án yêu cầu; người bị khoá vẫn hiện lý do trên trang cá nhân)
 - **CSKH:** nút nổi góc phải; khách / thành viên nhắn, BQT trả lời trong Quản trị > CSKH, tin đến ngay.
 - **Quản trị:** tổng quan số liệu, thành viên (đổi quyền, khoá có thời hạn / vĩnh viễn, mở khoá), chuyên mục, kênh chat, album, CSKH.
 
 Bản 2 (2026-11-07) — lai thêm mảng video:
-- **Trang chủ = video:** thanh thể loại, "Xem nhiều hôm nay", "Video mới nhất"; bên dưới là chủ đề, chat, album nổi bật, xếp hạng.
+- **Trang chủ = video:** thanh thể loại, "Xem nhiều hôm nay", "Video mới nhất"; bên dưới là chủ đề, chat, album nổi bật, thống kê (xếp hạng và thẻ ứng dụng đã bỏ 2026-11-08).
 - **Video:** chỉ **admin** đăng (Quản trị > Video). Trang `/video` có 4 kiểu xếp: Xem nhiều hôm nay (lượt xem trong ngày, giờ Việt Nam), Mới nhất, Hay nhất (tỉ lệ thích), Hot nhất (lượt xem 7 ngày). Lọc theo thể loại, tìm theo tiêu đề. Trang xem video: trình phát, 👍/👎 + tỉ lệ %, bình luận (thành viên), video liên quan.
 - **Video đã xem:** thành viên lưu trên máy chủ; khách lưu trên trình duyệt.
 - **Theo dõi:** đăng hoặc trả lời chủ đề thì tự theo dõi chủ đề đó; nút Theo dõi / Bỏ theo dõi trong chủ đề; theo dõi thành viên ở trang cá nhân. Trang "Đang theo dõi": chủ đề theo dõi (xếp theo bài mới nhất), chủ đề mới của người mình theo dõi, danh sách người mình theo dõi. **Chưa có thông báo.**
@@ -100,6 +100,7 @@ Bản 2 (2026-11-07) — lai thêm mảng video:
 | 2026-11-07 | Web **lai giữa shiperx và một web chia sẻ video** (chủ dự án đưa xnhau.pink làm mẫu — đó là web clip sex có thể loại phạm pháp; **chỉ lấy cách tổ chức trang video, không lấy bất kỳ nội dung, tên thể loại hay cơ chế né chặn nào** — N1, N2). |
 | 2026-11-07 | Mảng video: **chỉ admin được đăng**, thành viên không đăng. Có: thể loại video (admin quản lý), danh sách Xem nhiều hôm nay / Mới nhất / Hay nhất / Hot nhất, lượt xem + thích/không thích (tỉ lệ %), bình luận dưới video, lịch sử video đã xem. File video **lưu trên VPS** (không nhúng link). Chỉ nhận mp4/webm/mov để trình duyệt phát trực tiếp; ảnh bìa + thời lượng do trình duyệt của admin tạo khi tải lên (không cần ffmpeg trên VPS). |
 | 2026-11-07 | Trang chủ: **video là chính** (lưới video); diễn đàn, chat, album, xếp hạng ở mục riêng. |
+| 2026-11-08 | **Bỏ bảng xếp hạng** (cả giao diện lẫn API `/api/members/rankings`) và **bỏ thẻ "Ứng dụng Chống Tối Cổ / App Android sắp ra mắt"** ở trang chủ. Kế hoạch làm app Android sau: chưa rõ còn giữ không (mục 7). |
 | 2026-11-07 | Thêm: **theo dõi chủ đề / theo dõi thành viên** (trang "Đang theo dõi"), **trình soạn thảo đẹp hơn** (đậm, nghiêng, gạch, trích dẫn, ẩn nội dung, liên kết, ảnh, emoji). Chưa làm thông báo, tin nhắn riêng, báo vi phạm. Phần "sửa giao diện/chức năng có sẵn": chờ chủ dự án mô tả. |
 
 ## 7. Câu hỏi còn mở
@@ -111,6 +112,7 @@ Bản 2 (2026-11-07) — lai thêm mảng video:
 - ~~Chạy thử ở đâu?~~ → VPS hiện tại (mục 6). Còn mở: tên miền phụ cụ thể (vd `beta.<tên miền cũ>`) — chủ dự án tạo bản ghi DNS A rồi chạy `scripts/install.sh`.
 - ~~Bộ khung code `b22c5f7`~~ → đã xoá, thay bằng bản Node.js (mục 6).
 - Hệ thống cũ có đang dùng Cloudflare / HTTPS kiểu gì? (ảnh hưởng cách cấp HTTPS cho tên miền phụ; `install.sh` mặc định dùng certbot.)
+- Đã bỏ thẻ ứng dụng ở trang chủ (2026-11-08). Còn làm **app Android** sau này không?
 
 ## 8. Bối cảnh môi trường
 
@@ -221,3 +223,9 @@ Mẫu mỗi mục:
 - Đã kiểm tra (theo quyết định "code trước, test sau"): `tsc` máy chủ không lỗi; `npm run build` giao diện không lỗi; khởi động app thật một lần (theo B6): migration chạy, seed tạo thể loại, `/healthz`, `/api/home`, `/api/videos/categories`, `/video` trả 200.
   - **Chưa chạy thử:** tải video thật, phát và tua video, bình chọn, bình luận, lịch sử, theo dõi, trình soạn thảo trên trình duyệt; bộ kiểm thử `npm test` chưa chạy lại và chưa có bài kiểm thử cho phần mới; Nginx với file lớn trên VPS thật.
 - File / commit: `23920b4`.
+
+### 2026-11-08 — Thay đổi — Bỏ bảng xếp hạng và thẻ ứng dụng
+- Việc đã làm: xoá `RankingsPanel` (Sidebar.tsx), kiểu `Rankings`/`RankUser`, thẻ `AppCard` (nút cài PWA + "App Android sắp ra mắt") khỏi trang chủ; máy chủ xoá hàm `rankings()`, route `/api/members/rankings`, trường `rankings` trong `/api/home`; 2 bài kiểm thử đổi sang kiểm tra trạng thái khoá trên trang cá nhân thay cho bảng xếp hạng. File `manifest.webmanifest` vẫn giữ (trình duyệt vẫn cho "thêm vào màn hình chính").
+- Lý do: chủ dự án yêu cầu "xóa phần bảng xếp hạng và ứng dụng".
+- Đã kiểm tra: `tsc` máy chủ và `npm run build` giao diện không lỗi; không còn chỗ nào dùng `rankings` / `AppCard`. **Chưa chạy** `npm test`, chưa xem trên trình duyệt.
+- File / commit: commit này.
