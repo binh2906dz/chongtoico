@@ -191,4 +191,4 @@ Mẫu mỗi mục:
   - Chạy app thật tại máy (PGlite trên đĩa) + trình duyệt: trang chủ, đăng nhập, trang chủ đề, gửi trả lời, kho album, quản trị hiển thị và hoạt động đúng.
   - Script socket: tin chat đẩy realtime tới người khác, đếm online đúng, CSKH admin trả lời đẩy realtime tới khách.
   - **Chưa chạy thử:** `docker build` / `docker compose` (máy không có Docker), `install.sh` / `update.sh` / Nginx / certbot trên VPS thật, PostgreSQL thật (chỉ PGlite), giao diện trên điện thoại thật.
-- File / commit: commit này.
+- File / commit: `c9bc793`.

@@ -133,6 +133,7 @@ Thư mục:
 7) LỊCH SỬ GIT (oneline — cập nhật sau mỗi lần push)
 --------------------------------------------------------------------------------
 (xem `git log --oneline`; các commit chính)
+c9bc793 feat: Chong Toi Co v1 - forum, realtime chat, albums, rankings, support chat, admin
 4ba45e3 docs(luat): brand name Chong Toi Co
 4e099bb docs(luat): record topic, staging on current VPS, old data later, scaffold re-evaluation
 ac604e9 docs(luat): record goals, N1-N4 (legal content, own brand, keep old system running until cutover)
