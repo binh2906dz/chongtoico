@@ -71,14 +71,17 @@ _Chưa có — chờ chủ dự án mô tả._
 | 2026-11-07 | Bộ chức năng tham khảo shiperx.net (làm giống hầu hết, sửa một ít), **nội dung hợp pháp**, **tên và giao diện riêng** (N1, N2). |
 | 2026-11-07 | Hệ thống mới có liên quan đến **một số dữ liệu cũ**. |
 | 2026-11-07 | Hệ thống cũ **tiếp tục chạy** trong lúc xây hệ thống mới; chỉ thay khi hệ thống mới hoàn thành và chủ dự án đồng ý (N3, N4). |
+| 2026-11-07 | Chủ đề: **cộng đồng chung, nhiều chủ đề**. |
+| 2026-11-07 | Chạy thử hệ thống mới trên **VPS hiện tại** (cùng VPS với hệ thống cũ). Chủ dự án chưa có tên miền mới. |
+| 2026-11-07 | Dữ liệu cũ cần dùng: chủ dự án **chọn sau**. Bộ khung `b22c5f7`: AI **đánh giá lại khi đã rõ chức năng** rồi đề xuất giữ / sửa / xoá. |
 
 ## 7. Câu hỏi còn mở
 
-- ~~Hệ thống mới làm gì?~~ (đã trả lời một phần ở mục 1, ngày 2026-11-07). Còn mở: chủ đề cộng đồng / loại nội dung cụ thể là gì? Chi tiết từng chức năng và phần "sửa một ít" so với shiperx?
+- ~~Hệ thống mới làm gì?~~ (đã trả lời một phần ở mục 1, ngày 2026-11-07). ~~Chủ đề?~~ → cộng đồng chung (mục 6). Còn mở: chi tiết từng chức năng và phần "sửa một ít" so với shiperx?
 - Tên thương hiệu mới?
-- Dùng lại **những dữ liệu cũ nào** (người dùng Telegram, bot, album, người đăng ký, …)?
-- Chạy thử hệ thống mới ở đâu trong lúc hệ thống cũ vẫn chạy: tên miền phụ trên cùng VPS (Nginx cũ chuyển tiếp vào cổng nội bộ) hay VPS khác? (N3)
-- Bộ khung code đã đẩy ở commit `b22c5f7` (FastAPI + aiogram 3 + PostgreSQL + Redis + React + Caddy, theo giả định "quản lý nhiều bot Telegram") được tạo **trước khi** có mô tả hệ thống → giữ, sửa hay xoá?
+- Dùng lại **những dữ liệu cũ nào** (người dùng Telegram, bot, album, người đăng ký, …)? — chủ dự án chọn sau.
+- ~~Chạy thử ở đâu?~~ → VPS hiện tại (mục 6). Còn mở: địa chỉ chạy thử — tên miền phụ của tên miền đang có (vd `beta.<tên miền cũ>`, chỉ cần thêm 1 bản ghi DNS) hay tạm truy cập bằng IP:cổng? Lưu ý: webhook Telegram bắt buộc HTTPS nên chạy bằng IP thì chưa thử được bot.
+- Bộ khung code `b22c5f7` (FastAPI + aiogram 3 + PostgreSQL + Redis + React + Caddy, theo giả định "quản lý nhiều bot Telegram") → AI đánh giá lại khi đã rõ chức năng (mục 6). Nếu giữ: phải bỏ Caddy chiếm cổng 80/443, để Nginx cũ chuyển tiếp vào cổng nội bộ (N3).
 
 ## 8. Bối cảnh môi trường
 
@@ -134,5 +137,12 @@ Mẫu mỗi mục:
 - Việc đã làm: ghi mục tiêu (mục 1), luật nghiệp vụ N1–N4, quyết định mới (mục 6), cập nhật câu hỏi mở (mục 7).
 - Lý do: chủ dự án chốt: bộ chức năng tham khảo shiperx.net với nội dung hợp pháp, tên/giao diện riêng, dùng một số dữ liệu cũ; hệ thống cũ chạy tiếp đến khi hệ thống mới hoàn thành.
 - Bài học / cách tránh: shiperx.net là trang nội dung người lớn đội lốt cộng đồng tài xế → chỉ tham khảo chức năng, không tham khảo nội dung (N1, N2).
+- Đã kiểm tra: chỉ sửa tài liệu, không có code.
+- File / commit: `ac604e9`.
+
+### 2026-11-07 — Quyết định — Chủ đề, nơi chạy thử, dữ liệu cũ, bộ khung
+- Việc đã làm: ghi vào mục 6: cộng đồng chung; chạy thử trên VPS hiện tại (chưa có tên miền mới); dữ liệu cũ chọn sau; bộ khung `b22c5f7` để AI đánh giá lại sau. Cập nhật mục 7.
+- Lý do: chủ dự án trả lời câu hỏi mở.
+- Bài học / cách tránh: chạy chung VPS → không được để hệ thống mới chiếm cổng 80/443 (N3); tên miền phụ của tên miền cũ dùng được để chạy thử mà không cần mua tên miền mới.
 - Đã kiểm tra: chỉ sửa tài liệu, không có code.
 - File / commit: commit này.
