@@ -170,6 +170,8 @@ Video:
 7) LỊCH SỬ GIT (oneline — cập nhật sau mỗi lần push)
 --------------------------------------------------------------------------------
 (xem `git log --oneline`; các commit chính)
+23920b4 feat: video section (admin upload, today/new/best/hot, votes, comments, history), follow threads/members, BBCode editor
+2c5ee49 docs(luat): code first, test later
 c9bc793 feat: Chong Toi Co v1 - forum, realtime chat, albums, rankings, support chat, admin
 4ba45e3 docs(luat): brand name Chong Toi Co
 4e099bb docs(luat): record topic, staging on current VPS, old data later, scaffold re-evaluation

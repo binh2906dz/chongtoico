@@ -220,4 +220,4 @@ Mẫu mỗi mục:
 - Bài học / cách tránh: B9.
 - Đã kiểm tra (theo quyết định "code trước, test sau"): `tsc` máy chủ không lỗi; `npm run build` giao diện không lỗi; khởi động app thật một lần (theo B6): migration chạy, seed tạo thể loại, `/healthz`, `/api/home`, `/api/videos/categories`, `/video` trả 200.
   - **Chưa chạy thử:** tải video thật, phát và tua video, bình chọn, bình luận, lịch sử, theo dõi, trình soạn thảo trên trình duyệt; bộ kiểm thử `npm test` chưa chạy lại và chưa có bài kiểm thử cho phần mới; Nginx với file lớn trên VPS thật.
-- File / commit: commit này.
+- File / commit: `23920b4`.
