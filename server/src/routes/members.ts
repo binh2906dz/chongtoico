@@ -7,7 +7,9 @@ import { posts, threads, users } from "../db/schema.js";
 import { notFound, parse } from "../http.js";
 import { getOnline } from "../realtime.js";
 import { hotAlbums } from "./albums.js";
+import { followStats } from "./follow.js";
 import { threadFeed } from "./forum.js";
+import { listVideoCategories, listVideos } from "./videos.js";
 
 const RANK_LIMIT = 10;
 
@@ -61,15 +63,25 @@ export default async function memberRoutes(app: FastifyInstance) {
   app.get("/api/stats", async () => forumStats());
 
   app.get("/api/home", async (req) => {
-    const [albums, latest, hot, trending, ranks, stats] = await Promise.all([
+    const [albums, today, newest, videoCategories, latest, hot, trending, ranks, stats] = await Promise.all([
       hotAlbums(!!req.user, 8),
+      listVideos({ sort: "today", limit: 8 }),
+      listVideos({ sort: "new", limit: 24 }),
+      listVideoCategories(),
       threadFeed("latest", 10),
       threadFeed("hot", 10),
       threadFeed("trending", 10),
       rankings(),
       forumStats(),
     ]);
-    return { hotAlbums: albums, feeds: { latest, hot, trending }, rankings: ranks, stats };
+    return {
+      videos: { today: today.rows, newest: newest.rows },
+      videoCategories,
+      hotAlbums: albums,
+      feeds: { latest, hot, trending },
+      rankings: ranks,
+      stats,
+    };
   });
 
   app.get("/api/members/:username", async (req) => {
@@ -82,6 +94,6 @@ export default async function memberRoutes(app: FastifyInstance) {
       .where(eq(threads.userId, user.id))
       .orderBy(desc(threads.createdAt))
       .limit(15);
-    return { user: profileUser(user), recentThreads: recent };
+    return { user: profileUser(user), recentThreads: recent, follow: await followStats(user.id, req.user?.id ?? null) };
   });
 }

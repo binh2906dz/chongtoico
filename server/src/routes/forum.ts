@@ -5,7 +5,7 @@ import { z } from "zod";
 import { author, authorColumns, isStaff, requireActive } from "../auth.js";
 import { config } from "../config.js";
 import { db } from "../db/index.js";
-import { categories, postLikes, posts, threads, uploads, users } from "../db/schema.js";
+import { categories, postLikes, posts, threads, threadWatches, uploads, users } from "../db/schema.js";
 import { badRequest, forbidden, idParam, notFound, ok, pageQuery, paginate, parse } from "../http.js";
 import { storeImage } from "../media.js";
 
@@ -25,7 +25,7 @@ const lastAuthorColumns = {
 const titleSchema = z.string().trim().min(3, "Tiêu đề cần ít nhất 3 ký tự.").max(200, "Tiêu đề tối đa 200 ký tự.");
 const contentSchema = z.string().trim().min(1, "Nội dung không được để trống.").max(20000, "Nội dung tối đa 20.000 ký tự.");
 
-function threadSelect() {
+export function threadSelect() {
   return db
     .select({
       id: threads.id,
@@ -49,7 +49,7 @@ function threadSelect() {
 
 type ThreadRow = Awaited<ReturnType<ReturnType<typeof threadSelect>["execute"]>>[number];
 
-function mapThread(row: ThreadRow) {
+export function mapThread(row: ThreadRow) {
   return { ...row, author: author(row.author), lastPoster: author(row.lastPoster) };
 }
 
@@ -226,6 +226,7 @@ export default async function forumRoutes(app: FastifyInstance) {
       .limit(limit)
       .offset(offset);
     let liked = new Set<number>();
+    let watching = false;
     if (req.user && rows.length) {
       const likes = await db
         .select({ postId: postLikes.postId })
@@ -233,8 +234,17 @@ export default async function forumRoutes(app: FastifyInstance) {
         .where(and(eq(postLikes.userId, req.user.id), inArray(postLikes.postId, rows.map((r) => r.id))));
       liked = new Set(likes.map((l) => l.postId));
     }
+    if (req.user) {
+      const [w] = await db
+        .select({ threadId: threadWatches.threadId })
+        .from(threadWatches)
+        .where(and(eq(threadWatches.userId, req.user.id), eq(threadWatches.threadId, id)))
+        .limit(1);
+      watching = !!w;
+    }
     return {
       thread,
+      watching,
       posts: rows.map(({ authorPostCount, authorJoinedAt, ...p }) => ({
         ...p,
         author: { ...author(p.author)!, postCount: authorPostCount, joinedAt: authorJoinedAt },
@@ -271,6 +281,7 @@ export default async function forumRoutes(app: FastifyInstance) {
           .update(users)
           .set({ threadCount: sql`${users.threadCount} + 1`, postCount: sql`${users.postCount} + 1` })
           .where(eq(users.id, user.id));
+        await tx.insert(threadWatches).values({ userId: user.id, threadId: t.id }).onConflictDoNothing();
         return t.id;
       });
       return { thread: await loadThread(threadId) };
@@ -350,6 +361,7 @@ export default async function forumRoutes(app: FastifyInstance) {
           .where(eq(threads.id, id));
         await tx.update(categories).set({ postCount: sql`${categories.postCount} + 1` }).where(eq(categories.id, thread.categoryId));
         await tx.update(users).set({ postCount: sql`${users.postCount} + 1` }).where(eq(users.id, user.id));
+        await tx.insert(threadWatches).values({ userId: user.id, threadId: id }).onConflictDoNothing();
         return p;
       });
       const position = thread.replyCount + 2;

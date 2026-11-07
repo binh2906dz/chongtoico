@@ -6,6 +6,7 @@ import Albums from "./pages/Albums";
 import { Login, Register } from "./pages/AuthPages";
 import CategoryPage from "./pages/CategoryPage";
 import Chat from "./pages/Chat";
+import Following from "./pages/Following";
 import Forum from "./pages/Forum";
 import Home from "./pages/Home";
 import Member from "./pages/Member";
@@ -13,6 +14,9 @@ import NewThread from "./pages/NewThread";
 import Search from "./pages/Search";
 import { Contact, NotFound, Privacy, Terms } from "./pages/StaticPages";
 import ThreadPage from "./pages/ThreadPage";
+import VideoHistory from "./pages/VideoHistory";
+import VideoPage from "./pages/VideoPage";
+import Videos from "./pages/Videos";
 import WhatsNew from "./pages/WhatsNew";
 
 export default function App() {
@@ -20,6 +24,11 @@ export default function App() {
     <Routes>
       <Route element={<Layout />}>
         <Route index element={<Home />} />
+        <Route path="video" element={<Videos />} />
+        <Route path="video/da-xem" element={<VideoHistory />} />
+        <Route path="video/the-loai/:slug" element={<Videos />} />
+        <Route path="video/:id" element={<VideoPage />} />
+        <Route path="dang-theo-doi" element={<Following />} />
         <Route path="dien-dan" element={<Forum />} />
         <Route path="dien-dan/:slug" element={<CategoryPage />} />
         <Route path="chu-de/:id" element={<ThreadPage />} />

@@ -53,6 +53,7 @@ ADMIN_USERNAME=${ADMIN_USERNAME}
 ADMIN_PASSWORD='${ADMIN_PASSWORD}'
 COOKIE_SECURE=false
 MAX_UPLOAD_MB=15
+MAX_VIDEO_MB=2048
 EOF
   chmod 600 .env
 fi
@@ -88,6 +89,20 @@ server {
     server_name ${DOMAIN};
 
     client_max_body_size 200M;
+
+    location ^~ /api/admin/videos {
+        client_max_body_size 2100M;
+        client_body_timeout 3600s;
+        proxy_request_buffering off;
+        proxy_pass http://127.0.0.1:${APP_PORT};
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_send_timeout 3600s;
+        proxy_read_timeout 3600s;
+    }
 
     location / {
         proxy_pass http://127.0.0.1:${APP_PORT};

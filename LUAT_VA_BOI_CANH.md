@@ -33,6 +33,13 @@ Bản đầu (2026-11-07), chi tiết kỹ thuật ở `huongdan.txt`:
 - **CSKH:** nút nổi góc phải; khách / thành viên nhắn, BQT trả lời trong Quản trị > CSKH, tin đến ngay.
 - **Quản trị:** tổng quan số liệu, thành viên (đổi quyền, khoá có thời hạn / vĩnh viễn, mở khoá), chuyên mục, kênh chat, album, CSKH.
 
+Bản 2 (2026-11-07) — lai thêm mảng video:
+- **Trang chủ = video:** thanh thể loại, "Xem nhiều hôm nay", "Video mới nhất"; bên dưới là chủ đề, chat, album nổi bật, xếp hạng.
+- **Video:** chỉ **admin** đăng (Quản trị > Video). Trang `/video` có 4 kiểu xếp: Xem nhiều hôm nay (lượt xem trong ngày, giờ Việt Nam), Mới nhất, Hay nhất (tỉ lệ thích), Hot nhất (lượt xem 7 ngày). Lọc theo thể loại, tìm theo tiêu đề. Trang xem video: trình phát, 👍/👎 + tỉ lệ %, bình luận (thành viên), video liên quan.
+- **Video đã xem:** thành viên lưu trên máy chủ; khách lưu trên trình duyệt.
+- **Theo dõi:** đăng hoặc trả lời chủ đề thì tự theo dõi chủ đề đó; nút Theo dõi / Bỏ theo dõi trong chủ đề; theo dõi thành viên ở trang cá nhân. Trang "Đang theo dõi": chủ đề theo dõi (xếp theo bài mới nhất), chủ đề mới của người mình theo dõi, danh sách người mình theo dõi. **Chưa có thông báo.**
+- **Trình soạn thảo:** thanh công cụ đậm / nghiêng / gạch chân / gạch ngang / trích dẫn / ẩn nội dung / code / liên kết / ảnh / emoji, tab Xem trước. Nội dung lưu dạng mã BBCode (`[b]..[/b]`, `[quote=tên]..[/quote]`, `[spoiler]..[/spoiler]`, `[url=..]..[/url]`, `[code]..[/code]`, `[img:mã]`); hiển thị bằng React, không chèn HTML thô.
+
 ## 3. Thuật ngữ
 
 | Thuật ngữ | Nghĩa |
@@ -90,6 +97,10 @@ Bản đầu (2026-11-07), chi tiết kỹ thuật ở `huongdan.txt`:
 | 2026-11-07 | Dữ liệu cũ cần dùng: chủ dự án **chọn sau**. Bộ khung `b22c5f7`: AI **đánh giá lại khi đã rõ chức năng** rồi đề xuất giữ / sửa / xoá. |
 | 2026-11-07 | Bộ khung `b22c5f7` (Python): **đã xoá**, thay bằng bản Node.js. Phiên bản thực tế trong Docker: **Node 24**, **PostgreSQL 17** (dòng "Node.js 22 / PostgreSQL 16" ở trên đã thay thế bởi dòng này). |
 | 2026-11-07 | Cách làm hiện tại: **tập trung code trước, kiểm thử sau**. AI chỉ chạy kiểm tra nhanh (biên dịch `tsc` / `npm run build`) để không đẩy code hỏng; không mở trình duyệt, không viết thêm bài kiểm thử lớn cho tới khi chủ dự án yêu cầu giai đoạn kiểm thử. Vẫn phải báo trung thực cái gì chưa chạy thử (L10). |
+| 2026-11-07 | Web **lai giữa shiperx và một web chia sẻ video** (chủ dự án đưa xnhau.pink làm mẫu — đó là web clip sex có thể loại phạm pháp; **chỉ lấy cách tổ chức trang video, không lấy bất kỳ nội dung, tên thể loại hay cơ chế né chặn nào** — N1, N2). |
+| 2026-11-07 | Mảng video: **chỉ admin được đăng**, thành viên không đăng. Có: thể loại video (admin quản lý), danh sách Xem nhiều hôm nay / Mới nhất / Hay nhất / Hot nhất, lượt xem + thích/không thích (tỉ lệ %), bình luận dưới video, lịch sử video đã xem. File video **lưu trên VPS** (không nhúng link). Chỉ nhận mp4/webm/mov để trình duyệt phát trực tiếp; ảnh bìa + thời lượng do trình duyệt của admin tạo khi tải lên (không cần ffmpeg trên VPS). |
+| 2026-11-07 | Trang chủ: **video là chính** (lưới video); diễn đàn, chat, album, xếp hạng ở mục riêng. |
+| 2026-11-07 | Thêm: **theo dõi chủ đề / theo dõi thành viên** (trang "Đang theo dõi"), **trình soạn thảo đẹp hơn** (đậm, nghiêng, gạch, trích dẫn, ẩn nội dung, liên kết, ảnh, emoji). Chưa làm thông báo, tin nhắn riêng, báo vi phạm. Phần "sửa giao diện/chức năng có sẵn": chờ chủ dự án mô tả. |
 
 ## 7. Câu hỏi còn mở
 
@@ -124,6 +135,7 @@ Mỗi dòng: **lỗi / tình huống** → **cách tránh**.
 - **B6 — App không khởi động: "Method 'GET' already declared for route '/favicon.svg'".** `@fastify/static` với `wildcard: false` đã tự tạo route cho mọi file trong thư mục giao diện; khai báo tay thêm route trùng. → Không tự khai báo route cho file tĩnh; nhớ rằng file giao diện chỉ được nạp lúc khởi động (build lại phải restart app). Kiểm thử bằng `app.inject` không bắt được lỗi này vì test không có thư mục giao diện → luôn chạy thử app thật (`npm run dev`) sau khi sửa `app.ts`.
 - **B7 — Màu chữ Tailwind không ăn trên thẻ `<a>`.** CSS tự viết ngoài `@layer` (`a { color: inherit }`) luôn thắng class Tailwind v4 (nằm trong layer). → CSS nền tự viết phải đặt trong `@layer base { ... }`; class tái sử dụng dùng `@utility`.
 - **B8 — `setHeaders` của `@fastify/static` v10 nhận `FastifyReply`, không phải `ServerResponse`.** → Dùng `res.header(...)`, không dùng `res.setHeader(...)`.
+- **B9 — PowerShell 5.1 `Set-Content -Encoding utf8` chèn BOM (EF BB BF) vào đầu file.** Máy dự án dùng PowerShell 5.1. → Sửa file bằng công cụ sửa file của editor, không dùng `Set-Content`/`Out-File`; nếu lỡ dùng thì kiểm tra 3 byte đầu và bỏ BOM.
 
 ## 10. Nhật ký làm việc
 
@@ -197,4 +209,15 @@ Mẫu mỗi mục:
 ### 2026-11-07 — Quyết định — Code trước, kiểm thử sau
 - Việc đã làm: thêm dòng quyết định vào mục 6.
 - Lý do: chủ dự án yêu cầu "hiện tại tập trung code trước, test sau".
-- File / commit: commit ghi quyết định này.
+- File / commit: `2c5ee49`.
+
+### 2026-11-07 — Thêm — Mảng video, theo dõi, trình soạn thảo mới
+- Việc đã làm:
+  - Máy chủ: 8 bảng mới (`video_categories`, `videos`, `video_votes`, `video_comments`, `video_view_days`, `video_history`, `thread_watches`, `user_follows`) + migration `0001_video_follow.sql`; `routes/videos.ts` (danh sách 4 kiểu xếp, chi tiết + đếm lượt xem theo ngày, bình chọn, bình luận, lịch sử, admin tải video dạng stream xuống đĩa + kiểm tra byte đầu file, sửa / đổi ảnh bìa / xoá, CRUD thể loại); `routes/follow.ts`; tự theo dõi khi đăng / trả lời; `/api/home` trả thêm video; file video phục vụ ở `/media/v/` bằng `@fastify/static` thứ hai (hỗ trợ tua — HTTP Range); ảnh bìa ở `/media/t/`; seed 10 thể loại video; biến `MAX_VIDEO_MB` (mặc định 2048).
+  - Giao diện: trang chủ video, `/video`, `/video/the-loai/:slug`, `/video/:id`, `/video/da-xem`, `/dang-theo-doi`; tìm kiếm ra cả video lẫn chủ đề; nút theo dõi ở chủ đề và trang cá nhân; trình soạn thảo BBCode + xem trước + emoji; nút Trích dẫn dùng `[quote=tên]`; Quản trị thêm tab Video (tải lên có thanh tiến trình + huỷ, tự lấy khung hình làm ảnh bìa, chọn khung khác / ảnh từ máy) và Thể loại video; vào thẳng tab bằng `/quan-tri?tab=videos`.
+  - Triển khai: `install.sh` thêm khối Nginx riêng cho `/api/admin/videos` (tối đa 2100 MB, không đệm, chờ 1 giờ); `docker-compose.yml` và `.env.example` thêm `MAX_VIDEO_MB`.
+- Lý do: chủ dự án chọn lai shiperx + mảng video (mục 6), thêm theo dõi và trình soạn thảo.
+- Bài học / cách tránh: B9.
+- Đã kiểm tra (theo quyết định "code trước, test sau"): `tsc` máy chủ không lỗi; `npm run build` giao diện không lỗi; khởi động app thật một lần (theo B6): migration chạy, seed tạo thể loại, `/healthz`, `/api/home`, `/api/videos/categories`, `/video` trả 200.
+  - **Chưa chạy thử:** tải video thật, phát và tua video, bình chọn, bình luận, lịch sử, theo dõi, trình soạn thảo trên trình duyệt; bộ kiểm thử `npm test` chưa chạy lại và chưa có bài kiểm thử cho phần mới; Nginx với file lớn trên VPS thật.
+- File / commit: commit này.

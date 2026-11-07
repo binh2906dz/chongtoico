@@ -19,6 +19,7 @@ export const config = {
   adminPassword: process.env.ADMIN_PASSWORD || "",
   sessionDays: 30,
   maxUploadMb: Number(process.env.MAX_UPLOAD_MB || 15),
+  maxVideoMb: Number(process.env.MAX_VIDEO_MB || 2048),
   logLevel: process.env.LOG_LEVEL || "info",
 };
 

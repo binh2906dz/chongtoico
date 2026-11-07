@@ -26,7 +26,9 @@ Docker Compose, 2 dịch vụ:
         liệu mặc định (chuyên mục, kênh chat), tạo admin từ ADMIN_USERNAME/
         ADMIN_PASSWORD nếu chưa có tên đó.
         Chỉ mở 127.0.0.1:APP_PORT (mặc định 8090).
-- db  : PostgreSQL 17 (volume pgdata). Ảnh lưu ở volume uploads (/data/uploads).
+- db  : PostgreSQL 17 (volume pgdata). Ảnh + video lưu ở volume uploads
+        (/data/uploads; video ở /data/uploads/videos — TỐN Ổ CỨNG, theo dõi
+        bằng `df -h` và `docker system df -v`).
 
 Nginx cũ của VPS thêm site /etc/nginx/sites-available/chongtoico cho tên miền
 phụ, proxy vào 127.0.0.1:APP_PORT (có header Upgrade cho websocket).
@@ -43,19 +45,38 @@ Thư mục:
                                "pglite:<thư mục>|memory" (chạy thử / test)
 - server/src/auth.ts         — phiên đăng nhập (bảng sessions), quyền, khoá TK
 - server/src/realtime.ts     — Socket.IO: đếm online, phòng chat, phòng CSKH
-- server/src/media.ts        — xử lý ảnh bằng sharp (webp, thumbnail)
+- server/src/media.ts        — xử lý ảnh bằng sharp (webp, thumbnail, ảnh bìa
+                               video), kiểm tra file video (byte đầu)
 - server/src/routes/*.ts     — auth, forum, chat, albums, members (xếp hạng,
-                               thống kê, trang chủ), support (CSKH), admin, media
-- server/test/api.test.ts    — kiểm thử toàn bộ API trên PGlite trong bộ nhớ
-- frontend/src/pages/        — Home, Forum, CategoryPage, ThreadPage, NewThread,
-                               WhatsNew, Albums, AlbumView, Chat, Member, Search,
-                               AuthPages, StaticPages, admin/*
-- frontend/src/components/   — Layout, ChatBox, SupportWidget, Sidebar, Editor, ui
+                               thống kê, trang chủ), support (CSKH), admin, media,
+                               videos (video + thể loại + bình chọn + bình luận +
+                               lịch sử), follow (theo dõi chủ đề / thành viên)
+- server/test/api.test.ts    — kiểm thử API trên PGlite trong bộ nhớ (CHƯA có
+                               bài cho video / theo dõi)
+- frontend/src/pages/        — Home (video là chính), Videos, VideoPage,
+                               VideoHistory, Following, Forum, CategoryPage,
+                               ThreadPage, NewThread, WhatsNew, Albums, AlbumView,
+                               Chat, Member, Search, AuthPages, StaticPages, admin/*
+- frontend/src/components/   — Layout, ChatBox, SupportWidget, Sidebar, Editor
+                               (BBCode), VideoCard, ui (PostContent = bộ hiển thị
+                               BBCode)
 - scripts/install.sh, update.sh
 
-Đường dẫn giao diện: / , /dien-dan , /dien-dan/:slug , /chu-de/:id , /tao-chu-de ,
-/moi , /album , /album/:id , /chat , /thanh-vien/:ten , /tim-kiem , /dang-nhap ,
-/dang-ky , /quan-tri , /dieu-khoan , /quyen-rieng-tu , /lien-he
+Đường dẫn giao diện: / , /video , /video/the-loai/:slug , /video/:id ,
+/video/da-xem , /dang-theo-doi , /dien-dan , /dien-dan/:slug , /chu-de/:id ,
+/tao-chu-de , /moi , /album , /album/:id , /chat , /thanh-vien/:ten , /tim-kiem ,
+/dang-nhap , /dang-ky , /quan-tri (?tab=videos ...) , /dieu-khoan ,
+/quyen-rieng-tu , /lien-he
+
+Video:
+- Chỉ admin đăng (Quản trị > Video). Trình duyệt admin đọc thời lượng, kích
+  thước và chụp 1 khung hình làm ảnh bìa rồi gửi kèm => VPS không cần ffmpeg,
+  KHÔNG chuyển mã. Nhận mp4 / webm / mov; nên đăng mp4 H.264 để mọi trình duyệt
+  phát được (HEVC/H.265 nhiều máy không phát).
+- File video: /media/v/<mã>.<đuôi> (@fastify/static, hỗ trợ tua bằng HTTP
+  Range). Ảnh bìa: /media/t/<mã>.webp.
+- "Xem nhiều hôm nay" / "Hot nhất" dựa trên bảng video_view_days (lượt xem theo
+  ngày, giờ Việt Nam); lượt xem chống đếm trùng 30 phút / IP (trong bộ nhớ).
 
 --------------------------------------------------------------------------------
 2) TRIỂN KHAI (VPS)
@@ -83,6 +104,11 @@ Thư mục:
 - COOKIE_SECURE     : true khi đã có HTTPS; false khi chạy http (nếu để true
   trên http thì trình duyệt không lưu cookie => không đăng nhập được)
 - MAX_UPLOAD_MB     : dung lượng tối đa mỗi ảnh
+- MAX_VIDEO_MB      : dung lượng tối đa mỗi video (mặc định 2048). Nginx site
+  chongtoico cho /api/admin/videos tối đa 2100M — muốn lớn hơn phải sửa cả hai.
+  Site Nginx tạo trước bản này (chưa có khối /api/admin/videos) => chỉ nhận
+  200M; xoá /etc/nginx/sites-available/chongtoico rồi chạy lại install.sh,
+  hoặc thêm khối đó bằng tay theo scripts/install.sh.
 
 --------------------------------------------------------------------------------
 4) BẢO MẬT ĐÃ CÓ
@@ -114,8 +140,16 @@ Thư mục:
   Lệch số liệu: Quản trị > Tổng quan > "Tính lại bộ đếm".
 - @fastify/static (wildcard: false) chỉ nạp danh sách file giao diện lúc khởi
   động => build lại giao diện thì phải khởi động lại app (Docker tự làm).
-- Nội dung bài viết là văn bản thuần; ảnh chèn bằng mã [img:<key>] (ảnh đã tải
-  qua /api/uploads/image), link http(s) tự thành liên kết. Không render HTML.
+- Nội dung bài viết là văn bản thuần + mã BBCode: [b] [i] [u] [s] [quote=tên]
+  [spoiler=tiêu đề] [code] [url=..] ; ảnh chèn bằng mã [img:<key>] (ảnh đã tải
+  qua /api/uploads/image), link http(s) tự thành liên kết. Bộ hiển thị
+  (PostContent trong ui.tsx) dựng phần tử React, KHÔNG render HTML; [url] chỉ
+  nhận http/https. Thêm thẻ mới phải sửa TAG_RE + renderNodes + nút trong Editor.
+- Đăng / trả lời chủ đề tự thêm vào thread_watches (theo dõi).
+- Video: bộ đếm like_count / dislike_count / comment_count của videos và
+  video_count của video_categories cũng cập nhật thủ công ("Tính lại bộ đếm"
+  có tính lại các số này).
+- PowerShell 5.1 trên máy dev: không sửa file bằng Set-Content (chèn BOM).
 - Socket: client tự kết nối lại sau đăng nhập/đăng xuất và sau tin CSKH đầu
   tiên của khách (để server đọc lại cookie và cho vào đúng phòng).
 - Chạy test trước khi push: cd server && npm test ; cd frontend && npm run build
@@ -124,6 +158,9 @@ Thư mục:
 6) VIỆC CÒN LẠI / KẾ HOẠCH
 --------------------------------------------------------------------------------
 - Chủ dự án chỉnh sửa / thêm chức năng sau khi xem bản đầu.
+- Giai đoạn kiểm thử (khi chủ dự án yêu cầu): viết bài test cho video / theo
+  dõi / BBCode; thử tải + phát + tua video thật; thử Nginx với file lớn.
+- Chưa làm: thông báo, tin nhắn riêng, báo vi phạm.
 - App Android: làm sau (hiện có nút cài PWA khi trình duyệt hỗ trợ).
 - Kết nối Telegram / chuyển dữ liệu cũ từ data.db: chờ chủ dự án chọn dữ liệu.
 - Ngày thay hệ thống cũ: sao lưu, chuyển dữ liệu lần cuối, trỏ tên miền chính
@@ -149,6 +186,9 @@ b22c5f7 feat: scaffold new platform (đã thay thế — xoá ở bản Node.js)
 [2026-11-07] Viết lại toàn bộ bằng Node.js/TypeScript: Fastify + Socket.IO +
   Drizzle + PostgreSQL, giao diện React mới (diễn đàn, chat, album, xếp hạng,
   CSKH, quản trị). Docker Compose app + db, chạy sau Nginx cũ bằng tên miền phụ.
+[2026-11-07] Thêm mảng video (admin đăng, lưu trên VPS, trang chủ video là
+  chính), theo dõi chủ đề / thành viên, trình soạn thảo BBCode. Migration
+  0001_video_follow.sql. Nginx thêm khối /api/admin/videos (2100M, không đệm).
 
 ================================================================================
 Hết — lưu ý: không lưu mật khẩu / token thật trong file này.

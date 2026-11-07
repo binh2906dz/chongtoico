@@ -38,4 +38,30 @@ export async function api<T = unknown>(path: string, opts: Options = {}): Promis
   return data as T;
 }
 
+export function uploadWithProgress<T = unknown>(path: string, form: FormData, onProgress: (ratio: number) => void, signal?: AbortSignal): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", path);
+    xhr.setRequestHeader("X-Requested-With", "ctc");
+    xhr.withCredentials = true;
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) onProgress(e.loaded / e.total);
+    };
+    xhr.onload = () => {
+      let data: unknown = null;
+      try {
+        data = xhr.responseText ? JSON.parse(xhr.responseText) : null;
+      } catch {
+        data = null;
+      }
+      if (xhr.status >= 200 && xhr.status < 300) resolve(data as T);
+      else reject(new ApiError((data as { error?: string } | null)?.error || `Lỗi ${xhr.status}`, xhr.status));
+    };
+    xhr.onerror = () => reject(new ApiError("Mất kết nối khi tải lên.", 0));
+    xhr.onabort = () => reject(new ApiError("Đã huỷ tải lên.", 0));
+    signal?.addEventListener("abort", () => xhr.abort());
+    xhr.send(form);
+  });
+}
+
 export const errorMessage = (err: unknown) => (err instanceof Error ? err.message : "Có lỗi xảy ra.");

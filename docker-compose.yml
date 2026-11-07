@@ -24,6 +24,7 @@ services:
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
       TRUST_PROXY: "true"
       MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-15}
+      MAX_VIDEO_MB: ${MAX_VIDEO_MB:-2048}
     # Only reachable from the VPS itself; the existing Nginx proxies the subdomain here.
     ports:
       - "127.0.0.1:${APP_PORT:-8090}:8090"

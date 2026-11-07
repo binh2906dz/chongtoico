@@ -34,6 +34,11 @@ export function paginate(page: number, perPage: number) {
   return { limit: perPage, offset: (page - 1) * perPage };
 }
 
+export function isUniqueViolation(err: unknown) {
+  const e = err as { code?: string; cause?: { code?: string } };
+  return e?.code === "23505" || e?.cause?.code === "23505";
+}
+
 export function ok(reply: FastifyReply) {
   return reply.send({ ok: true });
 }

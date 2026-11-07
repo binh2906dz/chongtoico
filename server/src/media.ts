@@ -5,7 +5,7 @@ import sharp from "sharp";
 import { config } from "./config.js";
 import { badRequest } from "./http.js";
 
-export type MediaKind = "albums" | "avatars" | "posts";
+export type MediaKind = "albums" | "avatars" | "posts" | "thumbs";
 
 export interface StoredImage {
   key: string;
@@ -43,7 +43,7 @@ export async function storeImage(kind: MediaKind, input: Buffer): Promise<Stored
     return { key, width: out.info.width, height: out.info.height };
   }
 
-  const maxSide = kind === "albums" ? 2000 : 1600;
+  const maxSide = kind === "albums" ? 2000 : kind === "thumbs" ? 640 : 1600;
   const full = await base
     .clone()
     .resize(maxSide, maxSide, { fit: "inside", withoutEnlargement: true })
@@ -65,3 +65,28 @@ export async function removeImage(kind: MediaKind, key: string) {
 }
 
 export const albumImageUrl = (key: string, thumb = false) => `/media/a/${key}${thumb ? "_t" : ""}.webp`;
+export const videoThumbUrl = (key: string | null) => (key ? `/media/t/${key}.webp` : null);
+
+export const VIDEO_DIR = () => path.join(config.uploadDir, "videos");
+export const videoFileUrl = (key: string, ext: string) => `/media/v/${key}.${ext}`;
+
+const VIDEO_EXTS = { mp4: "video/mp4", webm: "video/webm", mov: "video/quicktime" } as const;
+export type VideoExt = keyof typeof VIDEO_EXTS;
+
+export function videoExtFromName(filename: string): VideoExt | null {
+  const ext = path.extname(filename).slice(1).toLowerCase();
+  if (ext === "m4v") return "mp4";
+  return ext in VIDEO_EXTS ? (ext as VideoExt) : null;
+}
+
+/** Checks container magic bytes: ISO-BMFF (mp4/mov) has "ftyp" at offset 4, WebM/Matroska starts with 1A45DFA3. */
+export function looksLikeVideo(head: Buffer, ext: VideoExt): boolean {
+  if (head.length < 12) return false;
+  if (ext === "webm") return head.readUInt32BE(0) === 0x1a45dfa3;
+  return head.toString("latin1", 4, 8) === "ftyp";
+}
+
+export async function removeVideoFile(key: string, ext: string) {
+  if (!KEY_RE.test(key) || !/^[a-z0-9]{2,5}$/.test(ext)) return;
+  await rm(path.join(VIDEO_DIR(), `${key}.${ext}`), { force: true });
+}

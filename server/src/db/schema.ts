@@ -1,5 +1,7 @@
 import {
+  bigint,
   boolean,
+  date,
   index,
   integer,
   pgTable,
@@ -242,6 +244,135 @@ export const supportMessages = pgTable(
     createdAt: createdAt(),
   },
   (t) => [index("support_messages_conv_idx").on(t.conversationId, t.id)],
+);
+
+export const threadWatches = pgTable(
+  "thread_watches",
+  {
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    threadId: integer("thread_id")
+      .notNull()
+      .references(() => threads.id, { onDelete: "cascade" }),
+    createdAt: createdAt(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.threadId] }), index("thread_watches_thread_idx").on(t.threadId)],
+);
+
+export const userFollows = pgTable(
+  "user_follows",
+  {
+    followerId: integer("follower_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    followingId: integer("following_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    createdAt: createdAt(),
+  },
+  (t) => [primaryKey({ columns: [t.followerId, t.followingId] }), index("user_follows_following_idx").on(t.followingId)],
+);
+
+export const videoCategories = pgTable(
+  "video_categories",
+  {
+    id: serial("id").primaryKey(),
+    slug: varchar("slug", { length: 64 }).notNull(),
+    name: varchar("name", { length: 60 }).notNull(),
+    sortOrder: integer("sort_order").notNull().default(0),
+    videoCount: integer("video_count").notNull().default(0),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("video_categories_slug_uq").on(t.slug)],
+);
+
+export const videos = pgTable(
+  "videos",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    categoryId: integer("category_id").references(() => videoCategories.id, { onDelete: "set null" }),
+    title: varchar("title", { length: 200 }).notNull(),
+    description: varchar("description", { length: 5000 }).notNull().default(""),
+    fileKey: varchar("file_key", { length: 64 }).notNull(),
+    ext: varchar("ext", { length: 8 }).notNull(),
+    thumbKey: varchar("thumb_key", { length: 64 }),
+    duration: integer("duration").notNull().default(0),
+    width: integer("width").notNull().default(0),
+    height: integer("height").notNull().default(0),
+    sizeBytes: bigint("size_bytes", { mode: "number" }).notNull().default(0),
+    viewCount: integer("view_count").notNull().default(0),
+    likeCount: integer("like_count").notNull().default(0),
+    dislikeCount: integer("dislike_count").notNull().default(0),
+    commentCount: integer("comment_count").notNull().default(0),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex("videos_file_key_uq").on(t.fileKey),
+    index("videos_created_idx").on(t.createdAt),
+    index("videos_views_idx").on(t.viewCount),
+    index("videos_category_idx").on(t.categoryId, t.createdAt),
+  ],
+);
+
+export const videoVotes = pgTable(
+  "video_votes",
+  {
+    videoId: integer("video_id")
+      .notNull()
+      .references(() => videos.id, { onDelete: "cascade" }),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    value: integer("value").notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [primaryKey({ columns: [t.videoId, t.userId] })],
+);
+
+export const videoComments = pgTable(
+  "video_comments",
+  {
+    id: serial("id").primaryKey(),
+    videoId: integer("video_id")
+      .notNull()
+      .references(() => videos.id, { onDelete: "cascade" }),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    content: varchar("content", { length: 2000 }).notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [index("video_comments_video_idx").on(t.videoId, t.id)],
+);
+
+export const videoViewDays = pgTable(
+  "video_view_days",
+  {
+    videoId: integer("video_id")
+      .notNull()
+      .references(() => videos.id, { onDelete: "cascade" }),
+    day: date("day", { mode: "string" }).notNull(),
+    views: integer("views").notNull().default(0),
+  },
+  (t) => [primaryKey({ columns: [t.videoId, t.day] }), index("video_view_days_day_idx").on(t.day)],
+);
+
+export const videoHistory = pgTable(
+  "video_history",
+  {
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    videoId: integer("video_id")
+      .notNull()
+      .references(() => videos.id, { onDelete: "cascade" }),
+    viewedAt: timestamp("viewed_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.videoId] }), index("video_history_user_idx").on(t.userId, t.viewedAt)],
 );
 
 export type User = typeof users.$inferSelect;

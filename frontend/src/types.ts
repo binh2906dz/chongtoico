@@ -127,6 +127,50 @@ export interface Stats {
   online: Online;
 }
 
+export interface VideoCategory {
+  id: number;
+  slug: string;
+  name: string;
+  sortOrder: number;
+  videoCount: number;
+}
+
+export interface VideoItem {
+  id: number;
+  title: string;
+  thumbUrl: string | null;
+  duration: number;
+  width: number;
+  height: number;
+  viewCount: number;
+  likeCount: number;
+  dislikeCount: number;
+  commentCount: number;
+  rating: number | null;
+  createdAt: string;
+  category: { id: number; slug: string; name: string } | null;
+  viewedAt?: string;
+}
+
+export interface VideoDetail extends VideoItem {
+  description: string;
+  videoUrl: string;
+  author: Author;
+}
+
+export interface VideoComment {
+  id: number;
+  content: string;
+  createdAt: string;
+  author: Author;
+}
+
+export interface FollowStats {
+  followerCount: number;
+  followingCount: number;
+  followedByMe: boolean;
+}
+
 export interface SupportMessage {
   id: number;
   fromStaff: boolean;

@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { Fragment, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { formatNumber, timeAgo } from "../format";
 import type { Author, ThreadItem } from "../types";
@@ -117,30 +117,144 @@ export function Pagination({ page, totalPages, onPage }: { page: number; totalPa
   );
 }
 
-const TOKEN_RE = /\[img:([a-f0-9]{32})\]|(https?:\/\/[^\s<>"']+)/g;
+const TOKEN_RE = /\[img:([a-f0-9]{32})\]|(https?:\/\/[^\s<>"'[\]]+)/g;
+const TAG_RE = /\[(\/?)(b|i|u|s|quote|spoiler|code|url)(?:=([^\]\n]{1,200}))?\]/gi;
+const MAX_DEPTH = 20;
 
-export function PostContent({ content }: { content: string }) {
+type BBNode = string | { tag: string; arg?: string; children: BBNode[] };
+
+export function parseBB(src: string): BBNode[] {
+  const root = { tag: "root", children: [] as BBNode[] };
+  const stack: { tag: string; arg?: string; children: BBNode[] }[] = [root];
+  const re = new RegExp(TAG_RE.source, "gi");
+  let last = 0;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(src))) {
+    const [raw, close, nameRaw, arg] = m;
+    const name = nameRaw.toLowerCase();
+    const top = stack[stack.length - 1];
+    if (m.index > last) top.children.push(src.slice(last, m.index));
+    last = m.index + raw.length;
+    if (!close && name === "code") {
+      const end = src.toLowerCase().indexOf("[/code]", last);
+      top.children.push({ tag: "code", children: [end === -1 ? src.slice(last) : src.slice(last, end)] });
+      last = end === -1 ? src.length : end + "[/code]".length;
+      re.lastIndex = last;
+      continue;
+    }
+    if (!close) {
+      if (stack.length > MAX_DEPTH) {
+        top.children.push(raw);
+        continue;
+      }
+      const node = { tag: name, arg: arg?.trim(), children: [] as BBNode[] };
+      top.children.push(node);
+      stack.push(node);
+      continue;
+    }
+    let idx = -1;
+    for (let k = stack.length - 1; k > 0; k--) {
+      if (stack[k].tag === name) {
+        idx = k;
+        break;
+      }
+    }
+    if (idx === -1) top.children.push(raw);
+    else stack.length = idx;
+  }
+  if (last < src.length) stack[stack.length - 1].children.push(src.slice(last));
+  return root.children;
+}
+
+const plainText = (nodes: BBNode[]): string => nodes.map((n) => (typeof n === "string" ? n : plainText(n.children))).join("");
+const SAFE_URL = /^https?:\/\/[^\s<>"']+$/i;
+
+function trimBlock(nodes: BBNode[]): BBNode[] {
+  const out = [...nodes];
+  if (typeof out[0] === "string") out[0] = out[0].replace(/^\n/, "");
+  const lastIdx = out.length - 1;
+  if (typeof out[lastIdx] === "string") out[lastIdx] = (out[lastIdx] as string).replace(/\n$/, "");
+  return out;
+}
+
+function renderInline(text: string, key: string, linkify = true): ReactNode[] {
   const parts: ReactNode[] = [];
   let last = 0;
   let i = 0;
-  for (const m of content.matchAll(TOKEN_RE)) {
+  for (const m of text.matchAll(TOKEN_RE)) {
     const idx = m.index ?? 0;
-    if (idx > last) parts.push(content.slice(last, idx));
+    if (m[2] && !linkify) continue;
+    if (idx > last) parts.push(text.slice(last, idx));
     if (m[1]) {
       parts.push(
-        <img key={i++} src={`/media/p/${m[1]}.webp`} alt="" loading="lazy" className="my-2 block max-h-[600px] max-w-full rounded-lg border border-line" />,
+        <img key={`${key}-${i++}`} src={`/media/p/${m[1]}.webp`} alt="" loading="lazy" className="my-2 block max-h-[600px] max-w-full rounded-lg border border-line" />,
       );
     } else if (m[2]) {
       parts.push(
-        <a key={i++} href={m[2]} target="_blank" rel="noopener noreferrer nofollow ugc" className="break-all text-brand hover:underline">
+        <a key={`${key}-${i++}`} href={m[2]} target="_blank" rel="noopener noreferrer nofollow ugc" className="break-all text-brand hover:underline">
           {m[2]}
         </a>,
       );
     }
     last = idx + m[0].length;
   }
-  if (last < content.length) parts.push(content.slice(last));
-  return <div className="text-[15px] leading-relaxed break-words whitespace-pre-wrap text-slate-200">{parts}</div>;
+  if (last < text.length) parts.push(text.slice(last));
+  return parts;
+}
+
+function renderNodes(nodes: BBNode[], key: string, linkify = true): ReactNode[] {
+  return nodes.map((n, i) => {
+    const k = `${key}.${i}`;
+    if (typeof n === "string") return <Fragment key={k}>{renderInline(n, k, linkify)}</Fragment>;
+    const kids = () => renderNodes(n.children, k, linkify);
+    switch (n.tag) {
+      case "b":
+        return <strong key={k} className="font-bold text-white">{kids()}</strong>;
+      case "i":
+        return <em key={k}>{kids()}</em>;
+      case "u":
+        return <u key={k}>{kids()}</u>;
+      case "s":
+        return <s key={k}>{kids()}</s>;
+      case "code":
+        return (
+          <pre key={k} className="scroll-thin my-2 overflow-x-auto rounded-lg border border-line bg-black/40 p-3 font-mono text-xs whitespace-pre text-emerald-200">
+            <code>{plainText(n.children).replace(/^\n/, "").replace(/\n$/, "")}</code>
+          </pre>
+        );
+      case "quote":
+        return (
+          <blockquote key={k} className="my-2 rounded-r-lg border-l-4 border-brand/60 bg-panel-2/60 px-3 py-2 text-sm text-slate-300">
+            {n.arg && <div className="mb-1 text-xs font-semibold text-brand">{n.arg} đã viết:</div>}
+            {renderNodes(trimBlock(n.children), k, linkify)}
+          </blockquote>
+        );
+      case "spoiler":
+        return (
+          <details key={k} className="my-2 rounded-lg border border-line bg-panel-2/40">
+            <summary className="cursor-pointer px-3 py-1.5 text-sm font-semibold text-amber-300 select-none">
+              🙈 {n.arg || "Nội dung ẩn"} — bấm để xem
+            </summary>
+            <div className="border-t border-line px-3 py-2">{renderNodes(trimBlock(n.children), k, linkify)}</div>
+          </details>
+        );
+      case "url": {
+        const href = (n.arg ?? plainText(n.children)).trim();
+        if (!SAFE_URL.test(href)) return <Fragment key={k}>{kids()}</Fragment>;
+        return (
+          <a key={k} href={href} target="_blank" rel="noopener noreferrer nofollow ugc" className="break-all text-brand hover:underline">
+            {n.arg ? renderNodes(n.children, k, false) : href}
+          </a>
+        );
+      }
+      default:
+        return <Fragment key={k}>{kids()}</Fragment>;
+    }
+  });
+}
+
+export function PostContent({ content }: { content: string }) {
+  return <div className="text-[15px] leading-relaxed break-words whitespace-pre-wrap text-slate-200">{renderNodes(parseBB(content), "n")}</div>;
 }
 
 export function ThreadRows({ threads, empty = "Chưa có chủ đề nào.", showCategory = true }: { threads: ThreadItem[]; empty?: string; showCategory?: boolean }) {

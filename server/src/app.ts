@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import fastifyCookie from "@fastify/cookie";
 import fastifyMultipart from "@fastify/multipart";
@@ -8,14 +8,17 @@ import Fastify, { type FastifyError } from "fastify";
 import { SESSION_COOKIE, userFromToken } from "./auth.js";
 import { config } from "./config.js";
 import { HttpError } from "./http.js";
+import { VIDEO_DIR } from "./media.js";
 import adminRoutes from "./routes/admin.js";
 import albumRoutes from "./routes/albums.js";
 import authRoutes from "./routes/auth.js";
 import chatRoutes from "./routes/chat.js";
+import followRoutes from "./routes/follow.js";
 import forumRoutes from "./routes/forum.js";
 import mediaRoutes from "./routes/media.js";
 import memberRoutes from "./routes/members.js";
 import supportRoutes from "./routes/support.js";
+import videoRoutes from "./routes/videos.js";
 
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 export const CSRF_HEADER = "x-requested-with";
@@ -43,6 +46,7 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
     req.user = null;
     const url = req.url;
     if (!url.startsWith("/api/") && !url.startsWith("/media/")) return;
+    if (url.startsWith("/media/v/")) return;
     if (url.startsWith("/api/") && !SAFE_METHODS.has(req.method) && req.headers[CSRF_HEADER] !== CSRF_VALUE) {
       throw new HttpError(403, "Yêu cầu không hợp lệ.");
     }
@@ -53,7 +57,7 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
     const status = err.statusCode ?? 500;
     if (err instanceof HttpError || (status >= 400 && status < 500)) {
       let message = err.message;
-      if (status === 413) message = `File quá lớn (tối đa ${config.maxUploadMb} MB).`;
+      if (status === 413 && !(err instanceof HttpError)) message = `File quá lớn (tối đa ${config.maxUploadMb} MB).`;
       if (status === 429 && "error" in err) message = String((err as { error?: string }).error ?? message);
       return reply.status(status).send({ error: message });
     }
@@ -70,7 +74,22 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
   await app.register(memberRoutes);
   await app.register(supportRoutes);
   await app.register(adminRoutes);
+  await app.register(videoRoutes);
+  await app.register(followRoutes);
   await app.register(mediaRoutes);
+
+  mkdirSync(VIDEO_DIR(), { recursive: true });
+  await app.register(fastifyStatic, {
+    root: VIDEO_DIR(),
+    prefix: "/media/v/",
+    decorateReply: false,
+    index: false,
+    allowedPath: (pathName) => !pathName.endsWith(".part"),
+    setHeaders(res) {
+      res.header("Cache-Control", "public, max-age=31536000, immutable");
+      res.header("X-Content-Type-Options", "nosniff");
+    },
+  });
 
   const indexFile = path.join(config.publicDir, "index.html");
   const hasFrontend = existsSync(indexFile);

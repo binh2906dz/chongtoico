@@ -7,6 +7,7 @@ import { Avatar } from "./ui";
 
 const NAV = [
   { to: "/", label: "Trang chủ", end: true },
+  { to: "/video", label: "Video" },
   { to: "/dien-dan", label: "Diễn đàn" },
   { to: "/moi", label: "Có gì mới" },
   { to: "/album", label: "Kho album" },
@@ -61,6 +62,12 @@ function UserMenu() {
         <div className="panel absolute right-0 z-40 mt-2 w-52 overflow-hidden py-1 shadow-xl shadow-black/40">
           <Link to={`/thanh-vien/${user.username}`} onClick={() => setOpen(false)} className="block px-4 py-2 text-sm hover:bg-panel-2">
             Trang cá nhân
+          </Link>
+          <Link to="/dang-theo-doi" onClick={() => setOpen(false)} className="block px-4 py-2 text-sm hover:bg-panel-2">
+            Đang theo dõi
+          </Link>
+          <Link to="/video/da-xem" onClick={() => setOpen(false)} className="block px-4 py-2 text-sm hover:bg-panel-2">
+            Video đã xem
           </Link>
           {isStaff(user) && (
             <Link to="/quan-tri" onClick={() => setOpen(false)} className="block px-4 py-2 text-sm text-brand hover:bg-panel-2">
@@ -121,7 +128,7 @@ export default function Layout() {
             ))}
           </nav>
           <form onSubmit={search} className="ml-auto hidden md:block">
-            <input className="input w-52 py-1.5" placeholder="Tìm chủ đề..." value={q} onChange={(e) => setQ(e.target.value)} />
+            <input className="input w-52 py-1.5" placeholder="Tìm video, chủ đề..." value={q} onChange={(e) => setQ(e.target.value)} />
           </form>
           <div className="ml-auto md:ml-0">
             <UserMenu />
@@ -130,7 +137,7 @@ export default function Layout() {
         {menuOpen && (
           <nav className="border-t border-line px-4 py-2 lg:hidden">
             <form onSubmit={search} className="mb-2 md:hidden">
-              <input className="input" placeholder="Tìm chủ đề..." value={q} onChange={(e) => setQ(e.target.value)} />
+              <input className="input" placeholder="Tìm video, chủ đề..." value={q} onChange={(e) => setQ(e.target.value)} />
             </form>
             {NAV.map((n) => (
               <NavLink

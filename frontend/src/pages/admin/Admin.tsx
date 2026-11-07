@@ -1,15 +1,17 @@
 import { useState, type FormEvent } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { api, errorMessage } from "../../api";
 import { isStaff, useAuth } from "../../auth";
 import { Avatar, ErrorBox, Pagination, Spinner, Tabs, UserLink } from "../../components/ui";
 import { formatDate, formatNumber } from "../../format";
 import { useFetch } from "../../useFetch";
-import type { Category, Channel, Profile } from "../../types";
+import type { Category, Channel, Profile, VideoCategory } from "../../types";
 import AdminAlbums from "./AdminAlbums";
 import AdminSupport from "./AdminSupport";
+import AdminVideos from "./AdminVideos";
 
-type Tab = "overview" | "users" | "categories" | "channels" | "albums" | "support";
+const TABS = ["overview", "videos", "videoCategories", "users", "categories", "channels", "albums", "support"] as const;
+type Tab = (typeof TABS)[number];
 
 function Overview() {
   const { user } = useAuth();
@@ -22,6 +24,7 @@ function Overview() {
     ["Thành viên mới 24h", data.newMembers24h],
     ["Chủ đề", data.threads],
     ["Bài viết", data.posts],
+    ["Video", data.videos],
     ["Album", data.albums],
     ["Tin nhắn chat", data.chatMessages],
     ["CSKH đang mở", data.openSupport],
@@ -314,7 +317,9 @@ function CrudList<T extends { id: number }>({
 
 export default function Admin() {
   const { user, loading } = useAuth();
-  const [tab, setTab] = useState<Tab>("overview");
+  const [params, setParams] = useSearchParams();
+  const tab: Tab = TABS.find((t) => t === params.get("tab")) ?? "overview";
+  const setTab = (t: Tab) => setParams(t === "overview" ? {} : { tab: t });
   if (loading) return <Spinner />;
   if (!isStaff(user)) {
     return (
@@ -333,6 +338,8 @@ export default function Admin() {
       <Tabs
         tabs={[
           { id: "overview", label: "Tổng quan" },
+          { id: "videos", label: "Video" },
+          { id: "videoCategories", label: "Thể loại video" },
           { id: "users", label: "Thành viên" },
           { id: "categories", label: "Chuyên mục" },
           { id: "channels", label: "Kênh chat" },
@@ -343,6 +350,20 @@ export default function Admin() {
         onChange={setTab}
       />
       {tab === "overview" && <Overview />}
+      {tab === "videos" && <AdminVideos isAdmin={admin} />}
+      {tab === "videoCategories" && (
+        <CrudList<VideoCategory>
+          endpoint="/api/admin/video-categories"
+          listKey="categories"
+          canEdit={admin}
+          blank={{ slug: "", name: "", sortOrder: 0 }}
+          fields={[
+            { key: "name", label: "Tên thể loại" },
+            { key: "slug", label: "Đường dẫn" },
+            { key: "sortOrder", label: "Thứ tự", type: "number", width: "w-20" },
+          ]}
+        />
+      )}
       {tab === "users" && <Users />}
       {tab === "categories" && (
         <CrudList<Category>

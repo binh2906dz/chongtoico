@@ -7,7 +7,7 @@ import { albumImages, albums } from "../db/schema.js";
 import { forbidden, notFound } from "../http.js";
 import { mediaPath, type MediaKind } from "../media.js";
 
-const KINDS: Record<string, MediaKind> = { a: "albums", u: "avatars", p: "posts" };
+const KINDS: Record<string, MediaKind> = { a: "albums", u: "avatars", p: "posts", t: "thumbs" };
 const FILE_RE = /^([a-f0-9]{32})(_t)?\.webp$/;
 
 export default async function mediaRoutes(app: FastifyInstance) {

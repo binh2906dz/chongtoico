@@ -5,11 +5,44 @@ import { useAuth } from "../auth";
 import { Avatar, ErrorBox, RoleBadge, Spinner } from "../components/ui";
 import { formatDate, formatNumber, roleLabel, timeAgo } from "../format";
 import { useFetch } from "../useFetch";
-import type { Profile } from "../types";
+import type { FollowStats, Profile } from "../types";
 
 interface MemberData {
   user: Profile;
   recentThreads: { id: number; title: string; createdAt: string; replyCount: number; viewCount: number }[];
+  follow: FollowStats;
+}
+
+function FollowButton({ username, initial }: { username: string; initial: FollowStats }) {
+  const { user } = useAuth();
+  const [stats, setStats] = useState(initial);
+  const [busy, setBusy] = useState(false);
+  return (
+    <div className="flex items-center gap-3">
+      <span className="text-sm text-muted">
+        <b className="text-slate-200">{formatNumber(stats.followerCount)}</b> người theo dõi ·{" "}
+        <b className="text-slate-200">{formatNumber(stats.followingCount)}</b> đang theo dõi
+      </span>
+      {user && user.username.toLowerCase() !== username.toLowerCase() && (
+        <button
+          disabled={busy}
+          className={stats.followedByMe ? "btn-ghost px-4 py-1.5" : "btn-primary px-4 py-1.5"}
+          onClick={async () => {
+            setBusy(true);
+            try {
+              setStats(await api<FollowStats>(`/api/members/${encodeURIComponent(username)}/follow`, { method: "POST" }));
+            } catch (err) {
+              alert(errorMessage(err));
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          {stats.followedByMe ? "✓ Đang theo dõi" : "+ Theo dõi"}
+        </button>
+      )}
+    </div>
+  );
 }
 
 function Settings({ onSaved }: { onSaved: () => void }) {
@@ -126,6 +159,7 @@ export default function Member() {
               <RoleBadge role={user.role} /> {roleLabel[user.role]} · Tham gia {formatDate(user.createdAt)} · Hoạt động {timeAgo(user.lastSeenAt)}
             </div>
           </div>
+          <FollowButton key={user.id} username={user.username} initial={data.follow} />
         </div>
         {user.isBanned && (
           <div className="mx-5 mb-5 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-300">

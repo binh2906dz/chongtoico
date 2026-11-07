@@ -11,9 +11,32 @@ import type { Post, ThreadItem } from "../types";
 
 interface ThreadData {
   thread: ThreadItem;
+  watching: boolean;
   posts: Post[];
   page: number;
   totalPages: number;
+}
+
+const stripQuotes = (s: string) => s.replace(/\[quote(?:=[^\]]*)?\][\s\S]*?\[\/quote\]\n?/gi, "");
+
+function WatchButton({ threadId, initial }: { threadId: number; initial: boolean }) {
+  const [watching, setWatching] = useState(initial);
+  return (
+    <button
+      className={watching ? "btn-ghost px-3 py-1.5 text-brand" : "btn-ghost px-3 py-1.5"}
+      title={watching ? "Bỏ theo dõi chủ đề" : "Theo dõi chủ đề để xem lại trong mục Đang theo dõi"}
+      onClick={async () => {
+        try {
+          const res = await api<{ watching: boolean }>(`/api/forum/threads/${threadId}/watch`, { method: "POST" });
+          setWatching(res.watching);
+        } catch (err) {
+          alert(errorMessage(err));
+        }
+      }}
+    >
+      {watching ? "🔔 Đang theo dõi" : "🔕 Theo dõi"}
+    </button>
+  );
 }
 
 function PostCard({ post, canModerate, onChanged, onReply }: { post: Post; canModerate: boolean; onChanged: () => void; onReply: (p: Post) => void }) {
@@ -110,7 +133,7 @@ function PostCard({ post, canModerate, onChanged, onReply }: { post: Post; canMo
           </button>
           {user && (
             <button onClick={() => onReply(post)} className="btn px-3 py-1 text-muted hover:text-white">
-              ↩ Trả lời
+              ❝ Trích dẫn
             </button>
           )}
           <div className="ml-auto flex gap-2">
@@ -192,8 +215,8 @@ export default function ThreadPage() {
   }
 
   function quote(p: Post) {
-    const excerpt = p.content.replace(/\[img:[a-f0-9]{32}\]/g, "[ảnh]").slice(0, 200);
-    setReply((r) => `${r}${r ? "\n" : ""}@${p.author.username} đã viết:\n> ${excerpt.split("\n").join("\n> ")}\n\n`);
+    const excerpt = stripQuotes(p.content).trim().slice(0, 1000);
+    setReply((r) => `${r}${r ? "\n" : ""}[quote=${p.author.username}]${excerpt}[/quote]\n`);
     document.getElementById("reply-box")?.scrollIntoView({ behavior: "smooth" });
   }
 
@@ -220,8 +243,10 @@ export default function ThreadPage() {
             {formatNumber(thread.replyCount)} trả lời
           </div>
         </div>
-        {staff && (
-          <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2">
+          {user && <WatchButton key={thread.id} threadId={thread.id} initial={data.watching} />}
+          {staff && (
+            <>
             <button className="btn-ghost px-3 py-1.5" onClick={() => moderate({ isPinned: !thread.isPinned })}>
               {thread.isPinned ? "Bỏ ghim" : "Ghim"}
             </button>
@@ -231,8 +256,9 @@ export default function ThreadPage() {
             <button className="btn-danger px-3 py-1.5" onClick={removeThread}>
               Xoá chủ đề
             </button>
-          </div>
-        )}
+            </>
+          )}
+        </div>
       </div>
 
       <Pagination page={data.page} totalPages={data.totalPages} onPage={setPage} />
