@@ -5,7 +5,8 @@ alwaysApply: true
 
 # Rules & context — `LUAT_VA_BOI_CANH.md`
 
-1. **Before anything else** in every session (answering, planning, or editing): read **`LUAT_VA_BOI_CANH.md`** at the repo root end-to-end and follow it. It overrides every other doc, including `huongdan.txt`.
-2. Obey its working rules (section 5), especially: reply in Vietnamese, and **no code changes until the owner has agreed and the decision is recorded in section 6**.
-3. When the owner agrees on a new rule or decision, update the matching section and append to section 9 (never delete history; mark superseded items instead). Never write real tokens or passwords.
-4. `huongdan.txt` is the technical handoff (architecture, deploy). After code changes, append to its section `8) NHẬT KÝ THAY ĐỔI` and refresh section `7)` after pushing to `main`.
+1. **Rule #1, no exceptions:** at the start of every session and every new task, read **`LUAT_VA_BOI_CANH.md`** at the repo root end-to-end before answering, planning, or editing. It overrides every other doc, including `huongdan.txt`.
+2. Obey its working rules (section 5): reply in Vietnamese; **no code changes until the owner has agreed and the decision is recorded in section 6**.
+3. Every change (new code, bug fix, config, decision) gets an entry in **section 10 (Nhật ký làm việc)** using its template, in the same session. Bug fixes must record the root cause and the lesson; reusable lessons also go into **section 9**.
+4. Keep context current: before a task check sections 4, 6, 9; while working add new facts to section 8 / 9; before finishing make sure the file still matches reality. Never delete history (mark superseded). Never write real tokens or passwords.
+5. `huongdan.txt` is only the technical handoff (architecture, deploy); update it when architecture or deployment changes.

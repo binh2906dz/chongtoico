@@ -12,8 +12,8 @@ Hệ thống cũ (không dùng code chung): https://github.com/binh2906dz/telegr
 --------------------------------------------------------------------------------
 - ĐỌC LUAT_VA_BOI_CANH.md TRƯỚC TIÊN — file luật gốc, ưu tiên hơn file này.
 - Trước khi sửa code / cấu hình / deploy: đọc hết file này.
-- Sau mỗi thay đổi đáng kể: thêm một mục vào "8) NHẬT KÝ THAY ĐỔI" (ngày ISO,
-  tóm tắt, file/commit chính). KHÔNG ghi mật khẩu / token thật.
+- Nhật ký làm việc + bài học ghi ở LUAT_VA_BOI_CANH.md (mục 9, 10). Mục 8 dưới đây
+  chỉ ghi thay đổi kiến trúc / deploy. KHÔNG ghi mật khẩu / token thật.
 - Có commit mới lên main: cập nhật mục "7) LỊCH SỬ GIT".
 - Chủ dự án làm việc trực tiếp trên GitHub và chạy server qua Termius:
   mỗi lần xong việc phải push lên main và đưa lệnh cập nhật cho chủ dự án.
