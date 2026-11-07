@@ -252,6 +252,7 @@ Hàng chờ: Quản trị > Báo vi phạm (mod + admin).
 7) LỊCH SỬ GIT (oneline — cập nhật sau mỗi lần push)
 --------------------------------------------------------------------------------
 (xem `git log --oneline`; các commit chính)
+18f3003 feat(ui): red-pink theme, hero slider, new video/album cards, skeleton loading, home reorder; perf: route code splitting, 30s guest home cache, multi-size images
 698bf49 feat: hybrid upgrade - trusted proxy fix, notifications, reports, tags, favorites, comment replies/votes, members-only videos, random recommendations, notice bar, ads, rules/takedown pages, admin password reset, cleanup job, backup script, ffmpeg faststart
 fe65946 feat: remove rankings and app card from home
 23920b4 feat: video section (admin upload, today/new/best/hot, votes, comments, history), follow threads/members, BBCode editor

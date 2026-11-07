@@ -258,4 +258,4 @@ Mẫu mỗi mục:
 - Bài học / cách tránh: B12.
 - Đã kiểm tra: `tsc` máy chủ, `npm run build` giao diện không lỗi; `npm test` 16/16; chạy app thật tại máy với 12 video + 1 album mẫu (ảnh màu tự tạo, chỉ ở dữ liệu thử `server/data/`, không commit): chụp màn hình trang chủ (máy tính + điện thoại), trang xem video — hiển thị đúng; ảnh `_s` trả 200 (3 KB so với 13 KB bản gốc), `_m` trên ảnh bìa video trả 404 đúng thiết kế; `/api/home` khách lần 2 21 ms (lần 1 139 ms).
   - **Chưa chạy thử:** trên điện thoại thật; nhãn HOT với lượt xem thật (dữ liệu mẫu chưa đủ 10 lượt); tự tải lại khi thiếu file trang sau khi cập nhật web; trang quản trị sau khi đổi màu (chỉ đổi màu chữ nút, không đổi bố cục).
-- File / commit: (xem huongdan.txt mục 7).
+- File / commit: `18f3003`.
