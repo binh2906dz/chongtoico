@@ -245,4 +245,4 @@ Mẫu mỗi mục:
 - Bài học / cách tránh: B10, B11.
 - Đã kiểm tra (theo "code trước, test sau"): `tsc` máy chủ không lỗi; `npm run build` giao diện không lỗi; `npm test` 16/16 bài cũ vẫn qua; khởi động app thật trên dữ liệu PGlite cũ: migration 0002 chạy được, `/healthz`, `/api/site`, `/api/home`, `/api/videos?sort=week|random`, `/api/videos/tags`, `/api/videos/watching` trả 200.
   - **Chưa chạy thử:** mọi chức năng mới trên trình duyệt; thông báo realtime; báo vi phạm; tag; yêu thích; vote / trả lời bình luận; video chỉ thành viên chặn file; ffmpeg faststart (máy dev không có ffmpeg — chỉ chạy trong Docker); `docker build` với ffmpeg; `backup.sh` và khôi phục trên VPS; chưa có bài kiểm thử cho phần mới.
-- File / commit: (xem mục 9 huongdan.txt / git log).
+- File / commit: `698bf49`.
