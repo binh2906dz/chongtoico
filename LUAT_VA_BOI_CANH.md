@@ -73,12 +73,14 @@ _Chưa có — chờ chủ dự án mô tả._
 | 2026-11-07 | Hệ thống cũ **tiếp tục chạy** trong lúc xây hệ thống mới; chỉ thay khi hệ thống mới hoàn thành và chủ dự án đồng ý (N3, N4). |
 | 2026-11-07 | Chủ đề: **cộng đồng chung, nhiều chủ đề**. |
 | 2026-11-07 | Chạy thử hệ thống mới trên **VPS hiện tại** (cùng VPS với hệ thống cũ). Chủ dự án chưa có tên miền mới. |
+| 2026-11-07 | Tên thương hiệu: **Chống Tối Cổ** (repo `chongtoico`). |
 | 2026-11-07 | Dữ liệu cũ cần dùng: chủ dự án **chọn sau**. Bộ khung `b22c5f7`: AI **đánh giá lại khi đã rõ chức năng** rồi đề xuất giữ / sửa / xoá. |
 
 ## 7. Câu hỏi còn mở
 
 - ~~Hệ thống mới làm gì?~~ (đã trả lời một phần ở mục 1, ngày 2026-11-07). ~~Chủ đề?~~ → cộng đồng chung (mục 6). Còn mở: chi tiết từng chức năng và phần "sửa một ít" so với shiperx?
-- Tên thương hiệu mới?
+- ~~Tên thương hiệu mới?~~ → **Chống Tối Cổ** (mục 6).
+- Duyệt bản nháp danh sách chức năng (tài khoản, diễn đàn, chat cộng đồng, kho album, bảng xếp hạng, chat CSKH, quản trị, app Android làm sau, kết nối Telegram) — chờ chủ dự án sửa / duyệt.
 - Dùng lại **những dữ liệu cũ nào** (người dùng Telegram, bot, album, người đăng ký, …)? — chủ dự án chọn sau.
 - ~~Chạy thử ở đâu?~~ → VPS hiện tại (mục 6). Còn mở: địa chỉ chạy thử — tên miền phụ của tên miền đang có (vd `beta.<tên miền cũ>`, chỉ cần thêm 1 bản ghi DNS) hay tạm truy cập bằng IP:cổng? Lưu ý: webhook Telegram bắt buộc HTTPS nên chạy bằng IP thì chưa thử được bot.
 - Bộ khung code `b22c5f7` (FastAPI + aiogram 3 + PostgreSQL + Redis + React + Caddy, theo giả định "quản lý nhiều bot Telegram") → AI đánh giá lại khi đã rõ chức năng (mục 6). Nếu giữ: phải bỏ Caddy chiếm cổng 80/443, để Nginx cũ chuyển tiếp vào cổng nội bộ (N3).
@@ -144,5 +146,11 @@ Mẫu mỗi mục:
 - Việc đã làm: ghi vào mục 6: cộng đồng chung; chạy thử trên VPS hiện tại (chưa có tên miền mới); dữ liệu cũ chọn sau; bộ khung `b22c5f7` để AI đánh giá lại sau. Cập nhật mục 7.
 - Lý do: chủ dự án trả lời câu hỏi mở.
 - Bài học / cách tránh: chạy chung VPS → không được để hệ thống mới chiếm cổng 80/443 (N3); tên miền phụ của tên miền cũ dùng được để chạy thử mà không cần mua tên miền mới.
+- Đã kiểm tra: chỉ sửa tài liệu, không có code.
+- File / commit: `4e099bb`.
+
+### 2026-11-07 — Quyết định — Tên thương hiệu
+- Việc đã làm: ghi tên thương hiệu **Chống Tối Cổ** vào mục 6; cập nhật mục 7 (thêm việc chờ duyệt danh sách chức năng).
+- Lý do: chủ dự án chốt tên.
 - Đã kiểm tra: chỉ sửa tài liệu, không có code.
 - File / commit: commit này.
