@@ -27,6 +27,57 @@ export function Logo() {
   );
 }
 
+function CreateMenu() {
+  const { user } = useAuth();
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const close = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, []);
+
+  if (!user) {
+    return (
+      <Link to="/dang-nhap" className="btn-primary hidden px-3 py-1.5 sm:inline-flex">
+        ✍️ Đăng bài
+      </Link>
+    );
+  }
+
+  const canPost = user.role === "admin" || user.role === "mod" || user.role === "member";
+  return (
+    <div className="relative" ref={ref}>
+      <button onClick={() => setOpen((o) => !o)} className="btn-primary px-3 py-1.5 text-sm">
+        ✍️ Đăng <span className="hidden sm:inline">bài</span>
+        <span className="ml-1 text-xs">▾</span>
+      </button>
+      {open && (
+        <div className="panel absolute right-0 z-40 mt-2 w-56 overflow-hidden py-1 shadow-xl shadow-black/40">
+          {canPost && (
+            <Link to="/tao-chu-de" onClick={() => setOpen(false)} className="flex items-center gap-2 px-4 py-2 text-sm hover:bg-panel-2">
+              <span>✍️</span> Đăng bài viết
+            </Link>
+          )}
+          {user.role === "admin" && (
+            <Link to="/quan-tri?tab=videos" onClick={() => setOpen(false)} className="flex items-center gap-2 px-4 py-2 text-sm hover:bg-panel-2">
+              <span>🎬</span> Đăng video
+            </Link>
+          )}
+          {(user.role === "admin" || user.role === "mod") && (
+            <Link to="/quan-tri?tab=albums" onClick={() => setOpen(false)} className="flex items-center gap-2 px-4 py-2 text-sm hover:bg-panel-2">
+              <span>📸</span> Tạo album
+            </Link>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function UserMenu() {
   const { user, logout } = useAuth();
   const [open, setOpen] = useState(false);
@@ -151,6 +202,7 @@ export default function Layout() {
             />
           </form>
           <div className="ml-auto flex items-center gap-1 md:ml-0">
+            <CreateMenu />
             <NotificationBell />
             <UserMenu />
           </div>

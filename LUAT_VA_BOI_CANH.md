@@ -259,3 +259,16 @@ Mẫu mỗi mục:
 - Đã kiểm tra: `tsc` máy chủ, `npm run build` giao diện không lỗi; `npm test` 16/16; chạy app thật tại máy với 12 video + 1 album mẫu (ảnh màu tự tạo, chỉ ở dữ liệu thử `server/data/`, không commit): chụp màn hình trang chủ (máy tính + điện thoại), trang xem video — hiển thị đúng; ảnh `_s` trả 200 (3 KB so với 13 KB bản gốc), `_m` trên ảnh bìa video trả 404 đúng thiết kế; `/api/home` khách lần 2 21 ms (lần 1 139 ms).
   - **Chưa chạy thử:** trên điện thoại thật; nhãn HOT với lượt xem thật (dữ liệu mẫu chưa đủ 10 lượt); tự tải lại khi thiếu file trang sau khi cập nhật web; trang quản trị sau khi đổi màu (chỉ đổi màu chữ nút, không đổi bố cục).
 - File / commit: `18f3003`.
+
+### 2026-11-12 — Sửa lỗi — Thêm nút đăng bài / đăng video dễ thấy
+- Việc đã làm:
+  - Thanh đầu có nút **"✍️ Đăng bài"** (menu thả xuống): thành viên → "✍️ Đăng bài viết"; admin thêm "🎬 Đăng video" và "📸 Tạo album"; khách thấy nút "✍️ Đăng bài" dẫn tới trang đăng nhập.
+  - Trang chủ: thêm dải nút ngay dưới thanh thể loại (Đăng bài viết / Đăng video / Tạo album).
+  - Trang `/video`: thêm nút "⬆️ Đăng video" (admin) và "✍️ Đăng bài".
+  - Nút cũ ở cuối trang chủ và trang quản trị vẫn giữ nguyên.
+- Lý do: chủ dự án báo "không tìm thấy nút đăng bài hay đăng video" — trước đó nút đăng bài nằm cuối trang chủ (mục Cộng đồng), nút đăng video nằm trong trang quản trị, khó thấy.
+- Nguyên nhân gốc (lỗi): điều kiện JSX `{user.role === "admin" || user.role === "mod" && (...)}` bị JS hiểu là `a || (b && c)` nên mục "Tạo album" không hiện với admin (đã sửa bằng ngoặc nhọn).
+- Bài học / cách tránh: luôn đặt ngoặc nhọn khi kết hợp `||` và `&&` trong điều kiện JSX.
+- Đã kiểm tra: `npm run build` giao diện không lỗi; chạy app thật tại máy, đăng nhập admin: menu thả xuống hiện đủ 3 mục (Đăng bài viết / Đăng video / Tạo album), trang chủ hiện dải nút; khách chưa đăng nhập thấy nút "✍️ Đăng bài" trên thanh đầu.
+  - **Chưa chạy thử:** trên điện thoại thật; không đăng bài / video thật qua giao diện mới.
+- File / commit: (xem huongdan.txt mục 7).

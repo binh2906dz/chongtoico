@@ -162,6 +162,22 @@ export default function Home() {
       <Hero slides={slides} top={data.videos.week} />
       <VideoCategoryBar />
 
+      <div className="flex flex-wrap items-center gap-2">
+        <Link to="/tao-chu-de" className="btn-primary px-4 py-2 text-sm">
+          ✍️ Đăng bài viết
+        </Link>
+        {user?.role === "admin" && (
+          <>
+            <Link to="/quan-tri?tab=videos" className="btn-ghost px-4 py-2 text-sm">
+              🎬 Đăng video
+            </Link>
+            <Link to="/quan-tri?tab=albums" className="btn-ghost px-4 py-2 text-sm">
+              📸 Tạo album
+            </Link>
+          </>
+        )}
+      </div>
+
       {noVideos ? (
         <div className="panel p-10 text-center">
           <div className="text-4xl">🎬</div>

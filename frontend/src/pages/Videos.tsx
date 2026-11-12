@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
+import { useAuth } from "../auth";
 import { ErrorBox, Pagination, Tabs, VideoGridSkeleton } from "../components/ui";
 import { VideoGrid } from "../components/VideoCard";
 import { formatNumber } from "../format";
@@ -88,6 +89,7 @@ export function VideoTags() {
 }
 
 export default function Videos() {
+  const { user } = useAuth();
   const { slug, tag: tagSlug } = useParams();
   const [params, setParams] = useSearchParams();
   const sortId = (SORT_TABS.find((t) => t.id === params.get("sap-xep"))?.id ?? "moi") as SortId;
@@ -141,6 +143,14 @@ export default function Videos() {
           {data && <span className="ml-2 text-sm font-normal text-muted">({formatNumber(data.total)} video)</span>}
         </h1>
         <div className="flex flex-wrap gap-2">
+          {user?.role === "admin" && (
+            <Link to="/quan-tri?tab=videos" className="btn-primary px-3 py-1.5">
+              ⬆️ Đăng video
+            </Link>
+          )}
+          <Link to="/tao-chu-de" className="btn-ghost px-3 py-1.5">
+            ✍️ Đăng bài
+          </Link>
           <form onSubmit={search} className="flex gap-2">
             <input className="input w-56 py-1.5" placeholder="Tìm video..." value={draft} onChange={(e) => setDraft(e.target.value)} />
             <button className="btn-ghost px-3 py-1.5">Tìm</button>
