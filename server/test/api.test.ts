@@ -112,7 +112,7 @@ describe("Chống Tối Cổ API", () => {
     assert.equal((await app.inject("/api/auth/me")).json().user, null);
   });
 
-  it("enforces staff-only categories", async () => {
+  it("enforces staff-only categories and admin-only posting", async () => {
     const cats = (await app.inject("/api/forum/categories")).json().categories;
     const announce = cats.find((c: { slug: string }) => c.slug === "thong-bao");
     const res = await app.inject({
@@ -122,6 +122,16 @@ describe("Chống Tối Cổ API", () => {
       payload: { categoryId: announce.id, title: "Không được", content: "x" },
     });
     assert.equal(res.statusCode, 403);
+
+    // Chỉ quản trị viên được tạo chủ đề mới.
+    const chat = cats.find((c: { slug: string }) => c.slug === "tan-gau");
+    const member = await app.inject({
+      method: "POST",
+      url: "/api/forum/threads",
+      headers: { ...H, cookie: alice.cookie },
+      payload: { categoryId: chat.id, title: "Thành viên không được đăng", content: "x" },
+    });
+    assert.equal(member.statusCode, 403);
   });
 
   it("creates threads, replies, likes and keeps counters", async () => {
@@ -130,16 +140,25 @@ describe("Chống Tối Cổ API", () => {
     let res = await app.inject({
       method: "POST",
       url: "/api/forum/threads",
-      headers: { ...H, cookie: alice.cookie },
+      headers: { ...H, cookie: admin },
       payload: { categoryId: chat.id, title: "Chào cả nhà", content: "Bài đầu tiên" },
     });
     assert.equal(res.statusCode, 200, res.body);
     threadId = res.json().thread.id;
 
+    // Thành viên không được trả lời trong chủ đề.
     res = await app.inject({
       method: "POST",
       url: `/api/forum/threads/${threadId}/posts`,
       headers: { ...H, cookie: bob.cookie },
+      payload: { content: "Chào bạn" },
+    });
+    assert.equal(res.statusCode, 403);
+
+    res = await app.inject({
+      method: "POST",
+      url: `/api/forum/threads/${threadId}/posts`,
+      headers: { ...H, cookie: admin },
       payload: { content: "Chào bạn" },
     });
     assert.equal(res.statusCode, 200, res.body);
@@ -148,20 +167,20 @@ describe("Chống Tối Cổ API", () => {
     const page = (await app.inject(`/api/forum/threads/${threadId}`)).json();
     assert.equal(page.posts.length, 2);
     assert.equal(page.thread.replyCount, 1);
-    assert.equal(page.thread.lastPoster.username, "Bob_1");
+    assert.equal(page.thread.lastPoster.username, "boss");
     firstPostId = page.posts[0].id;
 
     res = await app.inject({ method: "POST", url: `/api/forum/posts/${firstPostId}/like`, headers: { ...H, cookie: bob.cookie } });
     assert.deepEqual(res.json(), { liked: true, likeCount: 1 });
-    res = await app.inject({ method: "POST", url: `/api/forum/posts/${firstPostId}/like`, headers: { ...H, cookie: alice.cookie } });
+    res = await app.inject({ method: "POST", url: `/api/forum/posts/${firstPostId}/like`, headers: { ...H, cookie: admin } });
     assert.equal(res.statusCode, 400);
 
     const liked = (await app.inject({ url: `/api/forum/threads/${threadId}`, headers: { cookie: bob.cookie } })).json();
     assert.equal(liked.posts[0].likedByMe, true);
 
-    const profile = (await app.inject("/api/members/alice")).json().user;
+    const profile = (await app.inject("/api/members/boss")).json().user;
     assert.equal(profile.threadCount, 1);
-    assert.equal(profile.postCount, 1);
+    assert.equal(profile.postCount, 2);
     assert.equal(profile.likeCount, 1);
   });
 
@@ -207,12 +226,12 @@ describe("Chống Tối Cổ API", () => {
   });
 
   it("deletes a reply and updates counters", async () => {
-    const res = await app.inject({ method: "DELETE", url: `/api/forum/posts/${replyId}`, headers: { ...H, cookie: bob.cookie } });
+    const res = await app.inject({ method: "DELETE", url: `/api/forum/posts/${replyId}`, headers: { ...H, cookie: admin } });
     assert.equal(res.statusCode, 200, res.body);
     const page = (await app.inject(`/api/forum/threads/${threadId}`)).json();
     assert.equal(page.thread.replyCount, 0);
-    assert.equal(page.thread.lastPoster.username, "alice");
-    assert.equal((await app.inject("/api/members/Bob_1")).json().user.postCount, 0);
+    assert.equal(page.thread.lastPoster.username, "boss");
+    assert.equal((await app.inject("/api/members/boss")).json().user.postCount, 1);
   });
 
   it("chat messages", async () => {
@@ -326,12 +345,21 @@ describe("Chống Tối Cổ API", () => {
     res = await app.inject({
       method: "POST",
       url: "/api/uploads/image",
-      headers: { ...H, cookie: alice.cookie, "content-type": mp.contentType },
+      headers: { ...H, cookie: admin, "content-type": mp.contentType },
       payload: mp.payload,
     });
     assert.equal(res.statusCode, 200, res.body);
     assert.match(res.json().markup, /^\[img:[a-f0-9]{32}\]$/);
     assert.equal((await app.inject(res.json().url)).statusCode, 200);
+
+    // Thành viên không được tải ảnh lên.
+    res = await app.inject({
+      method: "POST",
+      url: "/api/uploads/image",
+      headers: { ...H, cookie: alice.cookie, "content-type": mp.contentType },
+      payload: mp.payload,
+    });
+    assert.equal(res.statusCode, 403);
   });
 
   it("support chat: guest and staff", async () => {
@@ -432,16 +460,19 @@ describe("Chống Tối Cổ API", () => {
 
     res = await app.inject({ method: "POST", url: "/api/admin/recount", headers: { ...H, cookie: admin } });
     assert.equal(res.statusCode, 200, res.body);
-    const profile = (await app.inject("/api/members/alice")).json().user;
+    const profile = (await app.inject("/api/members/boss")).json().user;
     assert.equal(profile.postCount, 1);
     assert.equal(profile.likeCount, 1);
+    const aliceProfile = (await app.inject("/api/members/alice")).json().user;
+    assert.equal(aliceProfile.postCount, 0);
+    assert.equal(aliceProfile.likeCount, 0);
   });
 
   it("deleting the first post deletes the thread and fixes counters", async () => {
-    const res = await app.inject({ method: "DELETE", url: `/api/forum/posts/${firstPostId}`, headers: { ...H, cookie: alice.cookie } });
+    const res = await app.inject({ method: "DELETE", url: `/api/forum/posts/${firstPostId}`, headers: { ...H, cookie: admin } });
     assert.equal(res.json().threadDeleted, true);
     assert.equal((await app.inject(`/api/forum/threads/${threadId}`)).statusCode, 404);
-    const profile = (await app.inject("/api/members/alice")).json().user;
+    const profile = (await app.inject("/api/members/boss")).json().user;
     assert.equal(profile.threadCount, 0);
     assert.equal(profile.postCount, 0);
     assert.equal(profile.likeCount, 0);

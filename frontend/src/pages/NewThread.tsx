@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { api, errorMessage } from "../api";
-import { isStaff, useAuth } from "../auth";
+import { isAdmin, useAuth } from "../auth";
 import Editor from "../components/Editor";
 import { ErrorBox, Spinner } from "../components/ui";
 import { useFetch } from "../useFetch";
@@ -18,7 +18,7 @@ export default function NewThread() {
   const [error, setError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
 
-  const allowed = (data?.categories ?? []).filter((c) => !c.staffOnly || isStaff(user));
+  const allowed = (data?.categories ?? []).filter((c) => !c.staffOnly || isAdmin(user));
 
   useEffect(() => {
     if (categoryId !== null || !allowed.length) return;
@@ -27,13 +27,21 @@ export default function NewThread() {
   }, [allowed, categoryId, params]);
 
   if (authLoading) return <Spinner />;
-  if (!user) {
+  if (!user || !isAdmin(user)) {
     return (
       <div className="panel mx-auto max-w-lg p-6 text-center">
-        <p className="mb-4 text-muted">Bạn cần đăng nhập để tạo chủ đề.</p>
-        <Link to="/dang-nhap" className="btn-primary">
-          Đăng nhập
-        </Link>
+        <p className="mb-4 text-muted">
+          {user ? "Chỉ quản trị viên mới được tạo chủ đề mới." : "Bạn cần đăng nhập để tạo chủ đề."}
+        </p>
+        {user ? (
+          <Link to="/dien-dan" className="btn-primary">
+            Vào diễn đàn
+          </Link>
+        ) : (
+          <Link to="/dang-nhap" className="btn-primary">
+            Đăng nhập
+          </Link>
+        )}
       </div>
     );
   }

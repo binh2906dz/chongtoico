@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { api, errorMessage } from "../api";
-import { isStaff, useAuth } from "../auth";
+import { isAdmin, isStaff, useAuth } from "../auth";
 import Editor from "../components/Editor";
 import { ReportButton } from "../components/Extras";
 import { Avatar, ErrorBox, ListSkeleton, Pagination, PostContent, RoleBadge, Spinner, UserLink } from "../components/ui";
@@ -186,7 +186,7 @@ export default function ThreadPage() {
   if (error || !data) return <ErrorBox message={error} />;
   const { thread } = data;
   const staff = isStaff(user);
-  const canReply = !!user && !user.isBanned && (!thread.isLocked || staff);
+  const canReply = isAdmin(user) && !user?.isBanned && (!thread.isLocked || staff);
 
   async function send(e: FormEvent) {
     e.preventDefault();
@@ -297,7 +297,9 @@ export default function ThreadPage() {
             </Link>
           </div>
         ) : (
-          <div className="text-sm text-muted">{user.isBanned ? "Tài khoản đang bị khoá." : "Chủ đề đã bị khoá, không thể trả lời."}</div>
+          <div className="text-sm text-muted">
+            {user.isBanned ? "Tài khoản đang bị khoá." : "Chỉ quản trị viên mới được trả lời trong chủ đề."}
+          </div>
         )}
       </section>
 

@@ -2,7 +2,7 @@ import { and, asc, desc, eq, gt, ilike, inArray, lte, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { author, authorColumns, isStaff, requireActive } from "../auth.js";
+import { author, authorColumns, isAdmin, isStaff, requireActive } from "../auth.js";
 import { config } from "../config.js";
 import { db } from "../db/index.js";
 import { categories, postLikes, posts, threads, threadWatches, uploads, userFollows, users } from "../db/schema.js";
@@ -279,6 +279,7 @@ export default async function forumRoutes(app: FastifyInstance) {
     { config: { rateLimit: { max: 10, timeWindow: "10 minutes" } } },
     async (req) => {
       const user = requireActive(req);
+      if (!isAdmin(user)) throw forbidden("Chỉ quản trị viên được tạo chủ đề mới.");
       const body = parse(
         z.object({ categoryId: z.number().int().positive(), title: titleSchema, content: contentSchema }),
         req.body,
@@ -376,6 +377,7 @@ export default async function forumRoutes(app: FastifyInstance) {
     { config: { rateLimit: { max: 20, timeWindow: "1 minute" } } },
     async (req) => {
       const user = requireActive(req);
+      if (!isAdmin(user)) throw forbidden("Chỉ quản trị viên được trả lời trong chủ đề.");
       const { id } = parse(idParam, req.params);
       const body = parse(z.object({ content: contentSchema }), req.body);
       const [thread] = await db.select().from(threads).where(eq(threads.id, id)).limit(1);
@@ -496,6 +498,7 @@ export default async function forumRoutes(app: FastifyInstance) {
     { config: { rateLimit: { max: 30, timeWindow: "10 minutes" } } },
     async (req) => {
       const user = requireActive(req);
+      if (!isAdmin(user)) throw forbidden("Chỉ quản trị viên được tải ảnh lên.");
       const file = await req.file({ limits: { fileSize: config.maxUploadMb * 1024 * 1024 } });
       if (!file) throw badRequest("Chưa chọn ảnh.");
       const stored = await storeImage("posts", await file.toBuffer());

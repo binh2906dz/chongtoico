@@ -1,10 +1,12 @@
 import { Link } from "react-router-dom";
+import { isAdmin, useAuth } from "../auth";
 import { ErrorBox, ListSkeleton, UserLink } from "../components/ui";
 import { formatNumber, timeAgo } from "../format";
 import { useFetch } from "../useFetch";
 import type { Category } from "../types";
 
 export default function Forum() {
+  const { user } = useAuth();
   const { data, error, loading } = useFetch<{ categories: Category[] }>("/api/forum/categories");
   if (loading && !data) return <ListSkeleton rows={8} />;
   if (error || !data) return <ErrorBox message={error} />;
@@ -12,9 +14,11 @@ export default function Forum() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-black">Diễn đàn</h1>
-        <Link to="/tao-chu-de" className="btn-primary">
-          + Tạo chủ đề
-        </Link>
+        {isAdmin(user) && (
+          <Link to="/tao-chu-de" className="btn-primary">
+            + Tạo chủ đề
+          </Link>
+        )}
       </div>
       <section className="panel divide-y divide-line">
         {data.categories.map((c) => (

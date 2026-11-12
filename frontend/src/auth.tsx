@@ -58,3 +58,4 @@ export function useAuth() {
 }
 
 export const isStaff = (u: Profile | null) => !!u && (u.role === "admin" || u.role === "mod");
+export const isAdmin = (u: Profile | null) => !!u && u.role === "admin";

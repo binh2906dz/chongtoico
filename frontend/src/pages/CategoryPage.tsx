@@ -1,10 +1,12 @@
 import { Link, useParams } from "react-router-dom";
+import { isAdmin, useAuth } from "../auth";
 import { ErrorBox, ListSkeleton, Pagination, ThreadRows } from "../components/ui";
 import { usePage } from "../usePage";
 import { useFetch } from "../useFetch";
 import type { Category, ThreadItem } from "../types";
 
 export default function CategoryPage() {
+  const { user } = useAuth();
   const { slug } = useParams();
   const [page, setPage] = usePage();
   const { data, error, loading } = useFetch<{ category: Category; threads: ThreadItem[]; page: number; totalPages: number }>(
@@ -28,9 +30,11 @@ export default function CategoryPage() {
           </h1>
           <p className="text-sm text-muted">{category.description}</p>
         </div>
-        <Link to={`/tao-chu-de?cm=${category.slug}`} className="btn-primary">
-          + Tạo chủ đề
-        </Link>
+        {isAdmin(user) && (
+          <Link to={`/tao-chu-de?cm=${category.slug}`} className="btn-primary">
+            + Tạo chủ đề
+          </Link>
+        )}
       </div>
       <section className="panel">
         <ThreadRows threads={data.threads} showCategory={false} />

@@ -106,6 +106,7 @@ Bản 2 (2026-11-07) — lai thêm mảng video:
 | 2026-11-08 | **Gợi ý ngẫu nhiên** để nội dung cũ không bị chìm: video liên quan trộn video cùng thể loại với video ngẫu nhiên; trang chủ có khung video ngẫu nhiên; trang chủ đề (bài viết) có khung "Video đề xuất" ngẫu nhiên. |
 | 2026-11-08 | **Làm đẹp giao diện** (web chủ yếu đăng ảnh / video, cần hút người xem; chủ dự án thích thẩm mỹ shiperx — chỉ học cách làm nội dung nổi bật, không chép giao diện / chữ, N2): màu **đỏ – hồng trên nền đen**; **banner trượt lớn** đầu trang chủ (video / album HOT); **thẻ video / album mới** (to hơn, nhãn HOT / MỚI / HD, lượt xem đè lên ảnh); **khung mờ lúc tải** (skeleton); **trang chủ ảnh + video lên trên**, chủ đề diễn đàn + chat dồn xuống dưới gọn lại. **Tối ưu**: tách nhỏ code (khách không tải phần Quản trị / trình soạn thảo), máy chủ nhớ tạm trang chủ 30 giây cho khách, ảnh bìa nhiều cỡ. **Không làm**: xem trước video khi rê chuột, hàng vuốt ngang, thanh điều hướng đáy, lightbox mới, cuộn vô hạn. |
 | 2026-11-07 | Thêm: **theo dõi chủ đề / theo dõi thành viên** (trang "Đang theo dõi"), **trình soạn thảo đẹp hơn** (đậm, nghiêng, gạch, trích dẫn, ẩn nội dung, liên kết, ảnh, emoji). Chưa làm thông báo, tin nhắn riêng, báo vi phạm. Phần "sửa giao diện/chức năng có sẵn": chờ chủ dự án mô tả. |
+| 2026-11-12 | **Quyền đăng bài: chỉ ADMIN.** Chủ dự án chốt: tài khoản người dùng (member) **không được đăng bài viết / chủ đề, không được trả lời trong chủ đề, không được tải ảnh lên**; **mod và admin mới được tạo album**; **chỉ admin** được đăng bài viết, đăng video, tải ảnh lên. Thực hiện ở **cả máy chủ (API) và giao diện** — ẩn nút ở giao diện không đủ, phải chặn ở API. Thành viên vẫn xem, thích, bình luận video, đăng tin nhắn chat. |
 
 ## 7. Câu hỏi còn mở
 
@@ -272,3 +273,14 @@ Mẫu mỗi mục:
 - Đã kiểm tra: `npm run build` giao diện không lỗi; chạy app thật tại máy, đăng nhập admin: menu thả xuống hiện đủ 3 mục (Đăng bài viết / Đăng video / Tạo album), trang chủ hiện dải nút; khách chưa đăng nhập thấy nút "✍️ Đăng bài" trên thanh đầu.
   - **Chưa chạy thử:** trên điện thoại thật; không đăng bài / video thật qua giao diện mới.
 - File / commit: `759fcb5`.
+
+### 2026-11-12 — Thay đổi — Quyền đăng bài: chỉ quản trị viên
+- Việc đã làm:
+  - **Máy chủ** (`server/src/routes/forum.ts`): `POST /api/forum/threads` → `isAdmin(user)` bắt buộc; `POST /api/forum/threads/:id/posts` (trả lời) → `isAdmin(user)` bắt buộc; `POST /api/uploads/image` (tải ảnh lên) → `isAdmin(user)` bắt buộc. Thêm `isAdmin` vào import.
+  - **Giao diện**: thêm `isAdmin()` vào `frontend/src/auth.tsx`; `Layout.tsx` (menu thả xuống) chỉ hiện cho admin, mod chỉ thấy nút "📸 Tạo album", thành viên không thấy nút đăng; `Home.tsx` (dải nút + mục "Đăng chủ đề mới"), `Videos.tsx`, `Forum.tsx`, `CategoryPage.tsx` chỉ hiện nút cho admin; `NewThread.tsx` chặn người không phải admin (thông báo + nút "Vào diễn đàn"); `ThreadPage.tsx` ẩn ô trả lời với người không phải admin.
+  - **Kiểm thử** (`server/test/api.test.ts`): đổi các ca thành viên tạo chủ đề / trả lời / tải ảnh sang admin; thêm ca mới "enforces staff-only categories and admin-only posting" (thành viên tạo chủ đề → 403); album vẫn do staff (admin + mod) quản lý, giữ nguyên.
+- Lý do: chủ dự án yêu cầu "quyền đăng bài viết hay video chỉ có tài khoản admin mới được đăng, tài khoản người dùng không đăng được"; hỏi thêm và được chốt: **chặn luôn cả trả lời** (diễn đàn do admin quản lý), **album vẫn cho mod** (mục 6 ngày 2026-11-12).
+- Bài học / cách tránh: **chỉ ẩn nút ở giao diện là không đủ** — thành viên vẫn gọi thẳng API được; phải chặn ở máy chủ (`isAdmin` trong `auth.ts`) rồi mới ẩn nút ở giao diện. Khi đổi quyền, phải sửa cả **kiểm thử** vì test cũ mô tả hành vi cũ.
+- Đã kiểm tra: `npx tsc --noEmit` (máy chủ) không lỗi; `npm run build` (giao diện) không lỗi; `npm test` 16/16 pass; chạy app thật tại máy (cổng 8090) — đăng ký tài khoản thường rồi gọi `POST /api/forum/threads` → **403 Forbidden** như mong đợi; `/healthz` trả `{"ok":true}`.
+  - **Chưa chạy thử:** đăng nhập admin trên giao diện thật để xác nhận menu 3 mục; trên điện thoại thật; trên VPS.
+- File / commit: (xem `git log`).

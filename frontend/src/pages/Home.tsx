@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api";
-import { useAuth } from "../auth";
+import { useAuth, isAdmin } from "../auth";
 import ChatBox from "../components/ChatBox";
 import { AdBanner } from "../components/Extras";
 import Hero, { buildHeroSlides } from "../components/Hero";
@@ -93,6 +93,7 @@ function HomeSkeleton() {
 function CommunityBlock({ data }: { data: HomeData }) {
   const [tab, setTab] = useState<FeedTab>("latest");
   const [channel, setChannel] = useState<Channel | null>(null);
+  const { user } = useAuth();
 
   useEffect(() => {
     api<{ channels: Channel[] }>("/api/chat/channels")
@@ -122,9 +123,13 @@ function CommunityBlock({ data }: { data: HomeData }) {
             empty={tab === "latest" ? "Chưa có chủ đề nào." : "Chưa có chủ đề nào sôi nổi trong khoảng thời gian này."}
           />
           <div className="flex items-center justify-between border-t border-line px-4 py-2">
-            <Link to="/tao-chu-de" className="text-sm font-semibold text-slate-300 hover:text-brand">
-              ✍️ Đăng chủ đề mới
-            </Link>
+            {isAdmin(user) ? (
+              <Link to="/tao-chu-de" className="text-sm font-semibold text-slate-300 hover:text-brand">
+                ✍️ Đăng chủ đề mới
+              </Link>
+            ) : (
+              <span className="text-sm text-muted">Chỉ quản trị viên được đăng chủ đề.</span>
+            )}
             <Link to="/moi" className="text-sm text-brand hover:underline">
               Xem tất cả →
             </Link>
@@ -162,21 +167,19 @@ export default function Home() {
       <Hero slides={slides} top={data.videos.week} />
       <VideoCategoryBar />
 
-      <div className="flex flex-wrap items-center gap-2">
-        <Link to="/tao-chu-de" className="btn-primary px-4 py-2 text-sm">
-          ✍️ Đăng bài viết
-        </Link>
-        {user?.role === "admin" && (
-          <>
-            <Link to="/quan-tri?tab=videos" className="btn-ghost px-4 py-2 text-sm">
-              🎬 Đăng video
-            </Link>
-            <Link to="/quan-tri?tab=albums" className="btn-ghost px-4 py-2 text-sm">
-              📸 Tạo album
-            </Link>
-          </>
-        )}
-      </div>
+      {isAdmin(user) && (
+        <div className="flex flex-wrap items-center gap-2">
+          <Link to="/tao-chu-de" className="btn-primary px-4 py-2 text-sm">
+            ✍️ Đăng bài viết
+          </Link>
+          <Link to="/quan-tri?tab=videos" className="btn-ghost px-4 py-2 text-sm">
+            🎬 Đăng video
+          </Link>
+          <Link to="/quan-tri?tab=albums" className="btn-ghost px-4 py-2 text-sm">
+            📸 Tạo album
+          </Link>
+        </div>
+      )}
 
       {noVideos ? (
         <div className="panel p-10 text-center">

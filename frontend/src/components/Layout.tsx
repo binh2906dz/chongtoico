@@ -42,13 +42,22 @@ function CreateMenu() {
 
   if (!user) {
     return (
-      <Link to="/dang-nhap" className="btn-primary hidden px-3 py-1.5 sm:inline-flex">
+      <Link to="/dang-nhap" className="btn-ghost hidden px-3 py-1.5 sm:inline-flex">
         ✍️ Đăng bài
       </Link>
     );
   }
 
-  const canPost = user.role === "admin" || user.role === "mod" || user.role === "member";
+  // Chỉ quản trị viên được đăng bài viết / video; mod chỉ tạo album; thành viên không được đăng.
+  if (user.role === "mod") {
+    return (
+      <Link to="/quan-tri?tab=albums" className="btn-ghost hidden px-3 py-1.5 sm:inline-flex">
+        📸 Tạo album
+      </Link>
+    );
+  }
+  if (user.role !== "admin") return null;
+
   return (
     <div className="relative" ref={ref}>
       <button onClick={() => setOpen((o) => !o)} className="btn-primary px-3 py-1.5 text-sm">
@@ -57,21 +66,15 @@ function CreateMenu() {
       </button>
       {open && (
         <div className="panel absolute right-0 z-40 mt-2 w-56 overflow-hidden py-1 shadow-xl shadow-black/40">
-          {canPost && (
-            <Link to="/tao-chu-de" onClick={() => setOpen(false)} className="flex items-center gap-2 px-4 py-2 text-sm hover:bg-panel-2">
-              <span>✍️</span> Đăng bài viết
-            </Link>
-          )}
-          {user.role === "admin" && (
-            <Link to="/quan-tri?tab=videos" onClick={() => setOpen(false)} className="flex items-center gap-2 px-4 py-2 text-sm hover:bg-panel-2">
-              <span>🎬</span> Đăng video
-            </Link>
-          )}
-          {(user.role === "admin" || user.role === "mod") && (
-            <Link to="/quan-tri?tab=albums" onClick={() => setOpen(false)} className="flex items-center gap-2 px-4 py-2 text-sm hover:bg-panel-2">
-              <span>📸</span> Tạo album
-            </Link>
-          )}
+          <Link to="/tao-chu-de" onClick={() => setOpen(false)} className="flex items-center gap-2 px-4 py-2 text-sm hover:bg-panel-2">
+            <span>✍️</span> Đăng bài viết
+          </Link>
+          <Link to="/quan-tri?tab=videos" onClick={() => setOpen(false)} className="flex items-center gap-2 px-4 py-2 text-sm hover:bg-panel-2">
+            <span>🎬</span> Đăng video
+          </Link>
+          <Link to="/quan-tri?tab=albums" onClick={() => setOpen(false)} className="flex items-center gap-2 px-4 py-2 text-sm hover:bg-panel-2">
+            <span>📸</span> Tạo album
+          </Link>
         </div>
       )}
     </div>

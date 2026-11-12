@@ -231,6 +231,11 @@ Hàng chờ: Quản trị > Báo vi phạm (mod + admin).
 - Socket: client tự kết nối lại sau đăng nhập/đăng xuất và sau tin CSKH đầu
   tiên của khách (để server đọc lại cookie và cho vào đúng phòng).
 - Chạy test trước khi push: cd server && npm test ; cd frontend && npm run build
+- QUYỀN ĐĂNG (2026-11-12): chỉ ADMIN được tạo chủ đề, trả lời chủ đề và tải
+  ảnh lên (/api/forum/threads, /api/forum/threads/:id/posts, /api/uploads/image
+  — kiểm tra isAdmin trong server/src/auth.ts). Mod + admin quản lý album.
+  Thành viên vẫn xem / thích / bình luận video, nhắn chat. Thêm quyền mới
+  => chặn ở API trước, sau đó mới ẩn nút ở giao diện.
 
 --------------------------------------------------------------------------------
 6) VIỆC CÒN LẠI / KẾ HOẠCH
@@ -252,6 +257,7 @@ Hàng chờ: Quản trị > Báo vi phạm (mod + admin).
 7) LỊCH SỬ GIT (oneline — cập nhật sau mỗi lần push)
 --------------------------------------------------------------------------------
 (xem `git log --oneline`; các commit chính)
+1cf2319 docs: record 759fcb5
 759fcb5 feat(ui): add prominent post/upload buttons in header, home and video pages
 18f3003 feat(ui): red-pink theme, hero slider, new video/album cards, skeleton loading, home reorder; perf: route code splitting, 30s guest home cache, multi-size images
 698bf49 feat: hybrid upgrade - trusted proxy fix, notifications, reports, tags, favorites, comment replies/votes, members-only videos, random recommendations, notice bar, ads, rules/takedown pages, admin password reset, cleanup job, backup script, ffmpeg faststart
@@ -291,6 +297,12 @@ b22c5f7 feat: scaffold new platform (đã thay thế — xoá ở bản Node.js)
   skeleton lúc tải, trang chủ ảnh + video lên trên. Tách code theo trang
   (React.lazy), máy chủ nhớ tạm /api/home 30 giây cho khách, ảnh nhiều cỡ
   (_s / _m, tạo lúc tải hoặc lần đầu có người xem). Không đổi DB.
+[2026-11-12] Quyền đăng bài: chỉ quản trị viên. Máy chủ chặn
+  POST /api/forum/threads, POST /api/forum/threads/:id/posts (trả lời) và
+  POST /api/uploads/image bằng isAdmin(); giao diện ẩn nút đăng ở Layout /
+  Home / Videos / Forum / CategoryPage, chặn trang /tao-chu-de và ô trả lời ở
+  ThreadPage. Album vẫn do staff (admin + mod) quản lý. Thêm isAdmin() vào
+  frontend/src/auth.tsx. Không đổi DB.
 
 ================================================================================
 Hết — lưu ý: không lưu mật khẩu / token thật trong file này.
