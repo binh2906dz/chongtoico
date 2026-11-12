@@ -283,4 +283,4 @@ Mẫu mỗi mục:
 - Bài học / cách tránh: **chỉ ẩn nút ở giao diện là không đủ** — thành viên vẫn gọi thẳng API được; phải chặn ở máy chủ (`isAdmin` trong `auth.ts`) rồi mới ẩn nút ở giao diện. Khi đổi quyền, phải sửa cả **kiểm thử** vì test cũ mô tả hành vi cũ.
 - Đã kiểm tra: `npx tsc --noEmit` (máy chủ) không lỗi; `npm run build` (giao diện) không lỗi; `npm test` 16/16 pass; chạy app thật tại máy (cổng 8090) — đăng ký tài khoản thường rồi gọi `POST /api/forum/threads` → **403 Forbidden** như mong đợi; `/healthz` trả `{"ok":true}`.
   - **Chưa chạy thử:** đăng nhập admin trên giao diện thật để xác nhận menu 3 mục; trên điện thoại thật; trên VPS.
-- File / commit: (xem `git log`).
+- File / commit: `1f9dae9`.

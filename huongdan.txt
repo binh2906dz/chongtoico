@@ -257,6 +257,7 @@ Hàng chờ: Quản trị > Báo vi phạm (mod + admin).
 7) LỊCH SỬ GIT (oneline — cập nhật sau mỗi lần push)
 --------------------------------------------------------------------------------
 (xem `git log --oneline`; các commit chính)
+1f9dae9 feat(auth): admin-only posting - threads, replies and image uploads restricted to admin; staff keeps album management
 1cf2319 docs: record 759fcb5
 759fcb5 feat(ui): add prominent post/upload buttons in header, home and video pages
 18f3003 feat(ui): red-pink theme, hero slider, new video/album cards, skeleton loading, home reorder; perf: route code splitting, 30s guest home cache, multi-size images
