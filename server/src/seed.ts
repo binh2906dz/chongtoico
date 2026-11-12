@@ -2,7 +2,7 @@ import { count, eq } from "drizzle-orm";
 import { hashPassword } from "./auth.js";
 import { config } from "./config.js";
 import { db } from "./db/index.js";
-import { categories, chatChannels, users, videoCategories } from "./db/schema.js";
+import { articleCategories, categories, chatChannels, users } from "./db/schema.js";
 
 const DEFAULT_CATEGORIES = [
   { slug: "thong-bao", title: "Thông báo", description: "Tin tức và thông báo từ ban quản trị.", icon: "📢", staffOnly: true },
@@ -21,7 +21,7 @@ const DEFAULT_CHANNELS = [
   { slug: "bao-loi", name: "Báo lỗi", description: "Báo lỗi website, góp ý nhanh." },
 ];
 
-const DEFAULT_VIDEO_CATEGORIES = [
+const DEFAULT_ARTICLE_CATEGORIES = [
   { slug: "hai-huoc", name: "Hài hước" },
   { slug: "giai-tri", name: "Giải trí" },
   { slug: "am-nhac", name: "Âm nhạc" },
@@ -35,10 +35,10 @@ const DEFAULT_VIDEO_CATEGORIES = [
 ];
 
 export async function seed(log: (msg: string) => void = console.log) {
-  const [{ n: vcCount }] = await db.select({ n: count() }).from(videoCategories);
+  const [{ n: vcCount }] = await db.select({ n: count() }).from(articleCategories);
   if (vcCount === 0) {
-    await db.insert(videoCategories).values(DEFAULT_VIDEO_CATEGORIES.map((c, i) => ({ ...c, sortOrder: i + 1 })));
-    log(`seed: created ${DEFAULT_VIDEO_CATEGORIES.length} video categories`);
+    await db.insert(articleCategories).values(DEFAULT_ARTICLE_CATEGORIES.map((c, i) => ({ ...c, sortOrder: i + 1 })));
+    log(`seed: created ${DEFAULT_ARTICLE_CATEGORIES.length} article categories`);
   }
   const [{ n: catCount }] = await db.select({ n: count() }).from(categories);
   if (catCount === 0) {

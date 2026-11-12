@@ -57,76 +57,88 @@ Thư mục:
 - server/src/maintenance.ts  — dọn định kỳ 6 giờ/lần: phiên hết hạn, ảnh trình
                                soạn thảo không còn dùng (>1 ngày), lượt xem theo
                                ngày >60 ngày, thông báo đã đọc >90 ngày
-- server/src/routes/*.ts     — auth, forum, chat, albums, members (thống kê,
+- server/src/routes/*.ts     — auth, forum, chat, articles (bài viết đa phương tiện:
+                               nhiều ảnh + nhiều video, ảnh bìa do admin chọn,
+                               thể loại, tag, bình chọn, bình luận + trả lời + vote,
+                               lịch sử, yêu thích / xem sau), members (thống kê,
                                trang cá nhân, trang chủ), support (CSKH), admin, media,
-                               videos (video, thể loại, tag, bình chọn, bình luận
-                               + trả lời + vote, lịch sử, yêu thích / xem sau),
                                follow (theo dõi), notifications, site (cài đặt
                                trang + báo vi phạm)
 - server/test/api.test.ts    — kiểm thử API trên PGlite trong bộ nhớ (CHƯA có
-                               bài cho video / theo dõi / thông báo / báo vi phạm)
-- frontend/src/pages/        — Home (video là chính), Videos (+ VideoTags),
-                               VideoPage, VideoHistory, SavedVideos, Notifications,
+                               bài cho theo dõi / thông báo / báo vi phạm; đã có
+                               bài "articles" cho bài viết đa phương tiện)
+- frontend/src/pages/        — Home (bài viết là chính), Articles (+ thẻ), ArticlePage,
+                               ArticleHistory, SavedArticles, Notifications,
                                Following, Forum, CategoryPage, ThreadPage (+
-                               PostRedirect), NewThread, WhatsNew, Albums,
-                               AlbumView, Chat, Member, Search, AuthPages,
+                               PostRedirect), NewThread, WhatsNew,
+                               Chat, Member, Search, AuthPages,
                                StaticPages (+ Nội quy, Gỡ nội dung), admin/*
-- frontend/src/App.tsx       — các trang (trừ trang chủ / Video / Album) tải
+- frontend/src/App.tsx       — các trang (trừ trang chủ / bài viết) tải
                                riêng khi cần (React.lazy); tab cũ sau khi cập
                                nhật web tự tải lại 1 lần nếu thiếu file trang
 - frontend/src/components/   — Layout, Hero (banner trượt + Hay nhất tuần),
                                ChatBox, SupportWidget, Sidebar, Editor
-                               (BBCode), VideoCard, NotificationBell, Extras
+                               (BBCode), ArticleCard, NotificationBell, Extras
                                (Modal, ReportButton, ShareBar, AdBanner,
                                NoticeBar), ui (PostContent = bộ hiển thị BBCode)
 - frontend/src/site.tsx      — context cài đặt trang (GET /api/site)
 - scripts/install.sh, update.sh, backup.sh
 
-Đường dẫn giao diện: / , /video , /video/the-loai/:slug , /video/tag ,
-/video/tag/:slug , /video/:id , /video/da-xem , /video/yeu-thich (?ds=xem-sau) ,
-/thong-bao , /bai/:id (chuyển tới bài trong chủ đề) , /dang-theo-doi ,
-/dien-dan , /dien-dan/:slug , /chu-de/:id , /tao-chu-de , /moi , /album ,
-/album/:id , /chat , /thanh-vien/:ten , /tim-kiem , /dang-nhap , /dang-ky ,
-/quan-tri (?tab=reports|videos|settings ...) , /noi-quy , /go-noi-dung ,
+Đường dẫn giao diện: / , /bai-viet , /bai-viet/tag/:slug , /bai-viet/:id ,
+/bai-viet/da-xem , /bai-viet/yeu-thich (?ds=xem-sau) , /thong-bao ,
+/bai/:id (chuyển tới bài trong chủ đề) , /dang-theo-doi ,
+/dien-dan , /dien-dan/:slug , /chu-de/:id , /tao-chu-de , /moi ,
+/chat , /thanh-vien/:ten , /tim-kiem , /dang-nhap , /dang-ky ,
+/quan-tri (?tab=reports|bai-viet|settings ...) , /noi-quy , /go-noi-dung ,
 /dieu-khoan , /quyen-rieng-tu , /lien-he
 
-Video:
-- Chỉ admin đăng (Quản trị > Video). Trình duyệt admin đọc thời lượng, kích
-  thước và chụp 1 khung hình làm ảnh bìa rồi gửi kèm. KHÔNG chuyển mã. Nhận
-  mp4 / webm / mov; nên đăng mp4 H.264 (HEVC/H.265 nhiều máy không phát).
+Bài viết (đa phương tiện — thay mảng video + album cũ):
+- Một bài viết chứa được nhiều ảnh VÀ nhiều video (hoặc chỉ ảnh, hoặc chỉ video).
+  Chỉ admin đăng (Quản trị > Bài viết). Cơ sở dữ liệu: bảng articles +
+  article_images + article_videos + article_categories + article_tags +
+  article_tag_links + article_votes + article_comments +
+  article_comment_votes + article_saves + article_view_days +
+  article_history (migration 0003_articles.sql; bảng videos / albums /
+  album_images đã bị xoá, dữ liệu cũ không chuyển sang).
+- Ảnh bìa do admin chọn: articles.coverType = none | image | video,
+  coverImageKey, coverDuration. API POST /api/admin/articles/:id/cover
+  ({type, imageId? | videoId?}). Ảnh đầu tiên / video đầu tiên tự làm bìa nếu admin
+  chưa chọn. Danh sách ngoài (thẻ trang chủ, banner trượt, khối "Bài viết mới
+  nhất") chỉ hiện đúng 1 ảnh hoặc 1 video theo bìa đã chọn.
+- Tải ảnh: POST /api/admin/articles/:id/images (field "file") — ảnh nhiều cỡ
+  (_t 480px thẻ/lưới, _s, _m 1280px banner). Tải video:
+  POST /api/admin/articles/:id/videos (field "video" + "thumb" ảnh bìa do trình
+  duyệt admin tạo). Trình duyệt admin đọc thời lượng, kích thước và chụp
+  1 khung hình làm ảnh bìa rồi gửi kèm. KHÔNG chuyển mã. Nhận mp4 / webm / mov.
 - Sau khi tải lên (chạy nền, không chặn phản hồi): nếu có ffmpeg (Docker có
-  sẵn) => mp4/mov chưa "faststart" được remux `-c copy -movflags +faststart`
+  sẵn) => mp4/mov chưa "faststart" được remux -c copy -movflags +faststart
   (chỉ sắp lại, không giảm chất lượng; cần thêm dung lượng trống bằng cỡ file
   trong lúc chạy). Thiếu thời lượng / ảnh bìa => ffprobe / ffmpeg tự lấy.
   Máy không có ffmpeg => bỏ qua, video vẫn dùng được.
 - File video: /media/v/<mã>.<đuôi> (@fastify/static, hỗ trợ tua bằng HTTP
   Range). Ảnh bìa: /media/t/<mã>.webp. Ảnh quảng cáo: /media/b/<mã>.webp.
-- Ảnh nhiều cỡ: ảnh bìa video lưu tối đa 1280px + bản _s (480px) cho thẻ trên
-  điện thoại; ảnh album có _t (480px, thẻ / lưới), _s (480px), _m (1280px,
-  banner trang chủ). Bản _s / _m của ảnh cũ được tạo lần đầu có người xem
-  (ensureVariant trong media.ts) rồi lưu lại trên đĩa. Xoá ảnh xoá mọi cỡ.
-- Nhãn HOT trên thẻ video = 12 video nhiều lượt xem nhất 7 ngày (tối thiểu 10
+- Nhãn HOT trên thẻ = 12 bài viết nhiều lượt xem nhất 7 ngày (tối thiểu 10
   lượt), tính lại 5 phút / lần. Nhãn MỚI = đăng trong 48 giờ (giao diện tính).
 - /api/home: khách dùng chung một bản nhớ tạm 30 giây (giảm tải DB khi đông);
   thành viên luôn lấy mới.
-- Video "chỉ thành viên" (videos.visibility = members): khách thấy thẻ + ảnh
-  bìa nhưng trang xem bị khoá, file /media/v/ trả 403. Danh sách mã file bị
+- Bài viết "chỉ thành viên" (articles.visibility = members): khách thấy thẻ +
+  ảnh bìa nhưng trang xem bị khoá, file /media/v/ trả 403. Danh sách mã file bị
   khoá giữ trong bộ nhớ (membersOnlyKeys, nạp lúc khởi động, cập nhật khi
   đăng / sửa / xoá).
-- Sắp xếp: today / hot (bảng video_view_days, giờ Việt Nam — video có lượt
+- Sắp xếp: today / hot (bảng article_view_days, giờ Việt Nam — bài viết có lượt
   trong kỳ lên trước, còn lại theo tổng lượt xem), week (tỉ lệ thích của phiếu
-  bầu trong 7 ngày), best, new, random. "Đang được xem" = video được mở trong
+  bầu trong 7 ngày), best, new, random. "Đang được xem" = bài viết được mở trong
   30 phút gần nhất (bộ nhớ). Lượt xem chống đếm trùng 30 phút / IP.
-- Gợi ý ngẫu nhiên để video cũ không bị chìm: video đề xuất = tối đa 6 cùng
-  thể loại + phần còn lại ngẫu nhiên (nút "Đổi video khác"); trang chủ có khung
-  "Có thể bạn chưa xem"; trang chủ đề có khung "Video đề xuất" ngẫu nhiên.
-- Tag: bảng video_tags + video_tag_links; nhập dạng "a, b, c" (tối đa 15),
+- Gợi ý ngẫu nhiên để bài cũ không bị chìm: bài đề xuất = tối đa 6 cùng
+  chuyên mục + phần còn lại ngẫu nhiên (nút "Đổi bài khác"); trang chủ có khung
+  "Có thể bạn chưa xem"; trang chủ đề có khung "Bài viết đề xuất" ngẫu nhiên.
+- Tag: bảng article_tags + article_tag_links; nhập dạng "a, b, c" (tối đa 15),
   slug bỏ dấu tiếng Việt.
 
 Thông báo (bảng notifications, realtime sự kiện "notification" vào user:<id>):
 - reply (trả lời chủ đề đang theo dõi; gộp: chỉ giữ 1 thông báo chưa đọc / chủ
   đề), quote ([quote=tên]), new_thread (người mình theo dõi đăng chủ đề — trừ
-  chuyên mục chỉ BQT), comment_reply (trả lời bình luận video), follow.
+  chuyên mục chỉ BQT), comment_reply (trả lời bình luận bài viết), follow.
 
 Báo vi phạm (bảng reports): video / bình luận video / bài viết / "site" (form
 Yêu cầu gỡ nội dung, cần email liên hệ). Khách cũng gửi được (10/giờ/IP).
@@ -169,8 +181,8 @@ Hàng chờ: Quản trị > Báo vi phạm (mod + admin).
   trên http thì trình duyệt không lưu cookie => không đăng nhập được)
 - MAX_UPLOAD_MB     : dung lượng tối đa mỗi ảnh
 - MAX_VIDEO_MB      : dung lượng tối đa mỗi video (mặc định 2048). Nginx site
-  chongtoico cho /api/admin/videos tối đa 2100M — muốn lớn hơn phải sửa cả hai.
-  Site Nginx tạo trước bản này (chưa có khối /api/admin/videos) => chỉ nhận
+  chongtoico cho /api/admin/articles tối đa 2100M — muốn lớn hơn phải sửa cả hai.
+  Site Nginx tạo trước bản này (chưa có khối /api/admin/articles) => chỉ nhận
   200M; xoá /etc/nginx/sites-available/chongtoico rồi chạy lại install.sh,
   hoặc thêm khối đó bằng tay theo scripts/install.sh.
 - TRUST_PROXY       : IP/dải mạng của proxy được tin để đọc X-Forwarded-For.
@@ -190,11 +202,12 @@ Hàng chờ: Quản trị > Báo vi phạm (mod + admin).
 - Rate limit: chung 300/phút/IP; đăng nhập 10/5 phút; đăng ký 5/giờ; đăng bài,
   chat, CSKH, tải ảnh có giới hạn riêng.
 - Ảnh: kiểm tra bằng sharp, chuyển sang webp, bỏ metadata EXIF; tên file ngẫu
-  nhiên; album "chỉ thành viên" chặn cả file ảnh với khách.
+  nhiên; bài viết "chỉ thành viên" chặn cả file ảnh với khách.
 - Quyền: member < mod (kiểm duyệt nội dung, khoá thành viên thường, CSKH,
-  album, báo vi phạm) < admin (thêm: đổi quyền, chuyên mục, kênh chat, tính lại
-  bộ đếm, video, cài đặt trang, đặt lại mật khẩu thành viên — không áp dụng cho
-  admin khác; đặt lại => đăng xuất mọi thiết bị của người đó).
+  báo vi phạm) < admin (thêm: đổi quyền, chuyên mục, kênh chat, tính lại
+  bộ đếm, bài viết (đăng ảnh + video), cài đặt trang, đặt lại mật khẩu thành
+  viên — không áp dụng cho admin khác; đặt lại => đăng xuất mọi thiết bị của
+  người đó).
 - IP thật: chỉ tin X-Forwarded-For từ proxy trong TRUST_PROXY (xem mục 3).
 - Quảng cáo chỉ là ảnh + link (rel="sponsored"), không chèn mã script.
 - Tài khoản bị khoá vẫn đăng nhập, đọc, nhắn CSKH được nhưng không đăng bài,
@@ -219,13 +232,16 @@ Hàng chờ: Quản trị > Báo vi phạm (mod + admin).
   (PostContent trong ui.tsx) dựng phần tử React, KHÔNG render HTML; [url] chỉ
   nhận http/https. Thêm thẻ mới phải sửa TAG_RE + renderNodes + nút trong Editor.
 - Đăng / trả lời chủ đề tự thêm vào thread_watches (theo dõi).
-- Video: bộ đếm like_count / dislike_count / comment_count của videos,
-  video_count của video_categories và video_tags, like/dislike của
-  video_comments cũng cập nhật thủ công ("Tính lại bộ đếm" có tính lại các số
-  này). comment_count tính cả trả lời; xoá bình luận gốc xoá luôn trả lời.
+- Bài viết: bộ đếm like_count / dislike_count / comment_count của articles,
+  image_count / video_count của articles, video_count của article_categories và
+  article_tags, like/dislike của article_comments cũng cập nhật thủ công
+  ("Tính lại bộ đếm" có tính lại các số này). comment_count tính cả trả lời;
+  xoá bình luận gốc xoá luôn trả lời. articles.coverType / coverImageKey /
+  coverDuration phải khớp với media đang tồn tại (xoá ảnh/video đang làm bìa
+  thì bìa phải trả về none).
 - Ảnh chèn bằng trình soạn thảo (bảng uploads) bị maintenance.ts xoá nếu sau 1
   ngày không còn nằm trong posts.content, site_settings.value hoặc
-  videos.description. Thêm chỗ mới dùng [img:..] => thêm điều kiện vào đó.
+  articles.description. Thêm chỗ mới dùng [img:..] => thêm điều kiện vào đó.
 - Cài đặt trang được cache trong bộ nhớ (settings.ts), xoá cache khi lưu.
 - PowerShell 5.1 trên máy dev: không sửa file bằng Set-Content (chèn BOM).
 - Socket: client tự kết nối lại sau đăng nhập/đăng xuất và sau tin CSKH đầu
@@ -233,17 +249,23 @@ Hàng chờ: Quản trị > Báo vi phạm (mod + admin).
 - Chạy test trước khi push: cd server && npm test ; cd frontend && npm run build
 - QUYỀN ĐĂNG (2026-11-12): chỉ ADMIN được tạo chủ đề, trả lời chủ đề và tải
   ảnh lên (/api/forum/threads, /api/forum/threads/:id/posts, /api/uploads/image
-  — kiểm tra isAdmin trong server/src/auth.ts). Mod + admin quản lý album.
-  Thành viên vẫn xem / thích / bình luận video, nhắn chat. Thêm quyền mới
-  => chặn ở API trước, sau đó mới ẩn nút ở giao diện.
+  — kiểm tra isAdmin trong server/src/auth.ts). Thành viên vẫn xem / thích /
+  bình luận bài viết, nhắn chat. Thêm quyền mới => chặn ở API trước, sau đó
+  mới ẩn nút ở giao diện.
+- BÀI VIẾT (2026-11-12): một bài viết chứa được nhiều ảnh + nhiều video. Chỉ
+  admin đăng. Ảnh bìa do admin chọn (articles.coverType/coverImageKey/
+  coverDuration) — thẻ ngoài danh sách chỉ hiện 1 ảnh hoặc 1 video. Đổi tên
+  trường hoặc bảng => sửa schema.ts, tạo migration mới, cập nhật frontend/src/types.ts
+  + routes/articles.ts + components/ArticleCard.tsx + pages/Article*.tsx cùng lúc.
 
 --------------------------------------------------------------------------------
 6) VIỆC CÒN LẠI / KẾ HOẠCH
 --------------------------------------------------------------------------------
 - Chủ dự án chỉnh sửa / thêm chức năng sau khi xem bản đầu.
-- Giai đoạn kiểm thử (khi chủ dự án yêu cầu): viết bài test cho video / theo
+- Giai đoạn kiểm thử (khi chủ dự án yêu cầu): viết bài test cho theo
   dõi / BBCode / thông báo / báo vi phạm / tag / yêu thích; thử tải + phát +
-  tua video thật; thử Nginx với file lớn; thử ffmpeg faststart trong Docker;
+  tua video thật trong bài viết; thử Nginx với file lớn (khối
+  /api/admin/articles); thử ffmpeg faststart trong Docker;
   thử backup.sh + khôi phục trên VPS.
 - Chưa làm: tin nhắn riêng; ảnh / tiêu đề xem trước khi chia sẻ link (og:meta —
   chủ dự án chưa chọn).
@@ -304,6 +326,21 @@ b22c5f7 feat: scaffold new platform (đã thay thế — xoá ở bản Node.js)
   Home / Videos / Forum / CategoryPage, chặn trang /tao-chu-de và ô trả lời ở
   ThreadPage. Album vẫn do staff (admin + mod) quản lý. Thêm isAdmin() vào
   frontend/src/auth.tsx. Không đổi DB.
+[2026-11-12] Gộp mảng video + album thành MỤC BÀI VIẾT đa phương tiện. Xoá
+  bảng videos / albums / album_images / video_*; thêm articles, article_images,
+  article_videos, article_categories, article_tags, article_tag_links,
+  article_votes, article_comments, article_comment_votes, article_saves,
+  article_view_days, article_history (notifications đổi videoId -> articleId).
+  Migration 0003_articles.sql. API mới server/src/routes/articles.ts (danh sách,
+  sắp xếp, tìm kiếm, lịch sử, yêu thích / xem sau, bình chọn, bình luận + vote;
+  phía admin: tạo / sửa / xoá, tải nhiều ảnh + nhiều video, chọn ảnh bìa).
+  Ảnh bìa do admin chọn: articles.coverType (none/image/video) + coverImageKey
+  + coverDuration — danh sách ngoài chỉ hiện 1 ảnh hoặc 1 video. Giao diện: thêm
+  ArticleCard, Articles, ArticlePage, SavedArticles, ArticleHistory,
+  admin/AdminArticles; xoá VideoCard, Videos, VideoPage, VideoHistory,
+  SavedVideos, Albums, AlbumView, admin/AdminVideos, admin/AdminAlbums. URL
+  /bai-viet, /bai-viet/:id, /bai-viet/da-xem, /bai-viet/yeu-thich, /bai-viet/tag/:slug.
+  Khối "Album mới" / "Video mới nhất" -> "Bài viết mới nhất".
 
 ================================================================================
 Hết — lưu ý: không lưu mật khẩu / token thật trong file này.

@@ -4,7 +4,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { author, requireUser } from "../auth.js";
 import { db } from "../db/index.js";
-import { notifications, threads, users, videos } from "../db/schema.js";
+import { articles, notifications, threads, users } from "../db/schema.js";
 import { ok, parse } from "../http.js";
 import { unreadCount } from "../notify.js";
 
@@ -28,10 +28,10 @@ export default async function notificationRoutes(app: FastifyInstance) {
         createdAt: notifications.createdAt,
         threadId: notifications.threadId,
         postId: notifications.postId,
-        videoId: notifications.videoId,
+        articleId: notifications.articleId,
         commentId: notifications.commentId,
         threadTitle: threads.title,
-        videoTitle: videos.title,
+        articleTitle: articles.title,
         actor: {
           id: actor.id,
           username: actor.username,
@@ -44,7 +44,7 @@ export default async function notificationRoutes(app: FastifyInstance) {
       .from(notifications)
       .leftJoin(actor, eq(actor.id, notifications.actorId))
       .leftJoin(threads, eq(threads.id, notifications.threadId))
-      .leftJoin(videos, eq(videos.id, notifications.videoId))
+      .leftJoin(articles, eq(articles.id, notifications.articleId))
       .where(and(eq(notifications.userId, user.id), before ? lt(notifications.id, before) : undefined))
       .orderBy(desc(notifications.id))
       .limit(PER_PAGE + 1);

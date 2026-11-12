@@ -6,18 +6,15 @@ import ChatBox from "../components/ChatBox";
 import { AdBanner } from "../components/Extras";
 import Hero, { buildHeroSlides } from "../components/Hero";
 import { StatsPanel } from "../components/Sidebar";
-import { AlbumGridSkeleton, ErrorBox, SectionHeader, Spinner, Tabs, ThreadRows, VideoGridSkeleton } from "../components/ui";
-import { VideoGrid } from "../components/VideoCard";
+import { ErrorBox, SectionHeader, Spinner, Tabs, ThreadRows, VideoGridSkeleton } from "../components/ui";
+import { ArticleGrid } from "../components/ArticleCard";
 import { useFetch } from "../useFetch";
-import { AlbumCard } from "./Albums";
-import { TagCloud, VideoCategoryBar } from "./Videos";
-import type { Album, Channel, Stats, ThreadItem, VideoItem, VideoTag } from "../types";
+import { ArticleCategoryBar, TagCloud } from "./Articles";
+import type { ArticleItem, ArticleTag, Channel, Stats, ThreadItem } from "../types";
 
 interface HomeData {
-  videos: { today: VideoItem[]; week: VideoItem[]; newest: VideoItem[]; random: VideoItem[]; watching: VideoItem[] };
-  tags: VideoTag[];
-  hotAlbums: Album[];
-  latestAlbums: Album[];
+  articles: { today: ArticleItem[]; week: ArticleItem[]; newest: ArticleItem[]; random: ArticleItem[]; watching: ArticleItem[] };
+  tags: ArticleTag[];
   feeds: { latest: ThreadItem[]; hot: ThreadItem[]; trending: ThreadItem[] };
   stats: Stats;
 }
@@ -33,13 +30,13 @@ function Section({ title, more, action, children }: { title: ReactNode; more?: s
   );
 }
 
-function RandomSection({ initial }: { initial: VideoItem[] }) {
-  const [videos, setVideos] = useState(initial);
+function RandomSection({ initial }: { initial: ArticleItem[] }) {
+  const [articles, setArticles] = useState(initial);
   const [loading, setLoading] = useState(false);
   async function shuffle() {
     setLoading(true);
     try {
-      setVideos((await api<{ videos: VideoItem[] }>("/api/videos/random?limit=8")).videos);
+      setArticles((await api<{ articles: ArticleItem[] }>("/api/articles/random?limit=8")).articles);
     } finally {
       setLoading(false);
     }
@@ -49,24 +46,12 @@ function RandomSection({ initial }: { initial: VideoItem[] }) {
       title="🎲 Có thể bạn chưa xem"
       action={
         <button className="btn-ghost rounded-full px-3 py-1 text-xs" onClick={shuffle} disabled={loading}>
-          🔀 {loading ? "Đang đổi..." : "Đổi video khác"}
+          🔀 {loading ? "Đang đổi..." : "Đổi bài khác"}
         </button>
       }
     >
-      {loading ? <VideoGridSkeleton count={videos.length || 8} /> : <VideoGrid videos={videos} />}
+      {loading ? <VideoGridSkeleton count={articles.length || 8} /> : <ArticleGrid articles={articles} />}
     </Section>
-  );
-}
-
-function AlbumRow({ albums }: { albums: Album[] }) {
-  return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">
-      {albums.map((a, i) => (
-        <div key={a.id} className={i >= 6 ? "hidden lg:block" : i >= 4 ? "sm:hidden lg:block" : ""}>
-          <AlbumCard album={a} />
-        </div>
-      ))}
-    </div>
   );
 }
 
@@ -84,8 +69,6 @@ function HomeSkeleton() {
       </div>
       <div className="skeleton h-6 w-56" />
       <VideoGridSkeleton count={8} />
-      <div className="skeleton h-6 w-40" />
-      <AlbumGridSkeleton count={4} />
     </div>
   );
 }
@@ -159,53 +142,44 @@ export default function Home() {
   if (loading && !data) return <HomeSkeleton />;
   if (error || !data) return <ErrorBox message={error || "Không tải được dữ liệu."} />;
 
-  const noVideos = !data.videos.newest.length;
-  const slides = buildHeroSlides(data.videos.today, data.hotAlbums);
+  const noArticles = !data.articles.newest.length;
+  const slides = buildHeroSlides(data.articles.today);
 
   return (
     <div className="space-y-8">
-      <Hero slides={slides} top={data.videos.week} />
-      <VideoCategoryBar />
+      <Hero slides={slides} top={data.articles.week} />
+      <ArticleCategoryBar />
 
       {isAdmin(user) && (
         <div className="flex flex-wrap items-center gap-2">
-          <Link to="/tao-chu-de" className="btn-primary px-4 py-2 text-sm">
-            ✍️ Đăng bài viết
+          <Link to="/quan-tri?tab=bai-viet" className="btn-primary px-4 py-2 text-sm">
+            📝 Đăng bài viết
           </Link>
-          <Link to="/quan-tri?tab=videos" className="btn-ghost px-4 py-2 text-sm">
-            🎬 Đăng video
-          </Link>
-          <Link to="/quan-tri?tab=albums" className="btn-ghost px-4 py-2 text-sm">
-            📸 Tạo album
+          <Link to="/tao-chu-de" className="btn-ghost px-4 py-2 text-sm">
+            ✍️ Đăng chủ đề
           </Link>
         </div>
       )}
 
-      {noVideos ? (
+      {noArticles ? (
         <div className="panel p-10 text-center">
-          <div className="text-4xl">🎬</div>
-          <p className="mt-2 text-muted">Chưa có video nào.</p>
+          <div className="text-4xl">📝</div>
+          <p className="mt-2 text-muted">Chưa có bài viết nào.</p>
           {user?.role === "admin" && (
-            <Link to="/quan-tri?tab=videos" className="btn-primary mt-4">
-              Đăng video đầu tiên
+            <Link to="/quan-tri?tab=bai-viet" className="btn-primary mt-4">
+              Đăng bài viết đầu tiên
             </Link>
           )}
         </div>
       ) : (
-        <Section title="🔥 Xem nhiều hôm nay" more="/video?sap-xep=hom-nay">
-          <VideoGrid videos={data.videos.today} showRecent />
+        <Section title="🔥 Xem nhiều hôm nay" more="/bai-viet?sap-xep=hom-nay">
+          <ArticleGrid articles={data.articles.today} showRecent />
         </Section>
       )}
 
-      {data.latestAlbums.length > 0 && (
-        <Section title="📸 Album mới" more="/album">
-          <AlbumRow albums={data.latestAlbums} />
-        </Section>
-      )}
-
-      {!noVideos && (
+      {!noArticles && (
         <>
-          {data.videos.watching.length > 0 && (
+          {data.articles.watching.length > 0 && (
             <Section
               title={
                 <span className="inline-flex items-center gap-2">
@@ -213,19 +187,19 @@ export default function Home() {
                 </span>
               }
             >
-              <VideoGrid videos={data.videos.watching} />
+              <ArticleGrid articles={data.articles.watching} />
             </Section>
           )}
           <AdBanner slot="home" />
-          <Section title="🆕 Video mới nhất" more="/video">
-            <VideoGrid videos={data.videos.newest} />
+          <Section title="🆕 Bài viết mới nhất" more="/bai-viet">
+            <ArticleGrid articles={data.articles.newest} />
           </Section>
-          <Section title="🏆 Hay nhất tuần" more="/video?sap-xep=tuan">
-            <VideoGrid videos={data.videos.week} />
+          <Section title="🏆 Hay nhất tuần" more="/bai-viet?sap-xep=tuan">
+            <ArticleGrid articles={data.articles.week} />
           </Section>
-          <RandomSection initial={data.videos.random} />
+          <RandomSection initial={data.articles.random} />
           {data.tags.length > 0 && (
-            <Section title="🏷️ Thẻ phổ biến" more="/video/tag">
+            <Section title="🏷️ Thẻ phổ biến" more="/bai-viet/tag">
               <TagCloud tags={data.tags} />
             </Section>
           )}

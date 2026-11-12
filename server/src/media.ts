@@ -92,9 +92,25 @@ export async function ensureVariant(kind: MediaKind, key: string, variant: Varia
   return file;
 }
 
+/**
+ * Deletes a media file, ignoring failures.
+ *
+ * On Windows the file can be locked (OneDrive sync, antivirus, a browser still
+ * reading it) and `unlink` then fails with EBUSY/EPERM. A leftover file is
+ * harmless — the DB rows are already gone — but throwing here would turn a
+ * successful delete into a 500 for the user.
+ */
+async function removeFile(file: string) {
+  try {
+    await rm(file, { force: true });
+  } catch {
+    // ignore: locked or already gone
+  }
+}
+
 export async function removeImage(kind: MediaKind, key: string) {
   if (!KEY_RE.test(key)) return;
-  for (const suffix of ["", "_t", "_s", "_m"]) await rm(mediaPath(kind, `${key}${suffix}.webp`), { force: true });
+  for (const suffix of ["", "_t", "_s", "_m"]) await removeFile(mediaPath(kind, `${key}${suffix}.webp`));
 }
 
 export const albumImageUrl = (key: string, thumb = false) => `/media/a/${key}${thumb ? "_t" : ""}.webp`;
@@ -122,5 +138,5 @@ export function looksLikeVideo(head: Buffer, ext: VideoExt): boolean {
 
 export async function removeVideoFile(key: string, ext: string) {
   if (!KEY_RE.test(key) || !/^[a-z0-9]{2,5}$/.test(ext)) return;
-  await rm(path.join(VIDEO_DIR(), `${key}.${ext}`), { force: true });
+  await removeFile(path.join(VIDEO_DIR(), `${key}.${ext}`));
 }

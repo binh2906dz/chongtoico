@@ -2,10 +2,10 @@ import { useState, type FormEvent } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { isAdmin, useAuth } from "../auth";
 import { ErrorBox, Pagination, Tabs, VideoGridSkeleton } from "../components/ui";
-import { VideoGrid } from "../components/VideoCard";
+import { ArticleGrid } from "../components/ArticleCard";
 import { formatNumber } from "../format";
 import { useFetch } from "../useFetch";
-import type { VideoCategory, VideoItem, VideoTag } from "../types";
+import type { ArticleCategory, ArticleItem, ArticleTag } from "../types";
 
 export const SORT_TABS = [
   { id: "hom-nay", api: "today", label: "Xem nhiều hôm nay" },
@@ -17,8 +17,8 @@ export const SORT_TABS = [
 ] as const;
 type SortId = (typeof SORT_TABS)[number]["id"];
 
-export function VideoCategoryBar({ active }: { active?: string }) {
-  const { data } = useFetch<{ categories: VideoCategory[] }>("/api/videos/categories");
+export function ArticleCategoryBar({ active }: { active?: string }) {
+  const { data } = useFetch<{ categories: ArticleCategory[] }>("/api/articles/categories");
   if (!data?.categories.length) return null;
   const chip = (to: string, label: string, on: boolean) => (
     <Link
@@ -35,28 +35,28 @@ export function VideoCategoryBar({ active }: { active?: string }) {
   );
   return (
     <div className="no-scrollbar -mx-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0">
-      {chip("/video", "Tất cả", !active)}
-      {data.categories.map((c) => chip(`/video/the-loai/${c.slug}`, c.name, active === c.slug))}
+      {chip("/bai-viet", "Tất cả", !active)}
+      {data.categories.map((c) => chip(`/bai-viet/the-loai/${c.slug}`, c.name, active === c.slug))}
     </div>
   );
 }
 
-export function TagCloud({ tags, limit }: { tags: VideoTag[]; limit?: number }) {
+export function TagCloud({ tags, limit }: { tags: ArticleTag[]; limit?: number }) {
   if (!tags.length) return null;
-  const max = Math.max(...tags.map((t) => t.videoCount ?? 1));
+  const max = Math.max(...tags.map((t) => t.articleCount ?? 1));
   return (
     <div className="flex flex-wrap gap-1.5">
       {tags.slice(0, limit).map((t) => {
-        const weight = (t.videoCount ?? 1) / max;
+        const weight = (t.articleCount ?? 1) / max;
         return (
           <Link
             key={t.id}
-            to={`/video/tag/${t.slug}`}
+            to={`/bai-viet/tag/${t.slug}`}
             className="rounded-full border border-line bg-panel px-3 py-1 text-slate-300 transition hover:border-brand/60 hover:bg-brand/10 hover:text-brand"
             style={{ fontSize: `${0.75 + weight * 0.35}rem` }}
           >
             #{t.name}
-            {t.videoCount ? <span className="ml-1 text-[10px] text-muted">{t.videoCount}</span> : null}
+            {t.articleCount ? <span className="ml-1 text-[10px] text-muted">{t.articleCount}</span> : null}
           </Link>
         );
       })}
@@ -64,11 +64,11 @@ export function TagCloud({ tags, limit }: { tags: VideoTag[]; limit?: number }) 
   );
 }
 
-export function VideoTags() {
-  const { data, error, loading } = useFetch<{ tags: VideoTag[] }>("/api/videos/tags?limit=300");
+export function ArticleTags() {
+  const { data, error, loading } = useFetch<{ tags: ArticleTag[] }>("/api/articles/tags?limit=300");
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-black">🏷️ Thẻ video</h1>
+      <h1 className="text-2xl font-black">🏷️ Thẻ bài viết</h1>
       {loading && !data ? (
         <div className="panel flex flex-wrap gap-2 p-4">
           {Array.from({ length: 24 }, (_, i) => (
@@ -88,7 +88,7 @@ export function VideoTags() {
   );
 }
 
-export default function Videos() {
+export default function Articles() {
   const { user } = useAuth();
   const { slug, tag: tagSlug } = useParams();
   const [params, setParams] = useSearchParams();
@@ -104,13 +104,13 @@ export default function Videos() {
   if (q) query.set("q", q);
   const [shuffle, setShuffle] = useState(0);
   const { data, error, loading } = useFetch<{
-    videos: VideoItem[];
-    category: VideoCategory | null;
-    tag: VideoTag | null;
+    articles: ArticleItem[];
+    category: ArticleCategory | null;
+    tag: ArticleTag | null;
     page: number;
     totalPages: number;
     total: number;
-  }>(`/api/videos?${query}${sort === "random" ? `&r=${shuffle}` : ""}`);
+  }>(`/api/articles?${query}${sort === "random" ? `&r=${shuffle}` : ""}`);
 
   function update(next: Record<string, string | null>) {
     const p = new URLSearchParams(params);
@@ -133,42 +133,42 @@ export default function Videos() {
       ? `Thể loại: ${data.category.name}`
       : data?.tag
         ? `Thẻ: #${data.tag.name}`
-        : "Video";
+        : "Bài viết";
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-black">
           {title}
-          {data && <span className="ml-2 text-sm font-normal text-muted">({formatNumber(data.total)} video)</span>}
+          {data && <span className="ml-2 text-sm font-normal text-muted">({formatNumber(data.total)} bài viết)</span>}
         </h1>
         <div className="flex flex-wrap gap-2">
           {isAdmin(user) && (
-            <Link to="/quan-tri?tab=videos" className="btn-primary px-3 py-1.5">
-              ⬆️ Đăng video
+            <Link to="/quan-tri?tab=bai-viet" className="btn-primary px-3 py-1.5">
+              ⬆️ Đăng bài viết
             </Link>
           )}
           {isAdmin(user) && (
             <Link to="/tao-chu-de" className="btn-ghost px-3 py-1.5">
-              ✍️ Đăng bài
+              ✍️ Đăng chủ đề
             </Link>
           )}
           <form onSubmit={search} className="flex gap-2">
-            <input className="input w-56 py-1.5" placeholder="Tìm video..." value={draft} onChange={(e) => setDraft(e.target.value)} />
+            <input className="input w-56 py-1.5" placeholder="Tìm bài viết..." value={draft} onChange={(e) => setDraft(e.target.value)} />
             <button className="btn-ghost px-3 py-1.5">Tìm</button>
           </form>
-          <Link to="/video/yeu-thich" className="btn-ghost px-3 py-1.5">
+          <Link to="/bai-viet/yeu-thich" className="btn-ghost px-3 py-1.5">
             ❤️ Yêu thích
           </Link>
-          <Link to="/video/da-xem" className="btn-ghost px-3 py-1.5">
+          <Link to="/bai-viet/da-xem" className="btn-ghost px-3 py-1.5">
             🕘 Đã xem
           </Link>
-          <Link to="/video/tag" className="btn-ghost px-3 py-1.5">
+          <Link to="/bai-viet/tag" className="btn-ghost px-3 py-1.5">
             🏷️ Thẻ
           </Link>
         </div>
       </div>
-      <VideoCategoryBar active={slug} />
+      <ArticleCategoryBar active={slug} />
       <div className="flex flex-wrap items-center gap-2">
         <Tabs
           tabs={SORT_TABS.map((t) => ({ id: t.id, label: t.label }))}
@@ -186,9 +186,9 @@ export default function Videos() {
       ) : error ? (
         <ErrorBox message={error} />
       ) : (
-        <VideoGrid
-          videos={data?.videos ?? []}
-          empty={q ? "Không tìm thấy video phù hợp." : "Chưa có video nào."}
+        <ArticleGrid
+          articles={data?.articles ?? []}
+          empty={q ? "Không tìm thấy bài viết phù hợp." : "Chưa có bài viết nào."}
           showRecent={sort === "today"}
         />
       )}

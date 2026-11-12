@@ -11,7 +11,7 @@ export interface NewNotification {
   actorId: number;
   threadId?: number | null;
   postId?: number | null;
-  videoId?: number | null;
+  articleId?: number | null;
   commentId?: number | null;
 }
 

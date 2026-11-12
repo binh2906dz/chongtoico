@@ -1,6 +1,6 @@
 import { and, eq, lt, sql } from "drizzle-orm";
 import { db } from "./db/index.js";
-import { notifications, sessions, videoViewDays } from "./db/schema.js";
+import { articleViewDays, notifications, sessions } from "./db/schema.js";
 import { removeImage } from "./media.js";
 
 const EVERY = 6 * 3600_000;
@@ -16,7 +16,7 @@ async function removeOrphanUploads() {
         where u.created_at < now() - interval '1 day'
           and not exists (select 1 from posts p where strpos(p.content, '[img:' || u.file_key || ']') > 0)
           and not exists (select 1 from site_settings s where strpos(s.value, '[img:' || u.file_key || ']') > 0)
-          and not exists (select 1 from videos v where strpos(v.description, '[img:' || u.file_key || ']') > 0)
+          and not exists (select 1 from articles a where strpos(a.description, '[img:' || u.file_key || ']') > 0)
         limit 500
       ) returning file_key`)) as unknown as { rows: { file_key: string }[] };
     for (const r of rows.rows) await removeImage("posts", r.file_key);
@@ -32,7 +32,7 @@ export async function runMaintenance(log: (msg: string) => void) {
     const expired = await db.delete(sessions).where(lt(sessions.expiresAt, now)).returning({ id: sessions.id });
     const orphans = await removeOrphanUploads();
     const cutoffDay = new Date(Date.now() + 7 * 3600_000 - 60 * 86400_000).toISOString().slice(0, 10);
-    await db.delete(videoViewDays).where(lt(videoViewDays.day, cutoffDay));
+    await db.delete(articleViewDays).where(lt(articleViewDays.day, cutoffDay));
     await db
       .delete(notifications)
       .where(and(eq(notifications.isRead, true), lt(notifications.createdAt, new Date(Date.now() - 90 * 86400_000))));

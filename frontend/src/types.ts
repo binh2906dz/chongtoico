@@ -74,29 +74,6 @@ export interface ChatMessage {
   author: Author;
 }
 
-export interface Album {
-  id: number;
-  title: string;
-  description: string;
-  visibility: "public" | "members";
-  isHot: boolean;
-  imageCount: number;
-  viewCount: number;
-  coverImageId: number | null;
-  createdAt: string;
-  author: Author;
-  locked: boolean;
-  coverUrl: string | null;
-}
-
-export interface AlbumImage {
-  id: number;
-  width: number;
-  height: number;
-  url: string;
-  thumbUrl: string;
-}
-
 export interface Online {
   members: number;
   guests: number;
@@ -112,21 +89,24 @@ export interface Stats {
   online: Online;
 }
 
-export interface VideoCategory {
+export interface ArticleCategory {
   id: number;
   slug: string;
   name: string;
   sortOrder: number;
-  videoCount: number;
+  articleCount: number;
 }
 
-export interface VideoItem {
+export interface ArticleItem {
   id: number;
   title: string;
-  thumbUrl: string | null;
-  duration: number;
-  width: number;
-  height: number;
+  /** "none" | "image" | "video" — nguồn của ảnh bìa do admin chọn. */
+  coverType: string;
+  coverUrl: string | null;
+  hasVideo: boolean;
+  coverDuration: number;
+  imageCount: number;
+  videoCount: number;
   viewCount: number;
   likeCount: number;
   dislikeCount: number;
@@ -140,22 +120,34 @@ export interface VideoItem {
   recentViews?: number;
 }
 
-export interface VideoTag {
+export interface ArticleTag {
   id: number;
   slug: string;
   name: string;
-  videoCount?: number;
+  articleCount?: number;
 }
 
-export interface VideoDetail extends VideoItem {
+export interface ArticleMedia {
+  id: number;
+  type: "image" | "video";
+  url: string;
+  thumbUrl: string | null;
+  width: number;
+  height: number;
+  duration: number;
+  sizeBytes: number;
+}
+
+export interface ArticleDetail extends ArticleItem {
   description: string;
-  videoUrl: string | null;
   locked: boolean;
   author: Author;
-  tags: VideoTag[];
+  tags: ArticleTag[];
+  images: ArticleMedia[];
+  videos: ArticleMedia[];
 }
 
-export interface VideoComment {
+export interface ArticleComment {
   id: number;
   parentId: number | null;
   content: string;
@@ -164,7 +156,7 @@ export interface VideoComment {
   myVote: number;
   createdAt: string;
   author: Author;
-  replies: VideoComment[];
+  replies: ArticleComment[];
 }
 
 export type NotificationType = "reply" | "quote" | "comment_reply" | "follow" | "new_thread";
@@ -176,10 +168,10 @@ export interface NotificationItem {
   createdAt: string;
   threadId: number | null;
   postId: number | null;
-  videoId: number | null;
+  articleId: number | null;
   commentId: number | null;
   threadTitle: string | null;
-  videoTitle: string | null;
+  articleTitle: string | null;
   actor: Author | null;
 }
 
@@ -192,7 +184,7 @@ export interface SiteInfo {
   takedown: string;
 }
 
-export type ReportTarget = "video" | "video_comment" | "post" | "site";
+export type ReportTarget = "article" | "article_comment" | "post" | "site";
 
 export interface FollowStats {
   followerCount: number;

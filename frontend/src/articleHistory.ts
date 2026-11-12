@@ -1,4 +1,4 @@
-const KEY = "ctc_video_history";
+const KEY = "ctc_article_history";
 const MAX = 100;
 
 export function localHistory(): number[] {
@@ -10,7 +10,7 @@ export function localHistory(): number[] {
   }
 }
 
-export function rememberVideo(id: number) {
+export function rememberArticle(id: number) {
   try {
     localStorage.setItem(KEY, JSON.stringify([id, ...localHistory().filter((x) => x !== id)].slice(0, MAX)));
   } catch {
@@ -18,7 +18,7 @@ export function rememberVideo(id: number) {
   }
 }
 
-export function forgetVideo(id?: number) {
+export function forgetArticle(id?: number) {
   try {
     if (id === undefined) localStorage.removeItem(KEY);
     else localStorage.setItem(KEY, JSON.stringify(localHistory().filter((x) => x !== id)));

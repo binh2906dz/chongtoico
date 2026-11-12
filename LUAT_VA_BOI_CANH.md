@@ -12,7 +12,7 @@
 
 ## 1. Mục tiêu hệ thống
 
-Nền tảng cộng đồng có **bộ chức năng tham khảo theo shiperx.net**, sửa một ít, gồm: diễn đàn (chủ đề, bài viết, "Có gì mới", hot trong ngày / trending tuần), kênh chat cộng đồng thời gian thực, kho album ảnh, ~~bảng xếp hạng thành viên~~ (đã bỏ 2026-11-08), khung chat CSKH, app Android.
+Nền tảng cộng đồng có **bộ chức năng tham khảo theo shiperx.net**, sửa một ít, gồm: diễn đàn (chủ đề, bài viết, "Có gì mới", hot trong ngày / trending tuần), kênh chat cộng đồng thời gian thực, **mục bài viết đa phương tiện (nhiều ảnh + nhiều video, xem mục 6 ngày 2026-11-12)**, ~~bảng xếp hạng thành viên~~ (đã bỏ 2026-11-08), khung chat CSKH, app Android.
 
 - **Nội dung hợp pháp** — không phải nội dung người lớn (xem N1).
 - **Tên và giao diện riêng** — chỉ học bố cục / chức năng, không chép tên, logo, chữ, mã nguồn của shiperx (xem N2).
@@ -31,7 +31,12 @@ Bản đầu (2026-11-07), chi tiết kỹ thuật ở `huongdan.txt`:
 - **Kho album:** BQT (mod / admin) tạo album, tải ảnh, đánh dấu HOT (hiện ở banner trang chủ), đặt công khai hoặc chỉ thành viên.
 - ~~**Bảng xếp hạng:** Vinh danh (được thích nhiều), Cao thủ phím (nhiều bài), Lính mới, Phòng giam (đang bị khoá + lý do).~~ (đã bỏ 2026-11-08 — chủ dự án yêu cầu; người bị khoá vẫn hiện lý do trên trang cá nhân)
 - **CSKH:** nút nổi góc phải; khách / thành viên nhắn, BQT trả lời trong Quản trị > CSKH, tin đến ngay.
-- **Quản trị:** tổng quan số liệu, thành viên (đổi quyền, khoá có thời hạn / vĩnh viễn, mở khoá), chuyên mục, kênh chat, album, CSKH.
+- **Quản trị:** tổng quan số liệu, thành viên (đổi quyền, khoá có thời hạn / vĩnh viễn, mở khoá), chuyên mục, kênh chat, ~~album~~ (thay bằng **bài viết** — mục 6 ngày 2026-11-12), CSKH.
+
+Bản 3 (2026-11-12) — gộp video + album thành **mục bài viết đa phương tiện**:
+- **Bài viết:** một bài viết chứa **nhiều ảnh và nhiều video** (hoặc chỉ ảnh, hoặc chỉ video). Chỉ admin đăng. Trang `/bai-viet` (danh sách + lọc chuyên mục + đám mây thẻ + tab sắp xếp + tìm kiếm), `/bai-viet/:id` (chi tiết, gallery ảnh, video, bình luận, bình chọn, yêu thích, xem sau, chia sẻ, báo vi phạm, bài liên quan), `/bai-viet/da-xem`, `/bai-viet/yeu-thich`.
+- **Ảnh bìa do admin chọn** — danh sách ngoài (thẻ trang chủ, banner trượt, khối "Bài viết mới nhất") chỉ hiện **1 ảnh hoặc 1 video** do admin chọn.
+- ~~**Kho album**~~ và ~~**mảng video**~~ (đã gộp 2026-11-12 — xem mục 6).
 
 Bản 2 (2026-11-07) — lai thêm mảng video:
 - **Trang chủ = video:** thanh thể loại, "Xem nhiều hôm nay", "Video mới nhất"; bên dưới là chủ đề, chat, album nổi bật, thống kê (xếp hạng và thẻ ứng dụng đã bỏ 2026-11-08). (Đã thay thế 2026-11-08 bởi: banner trượt video / album HOT + cột "Hay nhất tuần" → thể loại → Xem nhiều hôm nay → Album mới → Đang được xem → Mới nhất → Hay nhất tuần → Có thể bạn chưa xem → Thẻ → khối Cộng đồng gọn: chủ đề + chat + thống kê.)
@@ -46,7 +51,7 @@ Bản 2 (2026-11-07) — lai thêm mảng video:
 |---|---|
 | BQT | Ban quản trị = vai trò `mod` (điều hành viên) và `admin` (quản trị viên) |
 | Khoá tài khoản | Thành viên vẫn đăng nhập / đọc / nhắn CSKH, nhưng không đăng bài, chat, thích. Hiện ở "Phòng giam" |
-| Album HOT | Album hiện ở banner trang chủ |
+| Album HOT | ~~Album hiện ở banner trang chủ~~ (đã thay bằng **bài viết HOT** — mục 6 ngày 2026-11-12) |
 | Tên miền phụ | Vd `beta.<tên miền cũ>` — nơi chạy thử hệ thống mới trước ngày thay hệ thống cũ |
 
 ## 4. Luật nghiệp vụ bất biến
@@ -107,6 +112,7 @@ Bản 2 (2026-11-07) — lai thêm mảng video:
 | 2026-11-08 | **Làm đẹp giao diện** (web chủ yếu đăng ảnh / video, cần hút người xem; chủ dự án thích thẩm mỹ shiperx — chỉ học cách làm nội dung nổi bật, không chép giao diện / chữ, N2): màu **đỏ – hồng trên nền đen**; **banner trượt lớn** đầu trang chủ (video / album HOT); **thẻ video / album mới** (to hơn, nhãn HOT / MỚI / HD, lượt xem đè lên ảnh); **khung mờ lúc tải** (skeleton); **trang chủ ảnh + video lên trên**, chủ đề diễn đàn + chat dồn xuống dưới gọn lại. **Tối ưu**: tách nhỏ code (khách không tải phần Quản trị / trình soạn thảo), máy chủ nhớ tạm trang chủ 30 giây cho khách, ảnh bìa nhiều cỡ. **Không làm**: xem trước video khi rê chuột, hàng vuốt ngang, thanh điều hướng đáy, lightbox mới, cuộn vô hạn. |
 | 2026-11-07 | Thêm: **theo dõi chủ đề / theo dõi thành viên** (trang "Đang theo dõi"), **trình soạn thảo đẹp hơn** (đậm, nghiêng, gạch, trích dẫn, ẩn nội dung, liên kết, ảnh, emoji). Chưa làm thông báo, tin nhắn riêng, báo vi phạm. Phần "sửa giao diện/chức năng có sẵn": chờ chủ dự án mô tả. |
 | 2026-11-12 | **Quyền đăng bài: chỉ ADMIN.** Chủ dự án chốt: tài khoản người dùng (member) **không được đăng bài viết / chủ đề, không được trả lời trong chủ đề, không được tải ảnh lên**; **mod và admin mới được tạo album**; **chỉ admin** được đăng bài viết, đăng video, tải ảnh lên. Thực hiện ở **cả máy chủ (API) và giao diện** — ẩn nút ở giao diện không đủ, phải chặn ở API. Thành viên vẫn xem, thích, bình luận video, đăng tin nhắn chat. |
+| 2026-11-12 | **Gộp "Video" và "Album" thành một mục "Bài viết".** Chủ dự án chốt: giữ nguyên cấu trúc diễn đàn, nhưng hợp nhất mảng video + album thành **một loại nội dung: bài viết**. Xoá nhãn "📸 Album mới" / "🆕 Video mới nhất" → **"Bài viết mới nhất"**. Một bài viết **có thể chứa nhiều ảnh VÀ nhiều video** (hoặc chỉ ảnh, hoặc chỉ video). Khi hiển thị ra ngoài (thẻ trang chủ, banner trượt) **chỉ hiện 1 ảnh hoặc 1 video do admin chọn làm ảnh bìa** (`articles.coverType` = none/image/video, `coverImageKey`, `coverDuration`). Dữ liệu video + album cũ **xoá sạch** (không chuyển sang). Bảng DB mới: `articles`, `article_images`, `article_videos`, `article_categories`, `article_tags`, `article_tag_links`, `article_votes`, `article_comments`, `article_comment_votes`, `article_saves`, `article_view_days`, `article_history` (thay `videos` / `albums` / `album_images` / `video_*`). Migration `0003_articles.sql`. URL: `/bai-viet`, `/bai-viet/:id`, `/bai-viet/da-xem`, `/bai-viet/yeu-thich`, `/bai-viet/tag/:slug`. |
 
 ## 7. Câu hỏi còn mở
 
@@ -284,3 +290,20 @@ Mẫu mỗi mục:
 - Đã kiểm tra: `npx tsc --noEmit` (máy chủ) không lỗi; `npm run build` (giao diện) không lỗi; `npm test` 16/16 pass; chạy app thật tại máy (cổng 8090) — đăng ký tài khoản thường rồi gọi `POST /api/forum/threads` → **403 Forbidden** như mong đợi; `/healthz` trả `{"ok":true}`.
   - **Chưa chạy thử:** đăng nhập admin trên giao diện thật để xác nhận menu 3 mục; trên điện thoại thật; trên VPS.
 - File / commit: `1f9dae9`.
+
+### 2026-11-12 — Thay đổi — Gộp Video + Album thành mục "Bài viết" (đa phương tiện)
+- Việc đã làm:
+  - **Máy chủ — schema** (`server/src/db/schema.ts`): bỏ `videos`, `albums`, `album_images`, `video_*`; thêm `articles` (tiêu đề, mô tả, chuyên mục, `visibility`, `coverType` none/image/video, `coverImageKey`, `coverDuration`, `imageCount`, `videoCount`, `viewCount`, `likeCount`, `dislikeCount`, `commentCount`), `article_images` (nhiều ảnh, `sortOrder`), `article_videos` (nhiều video, `fileKey`, `ext`, `thumbKey`, `duration`, `sortOrder`), `article_categories`, `article_tags` + `article_tag_links`, `article_votes`, `article_comments` + `article_comment_votes`, `article_saves`, `article_view_days`, `article_history`. Bảng `notifications` đổi `videoId` → `articleId`, `videoComments` → `articleComments`.
+  - **Migration** `server/drizzle/0003_articles.sql`: `DROP TABLE ... CASCADE` toàn bộ bảng video/album cũ + tạo bảng bài viết mới kèm index và khoá ngoại.
+  - **Máy chủ — API** (`server/src/routes/articles.ts`, mới): danh sách công khai (sắp xếp today/hot/week/best/new/random), tìm kiếm, xem nhiều hôm nay, gợi ý ngẫu nhiên, lịch sử đã xem, yêu thích / xem sau, chi tiết, bình chọn (like/dislike), bình luận + vote bình luận; phía quản trị: tạo / sửa / xoá bài viết, **tải nhiều ảnh** (`POST /api/admin/articles/:id/images`, field `file`), **tải nhiều video** (`POST /api/admin/articles/:id/videos`, field `video`, kèm `thumb` ảnh bìa do trình duyệt tạo), **chọn ảnh bìa** (`POST /api/admin/articles/:id/cover` với `type` none/image/video + `imageId`/`videoId`), cập nhật bộ đếm ảnh/video, xoá ảnh/video và dọn file.
+  - **Máy chủ — khác**: `app.ts` đăng ký `articleRoutes`, bỏ `albumRoutes`/`videoRoutes`; `seed.ts` tạo 10 chuyên mục bài viết mặc định; `routes/admin.ts`, `routes/media.ts`, `routes/members.ts`, `routes/notifications.ts`, `routes/site.ts`, `notify.ts`, `maintenance.ts` chuyển sang bài viết.
+  - **Giao diện**: thêm `components/ArticleCard.tsx` (thẻ bài viết: ảnh bìa admin chọn + nhãn số ảnh/số video, nhãn HOT, thời lượng video, tỉ lệ thích), `pages/Articles.tsx` (danh sách + chip chuyên mục + đám mây thẻ + tab sắp xếp + tìm kiếm), `pages/ArticlePage.tsx` (nhiều video + gallery ảnh có lightbox + bình luận + bình chọn + yêu thích + xem sau + chia sẻ + báo vi phạm + bài viết liên quan), `pages/SavedArticles.tsx`, `pages/ArticleHistory.tsx`, `articleHistory.ts`, `pages/admin/AdminArticles.tsx` (tạo/sửa bài viết, tải nhiều ảnh + nhiều video, chụp khung hình, chọn bìa). Xoá `VideoCard.tsx`, `Videos.tsx`, `VideoPage.tsx`, `VideoHistory.tsx`, `SavedVideos.tsx`, `videoHistory.ts`, `Albums.tsx`, `AlbumView.tsx`, `admin/AdminVideos.tsx`, `admin/AdminAlbums.tsx`. Cập nhật `types.ts`, `App.tsx` (route `/bai-viet...`), `Home.tsx`, `Hero.tsx` (mục "Bài viết mới nhất"), `Layout.tsx`, `Search.tsx`, `ThreadPage.tsx`, `NotificationBell.tsx`, `admin/Admin.tsx`.
+  - **Kiểm thử**: `server/test/api.test.ts` — thay toàn bộ ca video/album bằng ca "articles: admin-only create, upload, members-only lock, cover selection, media serving".
+- Lý do: chủ dự án: "gộp mục video và album lại thành 1, vì mai mốt tôi sẽ đăng bài viết có thể có hình ảnh hoặc video hoặc cả 2"; chốt: giữ cấu trúc diễn đàn, gộp thành "bài viết", xoá nhãn album/video ở trang chủ, **dữ liệu cũ xoá sạch** (fresh), **một bài viết chứa được nhiều ảnh + nhiều video**, **ngoài danh sách chỉ hiện 1 ảnh/video do admin chọn làm bìa**.
+- Nguyên nhân gốc (lỗi gặp khi làm):
+  - `drizzle-kit generate` hỏi tương tác (đổi tên bảng) → chết trong môi trường không TTY. Cách tránh: tự viết SQL migration + snapshot, không chạy generate ở chế độ tương tác.
+  - `DROP TABLE videos CASCADE` đã tự xoá khoá ngoại `notifications_video_id_videos_id_fk` ⇒ câu `ALTER TABLE ... DROP CONSTRAINT` sau đó báo lỗi "does not exist". Cách tránh: luôn dùng `DROP CONSTRAINT IF EXISTS`.
+- Bài học / cách tránh: khi gộp hai mảng nội dung, phải gộp **cả bảng DB, cả API, cả route, cả thẻ giao diện, cả điều hướng, cả biến thông báo** — nếu để sót một chỗ (ví dụ `notifications.videoId`) thì sẽ hỏng âm thầm. Với bài viết đa phương tiện, cần một trường "ảnh bìa do admin chọn" tách rời khỏi danh sách media, nếu không sẽ không kiểm soát được thẻ hiển thị ngoài.
+- Đã kiểm tra: `npm run build` (máy chủ) không lỗi; `npm test` **16/16 pass**; `npm run build` (giao diện) không lỗi; chạy app thật tại máy (cổng 8090) — tạo bài viết, tải **3 ảnh + 1 video** thật qua API, đặt ảnh bìa là ảnh thứ 3, xem `/bai-viet` và `/bai-viet/1` trên trình duyệt (thẻ hiện "🖼️ 3 🎬 1", trang chi tiết hiện đủ ảnh + video).
+  - **Chưa chạy thử:** trên điện thoại thật; trên VPS; tải video lớn (>100MB) qua Nginx; ffmpeg faststart với video thật.
+- File / commit: (chưa commit — sẽ ghi sau khi push).

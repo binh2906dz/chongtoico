@@ -2,18 +2,18 @@ import { useEffect, useState } from "react";
 import { api, errorMessage } from "../api";
 import { useAuth } from "../auth";
 import { ErrorBox, Pagination, VideoGridSkeleton } from "../components/ui";
-import { VideoGrid } from "../components/VideoCard";
-import { forgetVideo, localHistory } from "../videoHistory";
-import type { VideoItem } from "../types";
+import { ArticleGrid } from "../components/ArticleCard";
+import { forgetArticle, localHistory } from "../articleHistory";
+import type { ArticleItem } from "../types";
 
 function MemberHistory() {
   const [page, setPage] = useState(1);
-  const [data, setData] = useState<{ videos: VideoItem[]; page: number; totalPages: number } | null>(null);
+  const [data, setData] = useState<{ articles: ArticleItem[]; page: number; totalPages: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
 
   useEffect(() => {
-    api<{ videos: VideoItem[]; page: number; totalPages: number }>(`/api/videos/history?page=${page}`)
+    api<{ articles: ArticleItem[]; page: number; totalPages: number }>(`/api/articles/history?page=${page}`)
       .then(setData)
       .catch((e) => setError(errorMessage(e)));
   }, [page, tick]);
@@ -31,65 +31,65 @@ function MemberHistory() {
   if (!data) return <VideoGridSkeleton />;
   return (
     <>
-      {data.videos.length > 0 && (
-        <button className="btn-ghost px-3 py-1" onClick={() => confirm("Xoá toàn bộ lịch sử xem?") && act("/api/videos/history")}>
+      {data.articles.length > 0 && (
+        <button className="btn-ghost px-3 py-1" onClick={() => confirm("Xoá toàn bộ lịch sử xem?") && act("/api/articles/history")}>
           Xoá toàn bộ lịch sử
         </button>
       )}
-      <VideoGrid videos={data.videos} empty="Bạn chưa xem video nào." onRemove={(v) => act(`/api/videos/history/${v.id}`)} />
+      <ArticleGrid articles={data.articles} empty="Bạn chưa xem bài viết nào." onRemove={(a) => act(`/api/articles/history/${a.id}`)} />
       <Pagination page={data.page} totalPages={data.totalPages} onPage={setPage} />
     </>
   );
 }
 
 function GuestHistory() {
-  const [videos, setVideos] = useState<VideoItem[] | null>(null);
+  const [articles, setArticles] = useState<ArticleItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const ids = localHistory();
     if (!ids.length) {
-      setVideos([]);
+      setArticles([]);
       return;
     }
-    api<{ videos: VideoItem[] }>(`/api/videos/by-ids?ids=${ids.join(",")}`)
-      .then((res) => setVideos(res.videos))
+    api<{ articles: ArticleItem[] }>(`/api/articles/by-ids?ids=${ids.join(",")}`)
+      .then((res) => setArticles(res.articles))
       .catch((e) => setError(errorMessage(e)));
   }, []);
 
   if (error) return <ErrorBox message={error} />;
-  if (!videos) return <VideoGridSkeleton />;
+  if (!articles) return <VideoGridSkeleton />;
   return (
     <>
       <p className="text-sm text-muted">Lịch sử được lưu trên trình duyệt này. Đăng nhập để lưu theo tài khoản.</p>
-      {videos.length > 0 && (
+      {articles.length > 0 && (
         <button
           className="btn-ghost px-3 py-1"
           onClick={() => {
-            forgetVideo();
-            setVideos([]);
+            forgetArticle();
+            setArticles([]);
           }}
         >
           Xoá toàn bộ lịch sử
         </button>
       )}
-      <VideoGrid
-        videos={videos}
-        empty="Bạn chưa xem video nào."
-        onRemove={(v) => {
-          forgetVideo(v.id);
-          setVideos((list) => list?.filter((x) => x.id !== v.id) ?? null);
+      <ArticleGrid
+        articles={articles}
+        empty="Bạn chưa xem bài viết nào."
+        onRemove={(a) => {
+          forgetArticle(a.id);
+          setArticles((list) => list?.filter((x) => x.id !== a.id) ?? null);
         }}
       />
     </>
   );
 }
 
-export default function VideoHistory() {
+export default function ArticleHistory() {
   const { user, loading } = useAuth();
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-black">Video đã xem</h1>
+      <h1 className="text-2xl font-black">Bài viết đã xem</h1>
       {loading ? <VideoGridSkeleton /> : user ? <MemberHistory /> : <GuestHistory />}
     </div>
   );

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { compactNumber, formatDuration, imageVariant } from "../format";
-import type { Album, VideoItem } from "../types";
+import type { ArticleItem } from "../types";
 
 export interface HeroSlide {
   key: string;
@@ -15,45 +15,27 @@ export interface HeroSlide {
 
 const AUTOPLAY_MS = 5500;
 
-/** Interleaves today's top videos with HOT albums: video, album, video, album, ... */
-export function buildHeroSlides(videos: VideoItem[], albums: Album[], max = 7): HeroSlide[] {
-  const vs: HeroSlide[] = videos
-    .filter((v) => v.thumbUrl)
-    .slice(0, 5)
-    .map((v) => ({
-      key: `v${v.id}`,
-      to: `/video/${v.id}`,
-      image: v.thumbUrl!,
-      label: v.recentViews ? "🔥 Hot hôm nay" : "🎬 Video nổi bật",
-      title: v.title,
-      meta: [
-        ...(v.recentViews ? [`${compactNumber(v.recentViews)} lượt xem hôm nay`] : v.viewCount ? [`${compactNumber(v.viewCount)} lượt xem`] : []),
-        ...(v.duration > 0 ? [formatDuration(v.duration)] : []),
-        ...(v.category ? [v.category.name] : []),
-      ],
-      cta: "▶ Xem ngay",
-    }));
-  const as: HeroSlide[] = albums
+/** Ảnh bìa của bài viết do admin chọn; chỉ hiện 1 ảnh/video đại diện ở trang chủ. */
+export function buildHeroSlides(articles: ArticleItem[], max = 7): HeroSlide[] {
+  return articles
     .filter((a) => a.coverUrl)
-    .slice(0, 3)
+    .slice(0, max)
     .map((a) => ({
       key: `a${a.id}`,
-      to: `/album/${a.id}`,
+      to: `/bai-viet/${a.id}`,
       image: imageVariant(a.coverUrl!, "m"),
-      label: "📸 Album hot",
+      label: a.recentViews ? "🔥 Hot hôm nay" : a.hasVideo ? "🎬 Bài viết nổi bật" : "🖼️ Bài viết nổi bật",
       title: a.title,
-      meta: [`${a.imageCount} ảnh`, ...(a.viewCount ? [`${compactNumber(a.viewCount)} lượt xem`] : [])],
-      cta: "Xem album ›",
+      meta: [
+        ...(a.recentViews ? [`${compactNumber(a.recentViews)} lượt xem hôm nay`] : a.viewCount ? [`${compactNumber(a.viewCount)} lượt xem`] : []),
+        ...(a.hasVideo && a.coverDuration > 0 ? [formatDuration(a.coverDuration)] : []),
+        ...(a.category ? [a.category.name] : []),
+      ],
+      cta: a.hasVideo ? "▶ Xem ngay" : "Xem bài viết ›",
     }));
-  const out: HeroSlide[] = [];
-  for (let i = 0; out.length < max && (i < vs.length || i < as.length); i++) {
-    if (vs[i]) out.push(vs[i]);
-    if (as[i] && out.length < max) out.push(as[i]);
-  }
-  return out;
 }
 
-function TopList({ title, videos }: { title: string; videos: VideoItem[] }) {
+function TopList({ title, articles }: { title: string; articles: ArticleItem[] }) {
   return (
     <div className="panel hidden flex-col overflow-hidden lg:flex">
       <div className="flex items-center gap-2 border-b border-line px-4 py-3">
@@ -61,19 +43,20 @@ function TopList({ title, videos }: { title: string; videos: VideoItem[] }) {
         <h2 className="font-black">{title}</h2>
       </div>
       <ol className="flex flex-1 flex-col justify-between gap-1 p-2">
-        {videos.slice(0, 5).map((v, i) => (
-          <li key={v.id}>
-            <Link to={`/video/${v.id}`} className="group flex items-center gap-3 rounded-lg p-1.5 transition hover:bg-panel-2">
+        {articles.slice(0, 5).map((a, i) => (
+          <li key={a.id}>
+            <Link to={`/bai-viet/${a.id}`} className="group flex items-center gap-3 rounded-lg p-1.5 transition hover:bg-panel-2">
               <span className={`w-6 shrink-0 text-center text-2xl font-black italic ${i < 3 ? "text-gradient" : "text-muted"}`}>{i + 1}</span>
               <span className="relative aspect-video w-24 shrink-0 overflow-hidden rounded-md bg-panel-2">
-                {v.thumbUrl && <img src={imageVariant(v.thumbUrl, "s")} alt="" loading="lazy" className="h-full w-full object-cover transition duration-500 group-hover:scale-110" />}
-                {v.duration > 0 && (
-                  <span className="absolute right-0.5 bottom-0.5 rounded bg-black/80 px-1 text-[10px] font-bold text-white">{formatDuration(v.duration)}</span>
+                {a.coverUrl && <img src={imageVariant(a.coverUrl, "s")} alt="" loading="lazy" className="h-full w-full object-cover transition duration-500 group-hover:scale-110" />}
+                {a.hasVideo && <span className="absolute inset-0 flex items-center justify-center text-lg text-white/90">▶</span>}
+                {a.coverDuration > 0 && (
+                  <span className="absolute right-0.5 bottom-0.5 rounded bg-black/80 px-1 text-[10px] font-bold text-white">{formatDuration(a.coverDuration)}</span>
                 )}
               </span>
               <span className="min-w-0">
-                <span className="line-clamp-2 text-[13px] leading-snug font-semibold group-hover:text-brand">{v.title}</span>
-                <span className="text-[11px] text-muted">{v.viewCount ? `👁 ${compactNumber(v.viewCount)}` : v.category?.name}</span>
+                <span className="line-clamp-2 text-[13px] leading-snug font-semibold group-hover:text-brand">{a.title}</span>
+                <span className="text-[11px] text-muted">{a.viewCount ? `👁 ${compactNumber(a.viewCount)}` : a.category?.name}</span>
               </span>
             </Link>
           </li>
@@ -83,7 +66,7 @@ function TopList({ title, videos }: { title: string; videos: VideoItem[] }) {
   );
 }
 
-export default function Hero({ slides, top }: { slides: HeroSlide[]; top?: VideoItem[] }) {
+export default function Hero({ slides, top }: { slides: HeroSlide[]; top?: ArticleItem[] }) {
   const [index, setIndex] = useState(0);
   const [paused, setPaused] = useState(false);
   const touchX = useRef<number | null>(null);
@@ -184,7 +167,7 @@ export default function Hero({ slides, top }: { slides: HeroSlide[]; top?: Video
           </>
         )}
       </div>
-      {showTop && <TopList title="🏆 Hay nhất tuần" videos={top!} />}
+      {showTop && <TopList title="🏆 Hay nhất tuần" articles={top!} />}
     </section>
   );
 }

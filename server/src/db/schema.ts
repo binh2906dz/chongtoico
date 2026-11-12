@@ -162,39 +162,92 @@ export const chatMessages = pgTable(
   (t) => [index("chat_messages_channel_idx").on(t.channelId, t.id)],
 );
 
-export const albums = pgTable(
-  "albums",
+export const articleCategories = pgTable(
+  "article_categories",
+  {
+    id: serial("id").primaryKey(),
+    slug: varchar("slug", { length: 64 }).notNull(),
+    name: varchar("name", { length: 60 }).notNull(),
+    sortOrder: integer("sort_order").notNull().default(0),
+    articleCount: integer("article_count").notNull().default(0),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("article_categories_slug_uq").on(t.slug)],
+);
+
+/**
+ * A published article: may contain any number of images and any number of videos.
+ * `coverImageKey` is the single picture shown in listings (home page, grids, banners);
+ * the admin picks it from the uploaded media. `coverType` records where it came from.
+ */
+export const articles = pgTable(
+  "articles",
   {
     id: serial("id").primaryKey(),
     userId: integer("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    title: varchar("title", { length: 150 }).notNull(),
-    description: varchar("description", { length: 1000 }).notNull().default(""),
+    categoryId: integer("category_id").references(() => articleCategories.id, { onDelete: "set null" }),
+    title: varchar("title", { length: 200 }).notNull(),
+    description: text("description").notNull().default(""),
+    /** "public" | "members" — members-only articles hide the files from guests. */
     visibility: varchar("visibility", { length: 16 }).notNull().default("public"),
     isHot: boolean("is_hot").notNull().default(false),
-    coverImageId: integer("cover_image_id"),
+    /** "none" | "image" | "video" — what the cover picture was taken from. */
+    coverType: varchar("cover_type", { length: 8 }).notNull().default("none"),
+    coverImageKey: varchar("cover_image_key", { length: 64 }),
+    /** Duration of the cover video in seconds (for the ▶ badge), 0 for image covers. */
+    coverDuration: integer("cover_duration").notNull().default(0),
     imageCount: integer("image_count").notNull().default(0),
+    videoCount: integer("video_count").notNull().default(0),
     viewCount: integer("view_count").notNull().default(0),
+    likeCount: integer("like_count").notNull().default(0),
+    dislikeCount: integer("dislike_count").notNull().default(0),
+    commentCount: integer("comment_count").notNull().default(0),
     createdAt: createdAt(),
   },
-  (t) => [index("albums_created_idx").on(t.createdAt), index("albums_hot_idx").on(t.isHot, t.createdAt)],
+  (t) => [
+    index("articles_created_idx").on(t.createdAt),
+    index("articles_views_idx").on(t.viewCount),
+    index("articles_category_idx").on(t.categoryId, t.createdAt),
+    index("articles_hot_idx").on(t.isHot, t.createdAt),
+  ],
 );
 
-export const albumImages = pgTable(
-  "album_images",
+export const articleImages = pgTable(
+  "article_images",
   {
     id: serial("id").primaryKey(),
-    albumId: integer("album_id")
+    articleId: integer("article_id")
       .notNull()
-      .references(() => albums.id, { onDelete: "cascade" }),
+      .references(() => articles.id, { onDelete: "cascade" }),
     fileKey: varchar("file_key", { length: 64 }).notNull(),
     width: integer("width").notNull(),
     height: integer("height").notNull(),
     sortOrder: integer("sort_order").notNull().default(0),
     createdAt: createdAt(),
   },
-  (t) => [index("album_images_album_idx").on(t.albumId, t.sortOrder), uniqueIndex("album_images_key_uq").on(t.fileKey)],
+  (t) => [index("article_images_article_idx").on(t.articleId, t.sortOrder), uniqueIndex("article_images_key_uq").on(t.fileKey)],
+);
+
+export const articleVideos = pgTable(
+  "article_videos",
+  {
+    id: serial("id").primaryKey(),
+    articleId: integer("article_id")
+      .notNull()
+      .references(() => articles.id, { onDelete: "cascade" }),
+    fileKey: varchar("file_key", { length: 64 }).notNull(),
+    ext: varchar("ext", { length: 8 }).notNull(),
+    thumbKey: varchar("thumb_key", { length: 64 }),
+    duration: integer("duration").notNull().default(0),
+    width: integer("width").notNull().default(0),
+    height: integer("height").notNull().default(0),
+    sizeBytes: bigint("size_bytes", { mode: "number" }).notNull().default(0),
+    sortOrder: integer("sort_order").notNull().default(0),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("article_videos_key_uq").on(t.fileKey), index("article_videos_article_idx").on(t.articleId, t.sortOrder)],
 );
 
 export const uploads = pgTable(
@@ -275,93 +328,47 @@ export const userFollows = pgTable(
   (t) => [primaryKey({ columns: [t.followerId, t.followingId] }), index("user_follows_following_idx").on(t.followingId)],
 );
 
-export const videoCategories = pgTable(
-  "video_categories",
+export const articleVotes = pgTable(
+  "article_votes",
   {
-    id: serial("id").primaryKey(),
-    slug: varchar("slug", { length: 64 }).notNull(),
-    name: varchar("name", { length: 60 }).notNull(),
-    sortOrder: integer("sort_order").notNull().default(0),
-    videoCount: integer("video_count").notNull().default(0),
-    createdAt: createdAt(),
-  },
-  (t) => [uniqueIndex("video_categories_slug_uq").on(t.slug)],
-);
-
-export const videos = pgTable(
-  "videos",
-  {
-    id: serial("id").primaryKey(),
-    userId: integer("user_id")
+    articleId: integer("article_id")
       .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
-    categoryId: integer("category_id").references(() => videoCategories.id, { onDelete: "set null" }),
-    title: varchar("title", { length: 200 }).notNull(),
-    description: varchar("description", { length: 5000 }).notNull().default(""),
-    fileKey: varchar("file_key", { length: 64 }).notNull(),
-    ext: varchar("ext", { length: 8 }).notNull(),
-    thumbKey: varchar("thumb_key", { length: 64 }),
-    duration: integer("duration").notNull().default(0),
-    width: integer("width").notNull().default(0),
-    height: integer("height").notNull().default(0),
-    sizeBytes: bigint("size_bytes", { mode: "number" }).notNull().default(0),
-    viewCount: integer("view_count").notNull().default(0),
-    likeCount: integer("like_count").notNull().default(0),
-    dislikeCount: integer("dislike_count").notNull().default(0),
-    commentCount: integer("comment_count").notNull().default(0),
-    /** "public" | "members" — members-only videos hide the file and details from guests. */
-    visibility: varchar("visibility", { length: 16 }).notNull().default("public"),
-    createdAt: createdAt(),
-  },
-  (t) => [
-    uniqueIndex("videos_file_key_uq").on(t.fileKey),
-    index("videos_created_idx").on(t.createdAt),
-    index("videos_views_idx").on(t.viewCount),
-    index("videos_category_idx").on(t.categoryId, t.createdAt),
-  ],
-);
-
-export const videoVotes = pgTable(
-  "video_votes",
-  {
-    videoId: integer("video_id")
-      .notNull()
-      .references(() => videos.id, { onDelete: "cascade" }),
+      .references(() => articles.id, { onDelete: "cascade" }),
     userId: integer("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     value: integer("value").notNull(),
     createdAt: createdAt(),
   },
-  (t) => [primaryKey({ columns: [t.videoId, t.userId] }), index("video_votes_created_idx").on(t.createdAt)],
+  (t) => [primaryKey({ columns: [t.articleId, t.userId] }), index("article_votes_created_idx").on(t.createdAt)],
 );
 
-export const videoComments = pgTable(
-  "video_comments",
+export const articleComments = pgTable(
+  "article_comments",
   {
     id: serial("id").primaryKey(),
-    videoId: integer("video_id")
+    articleId: integer("article_id")
       .notNull()
-      .references(() => videos.id, { onDelete: "cascade" }),
+      .references(() => articles.id, { onDelete: "cascade" }),
     userId: integer("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     /** One level of replies: a reply always points at a top-level comment. */
-    parentId: integer("parent_id").references((): AnyPgColumn => videoComments.id, { onDelete: "cascade" }),
+    parentId: integer("parent_id").references((): AnyPgColumn => articleComments.id, { onDelete: "cascade" }),
     content: varchar("content", { length: 2000 }).notNull(),
     likeCount: integer("like_count").notNull().default(0),
     dislikeCount: integer("dislike_count").notNull().default(0),
     createdAt: createdAt(),
   },
-  (t) => [index("video_comments_video_idx").on(t.videoId, t.id), index("video_comments_parent_idx").on(t.parentId)],
+  (t) => [index("article_comments_article_idx").on(t.articleId, t.id), index("article_comments_parent_idx").on(t.parentId)],
 );
 
-export const videoCommentVotes = pgTable(
-  "video_comment_votes",
+export const articleCommentVotes = pgTable(
+  "article_comment_votes",
   {
     commentId: integer("comment_id")
       .notNull()
-      .references(() => videoComments.id, { onDelete: "cascade" }),
+      .references(() => articleComments.id, { onDelete: "cascade" }),
     userId: integer("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
@@ -371,45 +378,45 @@ export const videoCommentVotes = pgTable(
   (t) => [primaryKey({ columns: [t.commentId, t.userId] })],
 );
 
-export const videoTags = pgTable(
-  "video_tags",
+export const articleTags = pgTable(
+  "article_tags",
   {
     id: serial("id").primaryKey(),
     slug: varchar("slug", { length: 64 }).notNull(),
     name: varchar("name", { length: 40 }).notNull(),
-    videoCount: integer("video_count").notNull().default(0),
+    articleCount: integer("article_count").notNull().default(0),
     createdAt: createdAt(),
   },
-  (t) => [uniqueIndex("video_tags_slug_uq").on(t.slug), index("video_tags_count_idx").on(t.videoCount)],
+  (t) => [uniqueIndex("article_tags_slug_uq").on(t.slug), index("article_tags_count_idx").on(t.articleCount)],
 );
 
-export const videoTagLinks = pgTable(
-  "video_tag_links",
+export const articleTagLinks = pgTable(
+  "article_tag_links",
   {
-    videoId: integer("video_id")
+    articleId: integer("article_id")
       .notNull()
-      .references(() => videos.id, { onDelete: "cascade" }),
+      .references(() => articles.id, { onDelete: "cascade" }),
     tagId: integer("tag_id")
       .notNull()
-      .references(() => videoTags.id, { onDelete: "cascade" }),
+      .references(() => articleTags.id, { onDelete: "cascade" }),
   },
-  (t) => [primaryKey({ columns: [t.videoId, t.tagId] }), index("video_tag_links_tag_idx").on(t.tagId)],
+  (t) => [primaryKey({ columns: [t.articleId, t.tagId] }), index("article_tag_links_tag_idx").on(t.tagId)],
 );
 
-export const videoSaves = pgTable(
-  "video_saves",
+export const articleSaves = pgTable(
+  "article_saves",
   {
     userId: integer("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    videoId: integer("video_id")
+    articleId: integer("article_id")
       .notNull()
-      .references(() => videos.id, { onDelete: "cascade" }),
+      .references(() => articles.id, { onDelete: "cascade" }),
     /** "favorite" (Yêu thích) | "later" (Xem sau) */
     list: varchar("list", { length: 16 }).notNull(),
     createdAt: createdAt(),
   },
-  (t) => [primaryKey({ columns: [t.userId, t.list, t.videoId] }), index("video_saves_user_idx").on(t.userId, t.list, t.createdAt)],
+  (t) => [primaryKey({ columns: [t.userId, t.list, t.articleId] }), index("article_saves_user_idx").on(t.userId, t.list, t.createdAt)],
 );
 
 export const reports = pgTable(
@@ -445,8 +452,8 @@ export const notifications = pgTable(
     actorId: integer("actor_id").references(() => users.id, { onDelete: "cascade" }),
     threadId: integer("thread_id").references(() => threads.id, { onDelete: "cascade" }),
     postId: integer("post_id").references(() => posts.id, { onDelete: "cascade" }),
-    videoId: integer("video_id").references(() => videos.id, { onDelete: "cascade" }),
-    commentId: integer("comment_id").references(() => videoComments.id, { onDelete: "cascade" }),
+    articleId: integer("article_id").references(() => articles.id, { onDelete: "cascade" }),
+    commentId: integer("comment_id").references(() => articleComments.id, { onDelete: "cascade" }),
     isRead: boolean("is_read").notNull().default(false),
     createdAt: createdAt(),
   },
@@ -459,30 +466,30 @@ export const siteSettings = pgTable("site_settings", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
-export const videoViewDays = pgTable(
-  "video_view_days",
+export const articleViewDays = pgTable(
+  "article_view_days",
   {
-    videoId: integer("video_id")
+    articleId: integer("article_id")
       .notNull()
-      .references(() => videos.id, { onDelete: "cascade" }),
+      .references(() => articles.id, { onDelete: "cascade" }),
     day: date("day", { mode: "string" }).notNull(),
     views: integer("views").notNull().default(0),
   },
-  (t) => [primaryKey({ columns: [t.videoId, t.day] }), index("video_view_days_day_idx").on(t.day)],
+  (t) => [primaryKey({ columns: [t.articleId, t.day] }), index("article_view_days_day_idx").on(t.day)],
 );
 
-export const videoHistory = pgTable(
-  "video_history",
+export const articleHistory = pgTable(
+  "article_history",
   {
     userId: integer("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    videoId: integer("video_id")
+    articleId: integer("article_id")
       .notNull()
-      .references(() => videos.id, { onDelete: "cascade" }),
+      .references(() => articles.id, { onDelete: "cascade" }),
     viewedAt: timestamp("viewed_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [primaryKey({ columns: [t.userId, t.videoId] }), index("video_history_user_idx").on(t.userId, t.viewedAt)],
+  (t) => [primaryKey({ columns: [t.userId, t.articleId] }), index("article_history_user_idx").on(t.userId, t.viewedAt)],
 );
 
 export type User = typeof users.$inferSelect;

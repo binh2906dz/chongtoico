@@ -3,13 +3,12 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { author, authorColumns, profileUser } from "../auth.js";
 import { db } from "../db/index.js";
-import { posts, threads, users, videoTags } from "../db/schema.js";
+import { articleTags, posts, threads, users } from "../db/schema.js";
 import { notFound, parse } from "../http.js";
 import { getOnline } from "../realtime.js";
-import { hotAlbums, latestAlbums } from "./albums.js";
 import { followStats } from "./follow.js";
 import { threadFeed } from "./forum.js";
-import { listVideoCategories, listVideos, videosByIds, watchingNowIds } from "./videos.js";
+import { articlesByIds, listArticleCategories, listArticles, watchingNowIds } from "./articles.js";
 
 export async function forumStats() {
   const [[t], [p], [u], [latest]] = await Promise.all([
@@ -27,34 +26,29 @@ export async function forumStats() {
   };
 }
 
-async function homeData(loggedIn: boolean) {
-  const [albums, newAlbums, today, week, newest, random, watching, videoCategories, tags, latest, hot, trending, stats] =
-    await Promise.all([
-      hotAlbums(loggedIn, 8),
-      latestAlbums(loggedIn, 12),
-      listVideos({ sort: "today", limit: 8 }),
-      listVideos({ sort: "week", limit: 8 }),
-      listVideos({ sort: "new", limit: 24 }),
-      listVideos({ sort: "random", limit: 8 }),
-      videosByIds(watchingNowIds(8)),
-      listVideoCategories(),
-      db
-        .select({ id: videoTags.id, slug: videoTags.slug, name: videoTags.name, videoCount: videoTags.videoCount })
-        .from(videoTags)
-        .where(gt(videoTags.videoCount, 0))
-        .orderBy(desc(videoTags.videoCount))
-        .limit(30),
-      threadFeed("latest", 8),
-      threadFeed("hot", 8),
-      threadFeed("trending", 8),
-      forumStats(),
-    ]);
+async function homeData() {
+  const [today, week, newest, random, watching, articleCategories, tags, latest, hot, trending, stats] = await Promise.all([
+    listArticles({ sort: "today", limit: 8 }),
+    listArticles({ sort: "week", limit: 8 }),
+    listArticles({ sort: "new", limit: 24 }),
+    listArticles({ sort: "random", limit: 8 }),
+    articlesByIds(watchingNowIds(8)),
+    listArticleCategories(),
+    db
+      .select({ id: articleTags.id, slug: articleTags.slug, name: articleTags.name, articleCount: articleTags.articleCount })
+      .from(articleTags)
+      .where(gt(articleTags.articleCount, 0))
+      .orderBy(desc(articleTags.articleCount))
+      .limit(30),
+    threadFeed("latest", 8),
+    threadFeed("hot", 8),
+    threadFeed("trending", 8),
+    forumStats(),
+  ]);
   return {
-    videos: { today: today.rows, week: week.rows, newest: newest.rows, random: random.rows, watching },
-    videoCategories,
+    articles: { today: today.rows, week: week.rows, newest: newest.rows, random: random.rows, watching },
+    articleCategories,
     tags,
-    hotAlbums: albums,
-    latestAlbums: newAlbums,
     feeds: { latest, hot, trending },
     stats,
   };
@@ -66,7 +60,7 @@ let guestHome: { at: number; data: Promise<Awaited<ReturnType<typeof homeData>>>
 
 function cachedGuestHome() {
   if (!guestHome || Date.now() - guestHome.at > HOME_CACHE_MS) {
-    const entry = { at: Date.now(), data: homeData(false) };
+    const entry = { at: Date.now(), data: homeData() };
     entry.data.catch(() => {
       if (guestHome === entry) guestHome = null;
     });
@@ -78,7 +72,7 @@ function cachedGuestHome() {
 export default async function memberRoutes(app: FastifyInstance) {
   app.get("/api/stats", async () => forumStats());
 
-  app.get("/api/home", async (req) => (req.user ? homeData(true) : cachedGuestHome()));
+  app.get("/api/home", async (req) => (req.user ? homeData() : cachedGuestHome()));
 
   app.get("/api/members/:username", async (req) => {
     const { username } = parse(z.object({ username: z.string().max(32) }), req.params);

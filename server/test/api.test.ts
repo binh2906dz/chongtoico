@@ -259,75 +259,121 @@ describe("Chống Tối Cổ API", () => {
     assert.equal(msgs[0].author.username, "alice");
   });
 
-  it("albums: create, upload, members-only lock, media serving", async () => {
+  it("articles: admin-only create, upload, members-only lock, cover selection, media serving", async () => {
+    // Thành viên thường không được đăng bài viết.
     let res = await app.inject({
       method: "POST",
-      url: "/api/albums",
+      url: "/api/admin/articles",
       headers: { ...H, cookie: alice.cookie },
-      payload: { title: "Không phải staff" },
+      payload: { title: "Không phải admin" },
     });
     assert.equal(res.statusCode, 403);
-    res = await app.inject({
-      method: "POST",
-      url: "/api/albums",
-      headers: { ...H, cookie: admin },
-      payload: { title: "Phong cảnh", visibility: "members", isHot: true },
-    });
-    assert.equal(res.statusCode, 200, res.body);
-    const albumId = res.json().album.id;
 
-    const mp = multipart([
-      { name: "a.png", data: await png(3000, 2000) },
-      { name: "b.png", data: await png(400, 300) },
-    ]);
     res = await app.inject({
       method: "POST",
-      url: `/api/albums/${albumId}/images`,
-      headers: { ...H, cookie: admin, "content-type": mp.contentType },
-      payload: mp.payload,
+      url: "/api/admin/articles",
+      headers: { ...H, cookie: admin },
+      payload: { title: "Phong cảnh", visibility: "members", isHot: true, tags: "cảnh, đẹp" },
     });
     assert.equal(res.statusCode, 200, res.body);
-    assert.equal(res.json().added.length, 2);
+    const articleId = res.json().article.id;
+
+    // Tải ảnh lên (1 ảnh / 1 request).
+    for (const [name, w, h] of [
+      ["a.png", 3000, 2000],
+      ["b.png", 400, 300],
+    ] as const) {
+      const mp = multipart([{ name, data: await png(w, h) }]);
+      const up = await app.inject({
+        method: "POST",
+        url: `/api/admin/articles/${articleId}/images`,
+        headers: { ...H, cookie: admin, "content-type": mp.contentType },
+        payload: mp.payload,
+      });
+      assert.equal(up.statusCode, 200, up.body);
+    }
 
     const bad = multipart([{ name: "x.png", data: Buffer.from("not an image") }]);
     res = await app.inject({
       method: "POST",
-      url: `/api/albums/${albumId}/images`,
+      url: `/api/admin/articles/${articleId}/images`,
       headers: { ...H, cookie: admin, "content-type": bad.contentType },
       payload: bad.payload,
     });
     assert.equal(res.statusCode, 400);
 
-    const guest = (await app.inject(`/api/albums/${albumId}`)).json();
-    assert.equal(guest.album.locked, true);
-    assert.equal(guest.images.length, 0);
-    const member = (await app.inject({ url: `/api/albums/${albumId}`, headers: { cookie: bob.cookie } })).json();
-    assert.equal(member.images.length, 2);
-    assert.equal(member.images[0].width, 2000);
-    assert.ok(member.album.coverUrl);
+    // Khách chưa đăng nhập không thấy media của bài chỉ thành viên.
+    const guest = (await app.inject(`/api/articles/${articleId}`)).json();
+    assert.equal(guest.article.locked, true);
+    assert.equal(guest.article.images.length, 0);
+    const member = (await app.inject({ url: `/api/articles/${articleId}`, headers: { cookie: bob.cookie } })).json();
+    assert.equal(member.article.images.length, 2);
+    assert.equal(member.article.images[0].width, 2000);
+    assert.ok(member.article.coverUrl);
 
-    const url = member.images[0].url;
+    const url = member.article.images[0].url;
     assert.equal((await app.inject(url)).statusCode, 403);
     const img = await app.inject({ url, headers: { cookie: bob.cookie } });
     assert.equal(img.statusCode, 200);
     assert.equal(img.headers["content-type"], "image/webp");
-    assert.equal((await app.inject({ url: member.images[0].thumbUrl, headers: { cookie: bob.cookie } })).statusCode, 200);
+    assert.equal((await app.inject({ url: member.article.images[0].thumbUrl, headers: { cookie: bob.cookie } })).statusCode, 200);
     assert.equal((await app.inject("/media/a/../../etc.webp")).statusCode, 404);
 
-    const list = (await app.inject("/api/albums?hot=1")).json();
-    assert.equal(list.albums.length, 1);
-    assert.equal(list.albums[0].imageCount, 2);
-    assert.equal(list.albums[0].coverUrl, null);
+    const list = (await app.inject("/api/articles?sort=new")).json();
+    assert.equal(list.articles.length, 1);
+    assert.equal(list.articles[0].imageCount, 2);
+    assert.ok(list.articles[0].coverUrl);
 
+    // Chọn ảnh bìa thứ 2.
+    res = await app.inject({
+      method: "POST",
+      url: `/api/admin/articles/${articleId}/cover`,
+      headers: { ...H, cookie: admin },
+      payload: { type: "image", imageId: member.article.images[1].id },
+    });
+    assert.equal(res.statusCode, 200, res.body);
+    const admin2 = (await app.inject({ url: `/api/admin/articles/${articleId}`, headers: { cookie: admin } })).json();
+    assert.equal(admin2.article.coverType, "image");
+    assert.equal(admin2.article.coverImageKey, admin2.article.images[1].fileKey);
+
+    // Xoá ảnh đầu tiên.
     res = await app.inject({
       method: "DELETE",
-      url: `/api/albums/${albumId}/images/${member.images[0].id}`,
+      url: `/api/admin/articles/${articleId}/images/${member.article.images[0].id}`,
       headers: { ...H, cookie: admin },
     });
     assert.equal(res.statusCode, 200);
-    const after = (await app.inject({ url: `/api/albums/${albumId}`, headers: { cookie: bob.cookie } })).json();
-    assert.equal(after.album.imageCount, 1);
-    assert.equal(after.album.coverImageId, after.images[0].id);
+    const after2 = (await app.inject({ url: `/api/articles/${articleId}`, headers: { cookie: bob.cookie } })).json();
+    assert.equal(after2.article.imageCount, 1);
+  });
+
+  it("deletes an article and cleans up its media", async () => {
+    let res = await app.inject({
+      method: "POST",
+      url: "/api/admin/articles",
+      headers: { ...H, cookie: admin },
+      payload: { title: "Sẽ xoá", tags: "xoa" },
+    });
+    assert.equal(res.statusCode, 200, res.body);
+    const id = res.json().article.id;
+
+    const mp = multipart([{ name: "a.png", data: await png(600, 400) }]);
+    res = await app.inject({
+      method: "POST",
+      url: `/api/admin/articles/${id}/images`,
+      headers: { ...H, cookie: admin, "content-type": mp.contentType },
+      payload: mp.payload,
+    });
+    assert.equal(res.statusCode, 200, res.body);
+
+    // Xoá bài viết phải trả 200 kể cả khi file trên đĩa bị khoá (Windows/OneDrive).
+    res = await app.inject({
+      method: "DELETE",
+      url: `/api/admin/articles/${id}`,
+      headers: { ...H, cookie: admin },
+    });
+    assert.equal(res.statusCode, 200, res.body);
+    assert.equal((await app.inject(`/api/articles/${id}`)).statusCode, 404);
   });
 
   it("avatar and post image upload", async () => {

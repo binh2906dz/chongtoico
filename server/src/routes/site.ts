@@ -5,14 +5,14 @@ import { z } from "zod";
 import { author, authorColumns, requireAdmin, requireStaff } from "../auth.js";
 import { config } from "../config.js";
 import { db } from "../db/index.js";
-import { posts, reports, users, videoComments, videos } from "../db/schema.js";
+import { posts, reports, users, articleComments, articles } from "../db/schema.js";
 import { badRequest, idParam, notFound, pageQuery, paginate, parse } from "../http.js";
 import { adImageUrl, removeImage, storeImage } from "../media.js";
 import { emitTo } from "../realtime.js";
 import { AD_SLOTS, getSettings, publicSettings, saveSetting, SETTING_KEYS, settingSchemas, type SettingKey } from "../settings.js";
 
 const REPORTS_PER_PAGE = 30;
-export const REPORT_TARGETS = ["video", "video_comment", "post", "site"] as const;
+export const REPORT_TARGETS = ["article", "article_comment", "post", "site"] as const;
 export const REPORT_REASONS = ["copyright", "inappropriate", "spam", "error", "other"] as const;
 export const REPORT_STATUSES = ["open", "resolved", "dismissed"] as const;
 
@@ -30,7 +30,7 @@ const excerpt = (text: string, max = 160) => {
 
 async function targetExists(type: (typeof REPORT_TARGETS)[number], id: number) {
   if (type === "site") return true;
-  const table = type === "video" ? videos : type === "video_comment" ? videoComments : posts;
+  const table = type === "article" ? articles : type === "article_comment" ? articleComments : posts;
   const [row] = await db.select({ id: table.id }).from(table).where(eq(table.id, id)).limit(1);
   return !!row;
 }
@@ -40,20 +40,20 @@ type TargetInfo = { label: string; url: string | null; excerpt?: string };
 async function describeTargets(rows: { targetType: string; targetId: number }[]) {
   const ids = (type: string) => [...new Set(rows.filter((r) => r.targetType === type).map((r) => r.targetId))];
   const out = new Map<string, TargetInfo>();
-  const videoIds = ids("video");
-  if (videoIds.length) {
-    const list = await db.select({ id: videos.id, title: videos.title }).from(videos).where(inArray(videos.id, videoIds));
-    for (const v of list) out.set(`video:${v.id}`, { label: `Video: ${v.title}`, url: `/video/${v.id}` });
+  const articleIds = ids("article");
+  if (articleIds.length) {
+    const list = await db.select({ id: articles.id, title: articles.title }).from(articles).where(inArray(articles.id, articleIds));
+    for (const a of list) out.set(`article:${a.id}`, { label: `Bài viết: ${a.title}`, url: `/bai-viet/${a.id}` });
   }
-  const commentIds = ids("video_comment");
+  const commentIds = ids("article_comment");
   if (commentIds.length) {
     const list = await db
-      .select({ id: videoComments.id, videoId: videoComments.videoId, content: videoComments.content, username: users.username })
-      .from(videoComments)
-      .innerJoin(users, eq(users.id, videoComments.userId))
-      .where(inArray(videoComments.id, commentIds));
+      .select({ id: articleComments.id, articleId: articleComments.articleId, content: articleComments.content, username: users.username })
+      .from(articleComments)
+      .innerJoin(users, eq(users.id, articleComments.userId))
+      .where(inArray(articleComments.id, commentIds));
     for (const c of list) {
-      out.set(`video_comment:${c.id}`, { label: `Bình luận của ${c.username}`, url: `/video/${c.videoId}`, excerpt: excerpt(c.content) });
+      out.set(`article_comment:${c.id}`, { label: `Bình luận của ${c.username}`, url: `/bai-viet/${c.articleId}`, excerpt: excerpt(c.content) });
     }
   }
   const postIds = ids("post");

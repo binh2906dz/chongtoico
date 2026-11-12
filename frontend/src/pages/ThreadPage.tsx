@@ -5,11 +5,11 @@ import { isAdmin, isStaff, useAuth } from "../auth";
 import Editor from "../components/Editor";
 import { ReportButton } from "../components/Extras";
 import { Avatar, ErrorBox, ListSkeleton, Pagination, PostContent, RoleBadge, Spinner, UserLink } from "../components/ui";
-import { VideoGrid } from "../components/VideoCard";
+import { ArticleGrid } from "../components/ArticleCard";
 import { formatDate, formatNumber, roleLabel } from "../format";
 import { usePage } from "../usePage";
 import { useFetch } from "../useFetch";
-import type { Post, ThreadItem, VideoItem } from "../types";
+import type { ArticleItem, Post, ThreadItem } from "../types";
 
 interface ThreadData {
   thread: ThreadItem;
@@ -303,24 +303,24 @@ export default function ThreadPage() {
         )}
       </section>
 
-      <RandomVideos />
+      <RandomArticles />
     </div>
   );
 }
 
-function RandomVideos() {
+function RandomArticles() {
   const [tick, setTick] = useState(0);
-  const { data } = useFetch<{ videos: VideoItem[] }>(`/api/videos/random?limit=8&r=${tick}`);
-  if (!data?.videos.length) return null;
+  const { data } = useFetch<{ articles: ArticleItem[] }>(`/api/articles/random?limit=8&r=${tick}`);
+  if (!data?.articles.length) return null;
   return (
     <section className="space-y-3">
       <div className="flex items-center justify-between gap-3 border-b border-line pb-2">
-        <h2 className="text-lg font-black">🎬 Video đề xuất</h2>
+        <h2 className="text-lg font-black">📝 Bài viết đề xuất</h2>
         <button className="btn-ghost px-2.5 py-1 text-xs" onClick={() => setTick((t) => t + 1)}>
-          🔀 Đổi video khác
+          🔀 Đổi bài khác
         </button>
       </div>
-      <VideoGrid videos={data.videos} />
+      <ArticleGrid articles={data.articles} />
     </section>
   );
 }

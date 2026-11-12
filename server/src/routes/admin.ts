@@ -4,7 +4,7 @@ import { z } from "zod";
 import { hashPassword, isAdmin, profileUser, requireAdmin, requireStaff, ROLES } from "../auth.js";
 import { db } from "../db/index.js";
 import {
-  albums,
+  articles,
   categories,
   chatChannels,
   chatMessages,
@@ -14,7 +14,6 @@ import {
   supportConversations,
   threads,
   users,
-  videos,
 } from "../db/schema.js";
 import { badRequest, forbidden, idParam, isUniqueViolation, notFound, ok, pageQuery, parse } from "../http.js";
 
@@ -46,13 +45,12 @@ export default async function adminRoutes(app: FastifyInstance) {
   app.get("/api/admin/overview", async (req) => {
     requireStaff(req);
     const dayAgo = new Date(Date.now() - 86400_000);
-    const [[u], [u24], [t], [p], [v], [a], [m], [openSupport], [openReports]] = await Promise.all([
+    const [[u], [u24], [t], [p], [a], [m], [openSupport], [openReports]] = await Promise.all([
       db.select({ n: count() }).from(users),
       db.select({ n: count() }).from(users).where(gt(users.createdAt, dayAgo)),
       db.select({ n: count() }).from(threads),
       db.select({ n: count() }).from(posts),
-      db.select({ n: count() }).from(videos),
-      db.select({ n: count() }).from(albums),
+      db.select({ n: count() }).from(articles),
       db.select({ n: count() }).from(chatMessages),
       db.select({ n: count() }).from(supportConversations).where(eq(supportConversations.status, "open")),
       db.select({ n: count() }).from(reports).where(eq(reports.status, "open")),
@@ -62,8 +60,7 @@ export default async function adminRoutes(app: FastifyInstance) {
       newMembers24h: u24.n,
       threads: t.n,
       posts: p.n,
-      videos: v.n,
-      albums: a.n,
+      articles: a.n,
       chatMessages: m.n,
       openSupport: openSupport.n,
       openReports: openReports.n,
@@ -258,18 +255,18 @@ export default async function adminRoutes(app: FastifyInstance) {
         thread_count = (select count(*) from threads t where t.category_id = c.id),
         post_count = (select count(*) from posts p join threads t on t.id = p.thread_id where t.category_id = c.id)`);
     await db.execute(sql`
-      update video_categories vc set video_count = (select count(*) from videos v where v.category_id = vc.id)`);
+      update article_categories ac set article_count = (select count(*) from articles a where a.category_id = ac.id)`);
     await db.execute(sql`
-      update videos v set
-        like_count = (select count(*) from video_votes x where x.video_id = v.id and x.value = 1),
-        dislike_count = (select count(*) from video_votes x where x.video_id = v.id and x.value = -1),
-        comment_count = (select count(*) from video_comments c where c.video_id = v.id)`);
+      update articles a set
+        like_count = (select count(*) from article_votes x where x.article_id = a.id and x.value = 1),
+        dislike_count = (select count(*) from article_votes x where x.article_id = a.id and x.value = -1),
+        comment_count = (select count(*) from article_comments c where c.article_id = a.id)`);
     await db.execute(sql`
-      update video_comments c set
-        like_count = (select count(*) from video_comment_votes x where x.comment_id = c.id and x.value = 1),
-        dislike_count = (select count(*) from video_comment_votes x where x.comment_id = c.id and x.value = -1)`);
+      update article_comments c set
+        like_count = (select count(*) from article_comment_votes x where x.comment_id = c.id and x.value = 1),
+        dislike_count = (select count(*) from article_comment_votes x where x.comment_id = c.id and x.value = -1)`);
     await db.execute(sql`
-      update video_tags t set video_count = (select count(*) from video_tag_links l where l.tag_id = t.id)`);
+      update article_tags t set article_count = (select count(*) from article_tag_links l where l.tag_id = t.id)`);
     return ok(reply);
   });
 }

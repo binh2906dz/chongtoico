@@ -15,7 +15,7 @@ export function notificationLink(n: NotificationItem) {
     case "new_thread":
       return n.threadId ? `/chu-de/${n.threadId}` : "/";
     case "comment_reply":
-      return n.videoId ? `/video/${n.videoId}${n.commentId ? `#c${n.commentId}` : ""}` : "/";
+      return n.articleId ? `/bai-viet/${n.articleId}${n.commentId ? `#c${n.commentId}` : ""}` : "/";
     case "follow":
       return n.actor ? `/thanh-vien/${n.actor.username}` : "/";
   }
@@ -32,7 +32,7 @@ export function notificationText(n: NotificationItem) {
     case "new_thread":
       return `${who} vừa đăng chủ đề mới ${thread}`;
     case "comment_reply":
-      return `${who} đã trả lời bình luận của bạn${n.videoTitle ? ` ở video "${n.videoTitle}"` : ""}`;
+      return `${who} đã trả lời bình luận của bạn${n.articleTitle ? ` ở bài viết "${n.articleTitle}"` : ""}`;
     case "follow":
       return `${who} đã bắt đầu theo dõi bạn`;
   }

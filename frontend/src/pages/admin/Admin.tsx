@@ -5,14 +5,13 @@ import { isStaff, useAuth } from "../../auth";
 import { Avatar, ErrorBox, Pagination, Spinner, Tabs, UserLink } from "../../components/ui";
 import { formatDate, formatNumber } from "../../format";
 import { useFetch } from "../../useFetch";
-import type { Category, Channel, Profile, VideoCategory } from "../../types";
-import AdminAlbums from "./AdminAlbums";
+import type { ArticleCategory, Category, Channel, Profile } from "../../types";
+import AdminArticles from "./AdminArticles";
 import AdminReports from "./AdminReports";
 import AdminSettings from "./AdminSettings";
 import AdminSupport from "./AdminSupport";
-import AdminVideos from "./AdminVideos";
 
-const TABS = ["overview", "reports", "videos", "videoCategories", "users", "categories", "channels", "albums", "support", "settings"] as const;
+const TABS = ["overview", "reports", "bai-viet", "the-loai", "users", "categories", "channels", "support", "settings"] as const;
 type Tab = (typeof TABS)[number];
 
 function Overview() {
@@ -26,8 +25,7 @@ function Overview() {
     ["Thành viên mới 24h", data.newMembers24h],
     ["Chủ đề", data.threads],
     ["Bài viết", data.posts],
-    ["Video", data.videos],
-    ["Album", data.albums],
+    ["Bài viết media", data.articles],
     ["Tin nhắn chat", data.chatMessages],
     ["CSKH đang mở", data.openSupport],
     ["Báo vi phạm chờ xử lý", data.openReports],
@@ -356,12 +354,11 @@ export default function Admin() {
         tabs={[
           { id: "overview", label: "Tổng quan" },
           { id: "reports", label: "Báo vi phạm" },
-          { id: "videos", label: "Video" },
-          { id: "videoCategories", label: "Thể loại video" },
+          { id: "bai-viet", label: "Bài viết" },
+          { id: "the-loai", label: "Thể loại bài viết" },
           { id: "users", label: "Thành viên" },
           { id: "categories", label: "Chuyên mục" },
           { id: "channels", label: "Kênh chat" },
-          { id: "albums", label: "Album" },
           { id: "support", label: "CSKH" },
           ...(admin ? [{ id: "settings" as const, label: "Cài đặt trang" }] : []),
         ]}
@@ -371,10 +368,10 @@ export default function Admin() {
       {tab === "overview" && <Overview />}
       {tab === "reports" && <AdminReports />}
       {tab === "settings" && admin && <AdminSettings />}
-      {tab === "videos" && <AdminVideos isAdmin={admin} />}
-      {tab === "videoCategories" && (
-        <CrudList<VideoCategory>
-          endpoint="/api/admin/video-categories"
+      {tab === "bai-viet" && <AdminArticles />}
+      {tab === "the-loai" && (
+        <CrudList<ArticleCategory>
+          endpoint="/api/admin/article-categories"
           listKey="categories"
           canEdit={admin}
           blank={{ slug: "", name: "", sortOrder: 0 }}
@@ -417,7 +414,6 @@ export default function Admin() {
           ]}
         />
       )}
-      {tab === "albums" && <AdminAlbums />}
       {tab === "support" && <AdminSupport />}
     </div>
   );

@@ -1,0 +1,1224 @@
+import { randomBytes } from "node:crypto";
+import { createWriteStream } from "node:fs";
+import { mkdir, open, rename, rm, stat } from "node:fs/promises";
+import path from "node:path";
+import { pipeline } from "node:stream/promises";
+import { and, asc, count, desc, eq, gte, ilike, inArray, isNull, notInArray, sql, type SQL } from "drizzle-orm";
+import type { FastifyInstance } from "fastify";
+import { z } from "zod";
+import { author, authorColumns, isStaff, requireActive, requireAdmin, requireStaff, requireUser } from "../auth.js";
+import { config } from "../config.js";
+import { db } from "../db/index.js";
+import {
+  articleCategories,
+  articleComments,
+  articleCommentVotes,
+  articleHistory,
+  articleImages,
+  articleSaves,
+  articleTagLinks,
+  articleTags,
+  articleViewDays,
+  articleVideos,
+  articles,
+  articleVotes,
+  users,
+} from "../db/schema.js";
+import { faststart, grabFrame, probeVideo } from "../ffmpeg.js";
+import { badRequest, forbidden, HttpError, idParam, isUniqueViolation, notFound, ok, pageQuery, paginate, parse } from "../http.js";
+import {
+  looksLikeVideo,
+  removeImage,
+  removeVideoFile,
+  storeImage,
+  VIDEO_DIR,
+  videoExtFromName,
+  videoFileUrl,
+  type VideoExt,
+} from "../media.js";
+import { notify } from "../notify.js";
+import { slugSchema } from "./admin.js";
+
+const PER_PAGE = 24;
+const COMMENTS_PER_PAGE = 20;
+const MB = 1024 * 1024;
+
+export const ARTICLE_SORTS = ["today", "new", "best", "hot", "week", "random"] as const;
+export type ArticleSort = (typeof ARTICLE_SORTS)[number];
+export const SAVE_LISTS = ["favorite", "later"] as const;
+export const VISIBILITIES = ["public", "members"] as const;
+
+// View days are counted in Vietnam time (UTC+7).
+const vnDay = (daysAgo = 0) => new Date(Date.now() + 7 * 3600_000 - daysAgo * 86400_000).toISOString().slice(0, 10);
+
+/** File keys of members-only articles; checked before /media/v/ serves a file. */
+export const membersOnlyKeys = new Set<string>();
+
+export const articleImageUrl = (key: string | null, thumb = false) => (key ? `/media/a/${key}${thumb ? "_t" : ""}.webp` : null);
+export const articleThumbUrl = (key: string | null) => (key ? `/media/t/${key}.webp` : null);
+
+const cardColumns = {
+  id: articles.id,
+  title: articles.title,
+  coverType: articles.coverType,
+  coverImageKey: articles.coverImageKey,
+  coverDuration: articles.coverDuration,
+  imageCount: articles.imageCount,
+  videoCount: articles.videoCount,
+  viewCount: articles.viewCount,
+  likeCount: articles.likeCount,
+  dislikeCount: articles.dislikeCount,
+  commentCount: articles.commentCount,
+  visibility: articles.visibility,
+  createdAt: articles.createdAt,
+  category: { id: articleCategories.id, slug: articleCategories.slug, name: articleCategories.name },
+};
+
+type CardRow = {
+  id: number;
+  coverType: string;
+  coverImageKey: string | null;
+  likeCount: number;
+  dislikeCount: number;
+  visibility: string;
+} & Record<string, unknown>;
+
+/** Most viewed articles of the last 7 days (at least HOT_MIN_VIEWS), shown with a HOT badge; refreshed every 5 minutes. */
+const HOT_COUNT = 12;
+const HOT_MIN_VIEWS = 10;
+let hotIds = new Set<number>();
+let hotLoadedAt = 0;
+
+async function refreshHotIds() {
+  if (Date.now() - hotLoadedAt < 5 * 60_000) return;
+  hotLoadedAt = Date.now();
+  try {
+    const total = sql<number>`sum(${articleViewDays.views})`;
+    const rows = await db
+      .select({ articleId: articleViewDays.articleId })
+      .from(articleViewDays)
+      .where(gte(articleViewDays.day, vnDay(6)))
+      .groupBy(articleViewDays.articleId)
+      .having(sql`${total} >= ${HOT_MIN_VIEWS}`)
+      .orderBy(desc(total))
+      .limit(HOT_COUNT);
+    hotIds = new Set(rows.map((r) => r.articleId));
+  } catch {
+    // keep the previous set; retried after the next interval
+  }
+}
+
+function mapCard<T extends CardRow>(row: T) {
+  const { coverImageKey, coverType, visibility, ...rest } = row;
+  const votes = row.likeCount + row.dislikeCount;
+  return {
+    ...rest,
+    coverType,
+    coverUrl: articleImageUrl(coverImageKey, true),
+    hasVideo: coverType === "video",
+    membersOnly: visibility === "members",
+    hot: hotIds.has(row.id),
+    rating: votes ? Math.round((row.likeCount * 100) / votes) : null,
+  };
+}
+
+function likePattern(q: string) {
+  return `%${q.replace(/[\\%_]/g, (m) => `\\${m}`)}%`;
+}
+
+export function tagSlug(name: string) {
+  return name
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[đĐ]/g, "d")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 64);
+}
+
+/** "a, b , c" -> unique tag names (2-40 chars, max 15). */
+function parseTagNames(input: string) {
+  const out = new Map<string, string>();
+  for (const raw of input.split(/[,#\n]/)) {
+    const name = raw.replace(/\s+/g, " ").trim().slice(0, 40);
+    const slug = tagSlug(name);
+    if (name.length < 2 || slug.length < 2 || out.has(slug)) continue;
+    out.set(slug, name);
+    if (out.size >= 15) break;
+  }
+  return out;
+}
+
+async function setArticleTags(articleId: number, input: string) {
+  const wanted = parseTagNames(input);
+  await db.transaction(async (tx) => {
+    const current = await tx
+      .select({ id: articleTags.id, slug: articleTags.slug })
+      .from(articleTagLinks)
+      .innerJoin(articleTags, eq(articleTags.id, articleTagLinks.tagId))
+      .where(eq(articleTagLinks.articleId, articleId));
+    const removed = current.filter((t) => !wanted.has(t.slug)).map((t) => t.id);
+    if (removed.length) {
+      await tx.delete(articleTagLinks).where(and(eq(articleTagLinks.articleId, articleId), inArray(articleTagLinks.tagId, removed)));
+      await tx
+        .update(articleTags)
+        .set({ articleCount: sql`greatest(${articleTags.articleCount} - 1, 0)` })
+        .where(inArray(articleTags.id, removed));
+    }
+    const have = new Set(current.map((t) => t.slug));
+    for (const [slug, name] of wanted) {
+      if (have.has(slug)) continue;
+      const [tag] = await tx
+        .insert(articleTags)
+        .values({ slug, name })
+        .onConflictDoUpdate({ target: articleTags.slug, set: { slug } })
+        .returning({ id: articleTags.id });
+      await tx.insert(articleTagLinks).values({ articleId, tagId: tag.id }).onConflictDoNothing();
+      await tx.update(articleTags).set({ articleCount: sql`${articleTags.articleCount} + 1` }).where(eq(articleTags.id, tag.id));
+    }
+  });
+}
+
+async function articleTagsOf(articleId: number) {
+  return db
+    .select({ id: articleTags.id, slug: articleTags.slug, name: articleTags.name })
+    .from(articleTagLinks)
+    .innerJoin(articleTags, eq(articleTags.id, articleTagLinks.tagId))
+    .where(eq(articleTagLinks.articleId, articleId))
+    .orderBy(asc(articleTags.name));
+}
+
+export async function listArticles(opts: {
+  sort: ArticleSort;
+  limit: number;
+  offset?: number;
+  categoryId?: number;
+  tagId?: number;
+  q?: string;
+  excludeIds?: number[];
+}) {
+  await refreshHotIds();
+  const conds: SQL[] = [];
+  if (opts.categoryId) conds.push(eq(articles.categoryId, opts.categoryId));
+  if (opts.tagId) {
+    conds.push(inArray(articles.id, db.select({ id: articleTagLinks.articleId }).from(articleTagLinks).where(eq(articleTagLinks.tagId, opts.tagId))));
+  }
+  if (opts.q) conds.push(ilike(articles.title, likePattern(opts.q)));
+  if (opts.excludeIds?.length) conds.push(notInArray(articles.id, opts.excludeIds));
+  const where = conds.length ? and(...conds) : undefined;
+  const offset = opts.offset ?? 0;
+
+  if (opts.sort === "today" || opts.sort === "hot") {
+    const recent = db
+      .select({ articleId: articleViewDays.articleId, n: sql<number>`sum(${articleViewDays.views})::int`.as("n") })
+      .from(articleViewDays)
+      .where(gte(articleViewDays.day, opts.sort === "today" ? vnDay() : vnDay(6)))
+      .groupBy(articleViewDays.articleId)
+      .as("recent");
+    // Articles with views in the period come first; the rest follow by all-time views.
+    const rows = await db
+      .select({ ...cardColumns, recentViews: sql<number>`coalesce(${recent.n}, 0)::int` })
+      .from(articles)
+      .leftJoin(articleCategories, eq(articleCategories.id, articles.categoryId))
+      .leftJoin(recent, eq(recent.articleId, articles.id))
+      .where(where)
+      .orderBy(desc(sql`coalesce(${recent.n}, 0)`), desc(articles.viewCount), desc(articles.id))
+      .limit(opts.limit)
+      .offset(offset);
+    return { rows: rows.map(mapCard), where };
+  }
+
+  if (opts.sort === "week") {
+    const since = new Date(Date.now() - 7 * 86400_000);
+    const week = db
+      .select({
+        articleId: articleVotes.articleId,
+        l: sql<number>`count(*) filter (where ${articleVotes.value} = 1)::int`.as("l"),
+        d: sql<number>`count(*) filter (where ${articleVotes.value} = -1)::int`.as("d"),
+      })
+      .from(articleVotes)
+      .where(gte(articleVotes.createdAt, since))
+      .groupBy(articleVotes.articleId)
+      .as("week");
+    const rows = await db
+      .select(cardColumns)
+      .from(articles)
+      .leftJoin(articleCategories, eq(articleCategories.id, articles.categoryId))
+      .leftJoin(week, eq(week.articleId, articles.id))
+      .where(where)
+      .orderBy(
+        desc(sql`coalesce((${week.l} + 1.0) / (${week.l} + ${week.d} + 2), 0)`),
+        desc(sql`coalesce(${week.l}, 0)`),
+        desc(sql`(${articles.likeCount} + 1.0) / (${articles.likeCount} + ${articles.dislikeCount} + 2)`),
+        desc(articles.viewCount),
+      )
+      .limit(opts.limit)
+      .offset(offset);
+    return { rows: rows.map(mapCard), where };
+  }
+
+  let order: SQL[];
+  if (opts.sort === "best") {
+    order = [
+      desc(sql`(${articles.likeCount} + 1.0) / (${articles.likeCount} + ${articles.dislikeCount} + 2)`),
+      desc(articles.likeCount),
+      desc(articles.viewCount),
+      desc(articles.id),
+    ];
+  } else if (opts.sort === "random") {
+    order = [sql`random()`];
+  } else {
+    order = [desc(articles.createdAt), desc(articles.id)];
+  }
+  const rows = await db
+    .select(cardColumns)
+    .from(articles)
+    .leftJoin(articleCategories, eq(articleCategories.id, articles.categoryId))
+    .where(where)
+    .orderBy(...order)
+    .limit(opts.limit)
+    .offset(offset);
+  return { rows: rows.map(mapCard), where };
+}
+
+export async function articlesByIds(ids: number[]) {
+  if (!ids.length) return [];
+  await refreshHotIds();
+  const rows = await db
+    .select(cardColumns)
+    .from(articles)
+    .leftJoin(articleCategories, eq(articleCategories.id, articles.categoryId))
+    .where(inArray(articles.id, ids));
+  const byId = new Map(rows.map((r) => [r.id, mapCard(r)]));
+  return ids.map((id) => byId.get(id)).filter((v) => v !== undefined);
+}
+
+export async function listArticleCategories() {
+  return db.select().from(articleCategories).orderBy(asc(articleCategories.sortOrder), asc(articleCategories.id));
+}
+
+async function findCategory(slug: string | undefined) {
+  if (!slug) return null;
+  const [cat] = await db.select().from(articleCategories).where(eq(articleCategories.slug, slug)).limit(1);
+  if (!cat) throw notFound("Thể loại không tồn tại.");
+  return cat;
+}
+
+async function findTag(slug: string | undefined) {
+  if (!slug) return null;
+  const [tag] = await db.select().from(articleTags).where(eq(articleTags.slug, slug)).limit(1);
+  if (!tag) throw notFound("Thẻ không tồn tại.");
+  return tag;
+}
+
+const viewSeen = new Map<string, number>();
+function countView(ip: string, id: number) {
+  const key = `${ip}:${id}`;
+  const now = Date.now();
+  if (now - (viewSeen.get(key) ?? 0) < 30 * 60_000) return false;
+  if (viewSeen.size > 50_000) viewSeen.clear();
+  viewSeen.set(key, now);
+  return true;
+}
+
+/** articleId -> last time someone opened it; feeds the "Đang được xem" list. */
+const lastWatched = new Map<number, number>();
+const WATCHING_WINDOW = 30 * 60_000;
+
+export function watchingNowIds(limit: number) {
+  const cutoff = Date.now() - WATCHING_WINDOW;
+  for (const [id, ts] of lastWatched) if (ts < cutoff) lastWatched.delete(id);
+  return [...lastWatched.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, limit)
+    .map(([id]) => id);
+}
+
+async function getArticle(id: number) {
+  const [article] = await db.select().from(articles).where(eq(articles.id, id)).limit(1);
+  if (!article) throw notFound("Bài viết không tồn tại hoặc đã bị xoá.");
+  return article;
+}
+
+async function bumpCategory(categoryId: number | null, delta: number) {
+  if (!categoryId) return;
+  await db
+    .update(articleCategories)
+    .set({ articleCount: sql`greatest(${articleCategories.articleCount} + ${delta}, 0)` })
+    .where(eq(articleCategories.id, categoryId));
+}
+
+async function assertCategory(categoryId: number | null | undefined) {
+  if (!categoryId) return;
+  const [cat] = await db.select({ id: articleCategories.id }).from(articleCategories).where(eq(articleCategories.id, categoryId)).limit(1);
+  if (!cat) throw badRequest("Thể loại không tồn tại.");
+}
+
+/** Runs after the upload response: faststart remux, and server-side meta/thumbnail when the browser could not provide them. */
+async function postProcess(videoId: number, file: string, ext: string, needMeta: boolean, needThumb: boolean, log: (msg: string) => void) {
+  try {
+    if (await faststart(file, ext)) {
+      const { size } = await stat(file);
+      await db.update(articleVideos).set({ sizeBytes: size }).where(eq(articleVideos.id, videoId));
+      log(`article video ${videoId}: faststart done`);
+    }
+    if (!needMeta && !needThumb) return;
+    const meta = await probeVideo(file);
+    if (needMeta && meta) {
+      await db.update(articleVideos).set({ duration: meta.duration, width: meta.width, height: meta.height }).where(eq(articleVideos.id, videoId));
+    }
+    if (needThumb) {
+      const at = meta?.duration ? Math.min(meta.duration * 0.2, 30) : 1;
+      const frame = await grabFrame(file, at);
+      if (frame) {
+        const stored = await storeImage("thumbs", frame);
+        const [still] = await db
+          .update(articleVideos)
+          .set({ thumbKey: stored.key })
+          .where(and(eq(articleVideos.id, videoId), isNull(articleVideos.thumbKey)))
+          .returning({ id: articleVideos.id });
+        if (!still) await removeImage("thumbs", stored.key);
+      }
+    }
+  } catch (err) {
+    log(`article video ${videoId}: post-process failed: ${(err as Error).message}`);
+  }
+}
+
+const optionalId = z.preprocess((v) => (v === "" || v === null || v === undefined ? undefined : v), z.coerce.number().int().positive().optional());
+
+const articleBody = z.object({
+  title: z.string().trim().min(2, "Tiêu đề cần ít nhất 2 ký tự.").max(200, "Tiêu đề tối đa 200 ký tự."),
+  description: z.string().trim().max(20000, "Nội dung tối đa 20.000 ký tự.").default(""),
+  categoryId: optionalId,
+  tags: z.string().max(1000).default(""),
+  visibility: z.enum(VISIBILITIES).default("public"),
+  isHot: z.boolean().default(false),
+});
+
+const articleCategoryBody = z.object({
+  slug: slugSchema,
+  name: z.string().trim().min(2, "Tên thể loại cần ít nhất 2 ký tự.").max(60),
+  sortOrder: z.number().int().default(0),
+});
+
+const voteBody = z.object({ value: z.union([z.literal(1), z.literal(-1), z.literal(0)]) });
+
+/** Media attached to an article: images (kind "a") and videos (kind "v"). */
+const mediaFileSchema = z.object({
+  id: z.number().int().positive(),
+  type: z.enum(["image", "video"]),
+  url: z.string(),
+  thumbUrl: z.string().nullable(),
+  width: z.number().int(),
+  height: z.number().int(),
+  duration: z.number().int().default(0),
+  sizeBytes: z.number().int().default(0),
+});
+
+export default async function articleRoutes(app: FastifyInstance) {
+  membersOnlyKeys.clear();
+  for (const v of await db
+    .select({ fileKey: articleVideos.fileKey })
+    .from(articleVideos)
+    .innerJoin(articles, eq(articles.id, articleVideos.articleId))
+    .where(eq(articles.visibility, "members"))) {
+    membersOnlyKeys.add(v.fileKey);
+  }
+
+  app.get("/api/articles/categories", async () => ({ categories: await listArticleCategories() }));
+
+  app.get("/api/articles/tags", async (req) => {
+    const { limit } = parse(z.object({ limit: z.coerce.number().int().min(1).max(300).default(100) }), req.query);
+    const tags = await db
+      .select({ id: articleTags.id, slug: articleTags.slug, name: articleTags.name, articleCount: articleTags.articleCount })
+      .from(articleTags)
+      .where(sql`${articleTags.articleCount} > 0`)
+      .orderBy(desc(articleTags.articleCount), asc(articleTags.name))
+      .limit(limit);
+    return { tags };
+  });
+
+  app.get("/api/articles", async (req) => {
+    const q = parse(
+      pageQuery.extend({
+        sort: z.enum(ARTICLE_SORTS).default("new"),
+        category: z.string().max(64).optional(),
+        tag: z.string().max(64).optional(),
+        q: z.string().trim().max(100).optional(),
+      }),
+      req.query,
+    );
+    const [cat, tag] = await Promise.all([findCategory(q.category), findTag(q.tag)]);
+    const { limit, offset } = paginate(q.page, PER_PAGE);
+    const { rows, where } = await listArticles({
+      sort: q.sort,
+      limit,
+      offset: q.sort === "random" ? 0 : offset,
+      categoryId: cat?.id,
+      tagId: tag?.id,
+      q: q.q || undefined,
+    });
+    const [{ total }] = await db.select({ total: count() }).from(articles).where(where);
+    return {
+      articles: rows,
+      category: cat,
+      tag,
+      page: q.page,
+      totalPages: q.sort === "random" ? 1 : Math.max(1, Math.ceil(total / PER_PAGE)),
+      total,
+    };
+  });
+
+  app.get("/api/articles/random", async (req) => {
+    const q = parse(
+      z.object({ limit: z.coerce.number().int().min(1).max(24).default(8), exclude: z.coerce.number().int().positive().optional() }),
+      req.query,
+    );
+    const { rows } = await listArticles({ sort: "random", limit: q.limit, excludeIds: q.exclude ? [q.exclude] : undefined });
+    return { articles: rows };
+  });
+
+  app.get("/api/articles/watching", async () => ({ articles: await articlesByIds(watchingNowIds(12)) }));
+
+  app.get("/api/articles/by-ids", async (req) => {
+    const { ids } = parse(z.object({ ids: z.string().max(1000).default("") }), req.query);
+    const list = [...new Set(ids.split(",").map(Number).filter((n) => Number.isInteger(n) && n > 0))].slice(0, 100);
+    return { articles: await articlesByIds(list) };
+  });
+
+  app.get("/api/articles/history", async (req) => {
+    const user = requireUser(req);
+    const { page } = parse(pageQuery, req.query);
+    const { limit, offset } = paginate(page, PER_PAGE);
+    const [[{ total }], rows] = await Promise.all([
+      db.select({ total: count() }).from(articleHistory).where(eq(articleHistory.userId, user.id)),
+      db
+        .select({ ...cardColumns, viewedAt: articleHistory.viewedAt })
+        .from(articleHistory)
+        .innerJoin(articles, eq(articles.id, articleHistory.articleId))
+        .leftJoin(articleCategories, eq(articleCategories.id, articles.categoryId))
+        .where(eq(articleHistory.userId, user.id))
+        .orderBy(desc(articleHistory.viewedAt))
+        .limit(limit)
+        .offset(offset),
+    ]);
+    return { articles: rows.map(mapCard), page, totalPages: Math.max(1, Math.ceil(total / PER_PAGE)) };
+  });
+
+  app.delete("/api/articles/history", async (req, reply) => {
+    const user = requireUser(req);
+    await db.delete(articleHistory).where(eq(articleHistory.userId, user.id));
+    return ok(reply);
+  });
+
+  app.delete("/api/articles/history/:id", async (req, reply) => {
+    const user = requireUser(req);
+    const { id } = parse(idParam, req.params);
+    await db.delete(articleHistory).where(and(eq(articleHistory.userId, user.id), eq(articleHistory.articleId, id)));
+    return ok(reply);
+  });
+
+  app.get("/api/articles/saved", async (req) => {
+    const user = requireUser(req);
+    const q = parse(pageQuery.extend({ list: z.enum(SAVE_LISTS).default("favorite") }), req.query);
+    const { limit, offset } = paginate(q.page, PER_PAGE);
+    const own = and(eq(articleSaves.userId, user.id), eq(articleSaves.list, q.list));
+    const [[{ total }], rows] = await Promise.all([
+      db.select({ total: count() }).from(articleSaves).where(own),
+      db
+        .select(cardColumns)
+        .from(articleSaves)
+        .innerJoin(articles, eq(articles.id, articleSaves.articleId))
+        .leftJoin(articleCategories, eq(articleCategories.id, articles.categoryId))
+        .where(own)
+        .orderBy(desc(articleSaves.createdAt))
+        .limit(limit)
+        .offset(offset),
+    ]);
+    return { articles: rows.map(mapCard), page: q.page, totalPages: Math.max(1, Math.ceil(total / PER_PAGE)), total };
+  });
+
+  app.post(
+    "/api/articles/:id/save",
+    { config: { rateLimit: { max: 60, timeWindow: "1 minute" } } },
+    async (req) => {
+      const user = requireActive(req);
+      const { id } = parse(idParam, req.params);
+      const { list } = parse(z.object({ list: z.enum(SAVE_LISTS) }), req.body);
+      await getArticle(id);
+      const inserted = await db
+        .insert(articleSaves)
+        .values({ userId: user.id, articleId: id, list })
+        .onConflictDoNothing()
+        .returning({ id: articleSaves.articleId });
+      if (!inserted.length) {
+        await db.delete(articleSaves).where(and(eq(articleSaves.userId, user.id), eq(articleSaves.articleId, id), eq(articleSaves.list, list)));
+      }
+      return { list, saved: inserted.length > 0 };
+    },
+  );
+
+  app.get("/api/articles/:id", async (req) => {
+    const { id } = parse(idParam, req.params);
+    const [row] = await db
+      .select({
+        ...cardColumns,
+        description: articles.description,
+        categoryId: articles.categoryId,
+        author: authorColumns,
+      })
+      .from(articles)
+      .innerJoin(users, eq(users.id, articles.userId))
+      .leftJoin(articleCategories, eq(articleCategories.id, articles.categoryId))
+      .where(eq(articles.id, id))
+      .limit(1);
+    if (!row) throw notFound("Bài viết không tồn tại hoặc đã bị xoá.");
+    const locked = row.visibility === "members" && !req.user;
+
+    if (!locked) {
+      lastWatched.set(id, Date.now());
+      if (countView(req.ip, id)) {
+        await db.update(articles).set({ viewCount: sql`${articles.viewCount} + 1` }).where(eq(articles.id, id));
+        await db
+          .insert(articleViewDays)
+          .values({ articleId: id, day: vnDay(), views: 1 })
+          .onConflictDoUpdate({ target: [articleViewDays.articleId, articleViewDays.day], set: { views: sql`${articleViewDays.views} + 1` } });
+        row.viewCount += 1;
+      }
+    }
+
+    let myVote = 0;
+    const saved = { favorite: false, later: false };
+    if (req.user) {
+      await db
+        .insert(articleHistory)
+        .values({ userId: req.user.id, articleId: id })
+        .onConflictDoUpdate({ target: [articleHistory.userId, articleHistory.articleId], set: { viewedAt: new Date() } });
+      const [[vote], lists] = await Promise.all([
+        db
+          .select({ value: articleVotes.value })
+          .from(articleVotes)
+          .where(and(eq(articleVotes.articleId, id), eq(articleVotes.userId, req.user.id)))
+          .limit(1),
+        db
+          .select({ list: articleSaves.list })
+          .from(articleSaves)
+          .where(and(eq(articleSaves.articleId, id), eq(articleSaves.userId, req.user.id))),
+      ]);
+      myVote = vote?.value ?? 0;
+      for (const l of lists) if (l.list === "favorite" || l.list === "later") saved[l.list] = true;
+    }
+
+    const { categoryId, author: authorRow, description, ...card } = row;
+
+    // Locked articles hide their media entirely.
+    let images: (typeof mediaFileSchema)["_output"][] = [];
+    let videos: (typeof mediaFileSchema)["_output"][] = [];
+    if (!locked) {
+      const [imgRows, vidRows] = await Promise.all([
+        db.select().from(articleImages).where(eq(articleImages.articleId, id)).orderBy(asc(articleImages.sortOrder), asc(articleImages.id)),
+        db.select().from(articleVideos).where(eq(articleVideos.articleId, id)).orderBy(asc(articleVideos.sortOrder), asc(articleVideos.id)),
+      ]);
+      images = imgRows.map((img) => ({
+        id: img.id,
+        type: "image" as const,
+        url: articleImageUrl(img.fileKey)!,
+        thumbUrl: articleImageUrl(img.fileKey, true),
+        width: img.width,
+        height: img.height,
+        duration: 0,
+        sizeBytes: 0,
+      }));
+      videos = vidRows.map((v) => ({
+        id: v.id,
+        type: "video" as const,
+        url: videoFileUrl(v.fileKey, v.ext),
+        thumbUrl: articleThumbUrl(v.thumbKey),
+        width: v.width,
+        height: v.height,
+        duration: v.duration,
+        sizeBytes: v.sizeBytes,
+      }));
+    }
+
+    // Half from the same category, the rest random so older articles keep resurfacing.
+    const sameCat = categoryId ? (await listArticles({ sort: "today", limit: 6, categoryId, excludeIds: [id] })).rows : [];
+    const random = await listArticles({ sort: "random", limit: 12 - sameCat.length, excludeIds: [id, ...sameCat.map((v) => v.id)] });
+    return {
+      article: {
+        ...mapCard(card),
+        description: locked ? "" : description,
+        locked,
+        author: author(authorRow),
+        tags: await articleTagsOf(id),
+        images,
+        videos,
+      },
+      myVote,
+      saved,
+      related: [...sameCat, ...random.rows],
+    };
+  });
+
+  app.post(
+    "/api/articles/:id/vote",
+    { config: { rateLimit: { max: 60, timeWindow: "1 minute" } } },
+    async (req) => {
+      const user = requireActive(req);
+      const { id } = parse(idParam, req.params);
+      const { value } = parse(voteBody, req.body);
+      await getArticle(id);
+      return db.transaction(async (tx) => {
+        const [prev] = await tx
+          .select({ value: articleVotes.value })
+          .from(articleVotes)
+          .where(and(eq(articleVotes.articleId, id), eq(articleVotes.userId, user.id)))
+          .limit(1);
+        const before = prev?.value ?? 0;
+        if (value === 0) {
+          await tx.delete(articleVotes).where(and(eq(articleVotes.articleId, id), eq(articleVotes.userId, user.id)));
+        } else {
+          await tx
+            .insert(articleVotes)
+            .values({ articleId: id, userId: user.id, value })
+            .onConflictDoUpdate({ target: [articleVotes.articleId, articleVotes.userId], set: { value, createdAt: new Date() } });
+        }
+        const likeDelta = (value === 1 ? 1 : 0) - (before === 1 ? 1 : 0);
+        const dislikeDelta = (value === -1 ? 1 : 0) - (before === -1 ? 1 : 0);
+        const [v] = await tx
+          .update(articles)
+          .set({
+            likeCount: sql`greatest(${articles.likeCount} + ${likeDelta}, 0)`,
+            dislikeCount: sql`greatest(${articles.dislikeCount} + ${dislikeDelta}, 0)`,
+          })
+          .where(eq(articles.id, id))
+          .returning({ likeCount: articles.likeCount, dislikeCount: articles.dislikeCount });
+        const votes = v.likeCount + v.dislikeCount;
+        return { ...v, myVote: value, rating: votes ? Math.round((v.likeCount * 100) / votes) : null };
+      });
+    },
+  );
+
+  const commentColumns = {
+    id: articleComments.id,
+    parentId: articleComments.parentId,
+    content: articleComments.content,
+    likeCount: articleComments.likeCount,
+    dislikeCount: articleComments.dislikeCount,
+    createdAt: articleComments.createdAt,
+    author: authorColumns,
+  };
+
+  app.get("/api/articles/:id/comments", async (req) => {
+    const { id } = parse(idParam, req.params);
+    const { page } = parse(pageQuery, req.query);
+    const article = await getArticle(id);
+    const { limit, offset } = paginate(page, COMMENTS_PER_PAGE);
+    const topLevel = and(eq(articleComments.articleId, id), isNull(articleComments.parentId));
+    const [[{ total }], parents] = await Promise.all([
+      db.select({ total: count() }).from(articleComments).where(topLevel),
+      db
+        .select(commentColumns)
+        .from(articleComments)
+        .innerJoin(users, eq(users.id, articleComments.userId))
+        .where(topLevel)
+        .orderBy(desc(articleComments.id))
+        .limit(limit)
+        .offset(offset),
+    ]);
+    const replies = parents.length
+      ? await db
+          .select(commentColumns)
+          .from(articleComments)
+          .innerJoin(users, eq(users.id, articleComments.userId))
+          .where(
+            inArray(
+              articleComments.parentId,
+              parents.map((p) => p.id),
+            ),
+          )
+          .orderBy(asc(articleComments.id))
+          .limit(1000)
+      : [];
+    const myVotes = new Map<number, number>();
+    if (req.user) {
+      const ids = [...parents, ...replies].map((c) => c.id);
+      if (ids.length) {
+        const rows = await db
+          .select({ commentId: articleCommentVotes.commentId, value: articleCommentVotes.value })
+          .from(articleCommentVotes)
+          .where(and(eq(articleCommentVotes.userId, req.user.id), inArray(articleCommentVotes.commentId, ids)));
+        for (const r of rows) myVotes.set(r.commentId, r.value);
+      }
+    }
+    const mapComment = (c: (typeof parents)[number]) => ({ ...c, author: author(c.author), myVote: myVotes.get(c.id) ?? 0 });
+    return {
+      comments: parents.map((p) => ({ ...mapComment(p), replies: replies.filter((r) => r.parentId === p.id).map(mapComment) })),
+      page,
+      totalPages: Math.max(1, Math.ceil(total / COMMENTS_PER_PAGE)),
+      total: article.commentCount,
+    };
+  });
+
+  app.post(
+    "/api/articles/:id/comments",
+    { config: { rateLimit: { max: 10, timeWindow: "1 minute" } } },
+    async (req) => {
+      const user = requireActive(req);
+      const { id } = parse(idParam, req.params);
+      const { content, parentId } = parse(
+        z.object({
+          content: z.string().trim().min(1, "Bình luận không được để trống.").max(2000, "Bình luận tối đa 2.000 ký tự."),
+          parentId: z.number().int().positive().optional(),
+        }),
+        req.body,
+      );
+      await getArticle(id);
+      let parent: { id: number; userId: number } | null = null;
+      if (parentId) {
+        const [p] = await db
+          .select({ id: articleComments.id, userId: articleComments.userId, articleId: articleComments.articleId, parentId: articleComments.parentId })
+          .from(articleComments)
+          .where(eq(articleComments.id, parentId))
+          .limit(1);
+        if (!p || p.articleId !== id) throw notFound("Bình luận gốc không tồn tại.");
+        parent = p.parentId ? { id: p.parentId, userId: p.userId } : p;
+      }
+      const [comment] = await db
+        .insert(articleComments)
+        .values({ articleId: id, userId: user.id, content, parentId: parent?.id ?? null })
+        .returning();
+      await db.update(articles).set({ commentCount: sql`${articles.commentCount} + 1` }).where(eq(articles.id, id));
+      if (parent) await notify([{ userId: parent.userId, type: "comment_reply", actorId: user.id, articleId: id, commentId: comment.id }]);
+      return {
+        comment: {
+          id: comment.id,
+          parentId: comment.parentId,
+          content: comment.content,
+          likeCount: 0,
+          dislikeCount: 0,
+          myVote: 0,
+          createdAt: comment.createdAt,
+          author: author(user),
+          replies: [],
+        },
+      };
+    },
+  );
+
+  app.post(
+    "/api/articles/comments/:id/vote",
+    { config: { rateLimit: { max: 60, timeWindow: "1 minute" } } },
+    async (req) => {
+      const user = requireActive(req);
+      const { id } = parse(idParam, req.params);
+      const { value } = parse(voteBody, req.body);
+      const [comment] = await db.select({ userId: articleComments.userId }).from(articleComments).where(eq(articleComments.id, id)).limit(1);
+      if (!comment) throw notFound("Bình luận không tồn tại.");
+      if (comment.userId === user.id) throw badRequest("Không thể tự đánh giá bình luận của mình.");
+      return db.transaction(async (tx) => {
+        const [prev] = await tx
+          .select({ value: articleCommentVotes.value })
+          .from(articleCommentVotes)
+          .where(and(eq(articleCommentVotes.commentId, id), eq(articleCommentVotes.userId, user.id)))
+          .limit(1);
+        const before = prev?.value ?? 0;
+        if (value === 0) {
+          await tx.delete(articleCommentVotes).where(and(eq(articleCommentVotes.commentId, id), eq(articleCommentVotes.userId, user.id)));
+        } else {
+          await tx
+            .insert(articleCommentVotes)
+            .values({ commentId: id, userId: user.id, value })
+            .onConflictDoUpdate({ target: [articleCommentVotes.commentId, articleCommentVotes.userId], set: { value } });
+        }
+        const likeDelta = (value === 1 ? 1 : 0) - (before === 1 ? 1 : 0);
+        const dislikeDelta = (value === -1 ? 1 : 0) - (before === -1 ? 1 : 0);
+        const [c] = await tx
+          .update(articleComments)
+          .set({
+            likeCount: sql`greatest(${articleComments.likeCount} + ${likeDelta}, 0)`,
+            dislikeCount: sql`greatest(${articleComments.dislikeCount} + ${dislikeDelta}, 0)`,
+          })
+          .where(eq(articleComments.id, id))
+          .returning({ likeCount: articleComments.likeCount, dislikeCount: articleComments.dislikeCount });
+        return { ...c, myVote: value };
+      });
+    },
+  );
+
+  app.delete("/api/articles/comments/:id", async (req, reply) => {
+    const user = requireActive(req);
+    const { id } = parse(idParam, req.params);
+    const [comment] = await db.select().from(articleComments).where(eq(articleComments.id, id)).limit(1);
+    if (!comment) throw notFound("Bình luận không tồn tại.");
+    if (comment.userId !== user.id && !isStaff(user)) throw forbidden();
+    const [{ n: replyCount }] = await db.select({ n: count() }).from(articleComments).where(eq(articleComments.parentId, id));
+    await db.delete(articleComments).where(eq(articleComments.id, id));
+    await db
+      .update(articles)
+      .set({ commentCount: sql`greatest(${articles.commentCount} - ${1 + replyCount}, 0)` })
+      .where(eq(articles.id, comment.articleId));
+    return ok(reply);
+  });
+
+  app.get("/api/admin/article-categories", async (req) => {
+    requireStaff(req);
+    return { categories: await listArticleCategories() };
+  });
+
+  app.post("/api/admin/article-categories", async (req) => {
+    requireAdmin(req);
+    const body = parse(articleCategoryBody, req.body);
+    try {
+      const [category] = await db.insert(articleCategories).values(body).returning();
+      return { category };
+    } catch (err) {
+      if (isUniqueViolation(err)) throw badRequest("Đường dẫn thể loại đã tồn tại.");
+      throw err;
+    }
+  });
+
+  app.patch("/api/admin/article-categories/:id", async (req) => {
+    requireAdmin(req);
+    const { id } = parse(idParam, req.params);
+    const body = parse(articleCategoryBody.partial(), req.body);
+    try {
+      const [category] = await db.update(articleCategories).set(body).where(eq(articleCategories.id, id)).returning();
+      if (!category) throw notFound("Thể loại không tồn tại.");
+      return { category };
+    } catch (err) {
+      if (isUniqueViolation(err)) throw badRequest("Đường dẫn thể loại đã tồn tại.");
+      throw err;
+    }
+  });
+
+  app.delete("/api/admin/article-categories/:id", async (req, reply) => {
+    requireAdmin(req);
+    const { id } = parse(idParam, req.params);
+    const [category] = await db.delete(articleCategories).where(eq(articleCategories.id, id)).returning();
+    if (!category) throw notFound("Thể loại không tồn tại.");
+    return ok(reply);
+  });
+
+  app.get("/api/admin/articles/:id", async (req) => {
+    requireAdmin(req);
+    const { id } = parse(idParam, req.params);
+    const article = await getArticle(id);
+    const tags = await articleTagsOf(id);
+    const [images, videos] = await Promise.all([
+      db.select().from(articleImages).where(eq(articleImages.articleId, id)).orderBy(asc(articleImages.sortOrder)),
+      db.select().from(articleVideos).where(eq(articleVideos.articleId, id)).orderBy(asc(articleVideos.sortOrder)),
+    ]);
+    return {
+      article: {
+        id: article.id,
+        title: article.title,
+        description: article.description,
+        categoryId: article.categoryId,
+        visibility: article.visibility,
+        isHot: article.isHot,
+        coverType: article.coverType,
+        coverImageKey: article.coverImageKey,
+        coverDuration: article.coverDuration,
+        tags: tags.map((t) => t.name).join(", "),
+        images: images.map((i) => ({ id: i.id, fileKey: i.fileKey, url: articleImageUrl(i.fileKey), thumbUrl: articleImageUrl(i.fileKey, true) })),
+        videos: videos.map((v) => ({ id: v.id, fileKey: v.fileKey, thumbKey: v.thumbKey, url: videoFileUrl(v.fileKey, v.ext), duration: v.duration })),
+      },
+    };
+  });
+
+  /** Creates an article with its metadata. Media is attached afterwards via /media endpoints. */
+  app.post(
+    "/api/admin/articles",
+    { config: { rateLimit: { max: 120, timeWindow: "1 hour" } } },
+    async (req) => {
+      const user = requireAdmin(req);
+      const body = parse(articleBody, req.body);
+      await assertCategory(body.categoryId);
+      const [article] = await db
+        .insert(articles)
+        .values({
+          userId: user.id,
+          categoryId: body.categoryId ?? null,
+          title: body.title,
+          description: body.description,
+          visibility: body.visibility,
+          isHot: body.isHot,
+        })
+        .returning({ id: articles.id });
+      await bumpCategory(body.categoryId ?? null, 1);
+      if (body.tags) await setArticleTags(article.id, body.tags);
+      return { article };
+    },
+  );
+
+  app.patch("/api/admin/articles/:id", async (req) => {
+    requireAdmin(req);
+    const { id } = parse(idParam, req.params);
+    const { tags, ...body } = parse(
+      z.object({
+        title: articleBody.shape.title.optional(),
+        description: articleBody.shape.description.optional(),
+        categoryId: z.number().int().positive().nullable().optional(),
+        visibility: z.enum(VISIBILITIES).optional(),
+        isHot: z.boolean().optional(),
+        tags: z.string().max(1000).optional(),
+      }),
+      req.body,
+    );
+    const article = await getArticle(id);
+    if (body.categoryId !== undefined && body.categoryId !== article.categoryId) {
+      await assertCategory(body.categoryId);
+      await bumpCategory(article.categoryId, -1);
+      await bumpCategory(body.categoryId, 1);
+    }
+    if (Object.keys(body).length) await db.update(articles).set(body).where(eq(articles.id, id));
+    if (body.visibility === "members") await markMembersOnly(id, true);
+    if (body.visibility === "public") await markMembersOnly(id, false);
+    if (tags !== undefined) await setArticleTags(id, tags);
+    return { ok: true };
+  });
+
+  app.delete("/api/admin/articles/:id", async (req, reply) => {
+    requireAdmin(req);
+    const { id } = parse(idParam, req.params);
+    const article = await getArticle(id);
+    const tagIds = (await db.select({ id: articleTagLinks.tagId }).from(articleTagLinks).where(eq(articleTagLinks.articleId, id))).map((t) => t.id);
+    const images = await db.select({ fileKey: articleImages.fileKey }).from(articleImages).where(eq(articleImages.articleId, id));
+    const videos = await db.select({ fileKey: articleVideos.fileKey, ext: articleVideos.ext, thumbKey: articleVideos.thumbKey }).from(articleVideos).where(eq(articleVideos.articleId, id));
+    await db.delete(articles).where(eq(articles.id, id));
+    if (tagIds.length) {
+      await db
+        .update(articleTags)
+        .set({ articleCount: sql`greatest(${articleTags.articleCount} - 1, 0)` })
+        .where(inArray(articleTags.id, tagIds));
+    }
+    await bumpCategory(article.categoryId, -1);
+    lastWatched.delete(id);
+    for (const img of images) await removeImage("albums", img.fileKey);
+    for (const v of videos) {
+      membersOnlyKeys.delete(v.fileKey);
+      await removeVideoFile(v.fileKey, v.ext);
+      if (v.thumbKey) await removeImage("thumbs", v.thumbKey);
+    }
+    return ok(reply);
+  });
+
+  /** Uploads one image into an article. */
+  app.post(
+    "/api/admin/articles/:id/images",
+    { config: { rateLimit: { max: 200, timeWindow: "1 hour" } } },
+    async (req) => {
+      requireAdmin(req);
+      const { id } = parse(idParam, req.params);
+      const article = await getArticle(id);
+      const [{ maxOrder }] = await db
+        .select({ maxOrder: sql<number>`coalesce(max(${articleImages.sortOrder}), 0)::int` })
+        .from(articleImages)
+        .where(eq(articleImages.articleId, id));
+      const file = await req.file({ limits: { fileSize: config.maxUploadMb * 1024 * 1024 } });
+      if (!file) throw badRequest("Chưa chọn ảnh.");
+      const stored = await storeImage("albums", await file.toBuffer());
+      const [img] = await db
+        .insert(articleImages)
+        .values({ articleId: id, fileKey: stored.key, width: stored.width, height: stored.height, sortOrder: maxOrder + 1 })
+        .returning();
+      await db.update(articles).set({ imageCount: sql`${articles.imageCount} + 1` }).where(eq(articles.id, id));
+      // First image becomes the cover unless the admin picked another one.
+      if (article.coverType === "none") await setCover(id, "image", stored.key, 0);
+      return { image: { id: img.id, url: articleImageUrl(img.fileKey), thumbUrl: articleImageUrl(img.fileKey, true) } };
+    },
+  );
+
+  app.delete("/api/admin/articles/:id/images/:imageId", async (req, reply) => {
+    requireAdmin(req);
+    const { id, imageId } = parse(
+      z.object({ id: z.coerce.number().int().positive(), imageId: z.coerce.number().int().positive() }),
+      req.params,
+    );
+    const article = await getArticle(id);
+    const [img] = await db
+      .delete(articleImages)
+      .where(and(eq(articleImages.id, imageId), eq(articleImages.articleId, id)))
+      .returning();
+    if (!img) throw notFound("Ảnh không tồn tại.");
+    await db.update(articles).set({ imageCount: sql`greatest(${articles.imageCount} - 1, 0)` }).where(eq(articles.id, id));
+    if (article.coverImageKey === img.fileKey) await setCover(id, "none", null, 0);
+    await removeImage("albums", img.fileKey);
+    return ok(reply);
+  });
+
+  /** Uploads one video into an article (streamed to disk). */
+  app.post(
+    "/api/admin/articles/:id/videos",
+    { bodyLimit: (config.maxVideoMb + 20) * MB, config: { rateLimit: { max: 60, timeWindow: "1 hour" } } },
+    async (req) => {
+      requireAdmin(req);
+      const { id } = parse(idParam, req.params);
+      const article = await getArticle(id);
+      const dir = VIDEO_DIR();
+      await mkdir(dir, { recursive: true });
+      const fields: Record<string, string> = {};
+      const cleanup: string[] = [];
+      let thumb: Buffer | null = null;
+      let saved: { key: string; ext: VideoExt; tmp: string; size: number } | null = null;
+      try {
+        const parts = req.parts({ limits: { fileSize: config.maxVideoMb * MB, files: 2, fields: 12, fieldSize: 20_000 } });
+        for await (const part of parts) {
+          if (part.type === "field") {
+            fields[part.fieldname] = String(part.value ?? "");
+            continue;
+          }
+          if (part.fieldname === "thumb") {
+            thumb = await part.toBuffer();
+            if (thumb.length > config.maxUploadMb * MB) throw badRequest("Ảnh bìa quá lớn.");
+            continue;
+          }
+          if (part.fieldname !== "video" || saved) {
+            part.file.resume();
+            continue;
+          }
+          const ext = videoExtFromName(part.filename);
+          if (!ext) {
+            part.file.resume();
+            throw badRequest("Chỉ nhận video định dạng mp4, webm hoặc mov.");
+          }
+          const key = randomBytes(16).toString("hex");
+          const tmp = path.join(dir, `${key}.${ext}.part`);
+          cleanup.push(tmp);
+          try {
+            await pipeline(part.file, createWriteStream(tmp));
+          } catch (err) {
+            if ((err as { statusCode?: number }).statusCode === 413) throw new HttpError(413, `Video quá lớn (tối đa ${config.maxVideoMb} MB).`);
+            throw err;
+          }
+          if (part.file.truncated) throw new HttpError(413, `Video quá lớn (tối đa ${config.maxVideoMb} MB).`);
+          saved = { key, ext, tmp, size: (await stat(tmp)).size };
+        }
+        if (!saved) throw badRequest("Chưa chọn file video.");
+
+        const head = Buffer.alloc(16);
+        const fh = await open(saved.tmp, "r");
+        try {
+          await fh.read(head, 0, 16, 0);
+        } finally {
+          await fh.close();
+        }
+        if (!looksLikeVideo(head, saved.ext)) throw badRequest("File không phải video hợp lệ.");
+
+        const duration = Math.round(Number(fields.duration || 0));
+        const width = Math.round(Number(fields.width || 0));
+        const height = Math.round(Number(fields.height || 0));
+        const thumbKey = thumb?.length ? (await storeImage("thumbs", thumb)).key : null;
+        const finalPath = path.join(dir, `${saved.key}.${saved.ext}`);
+        await rename(saved.tmp, finalPath);
+        cleanup.push(finalPath);
+        if (article.visibility === "members") membersOnlyKeys.add(saved.key);
+        const [{ maxOrder }] = await db
+          .select({ maxOrder: sql<number>`coalesce(max(${articleVideos.sortOrder}), 0)::int` })
+          .from(articleVideos)
+          .where(eq(articleVideos.articleId, id));
+        const [video] = await db
+          .insert(articleVideos)
+          .values({
+            articleId: id,
+            fileKey: saved.key,
+            ext: saved.ext,
+            thumbKey,
+            duration,
+            width,
+            height,
+            sizeBytes: saved.size,
+            sortOrder: maxOrder + 1,
+          })
+          .returning({ id: articleVideos.id });
+        cleanup.length = 0;
+        await db.update(articles).set({ videoCount: sql`${articles.videoCount} + 1` }).where(eq(articles.id, id));
+        // First video becomes the cover unless the admin picked another one.
+        if (article.coverType === "none") await setCover(id, "video", thumbKey, duration);
+        void postProcess(video.id, finalPath, saved.ext, !duration || !width, !thumbKey, (msg) => req.log.info(msg));
+        return { video: { id: video.id, url: videoFileUrl(saved.key, saved.ext), thumbUrl: articleThumbUrl(thumbKey), duration } };
+      } finally {
+        for (const file of cleanup) await rm(file, { force: true });
+      }
+    },
+  );
+
+  app.delete("/api/admin/articles/:id/videos/:videoId", async (req, reply) => {
+    requireAdmin(req);
+    const { id, videoId } = parse(
+      z.object({ id: z.coerce.number().int().positive(), videoId: z.coerce.number().int().positive() }),
+      req.params,
+    );
+    const article = await getArticle(id);
+    const [video] = await db
+      .delete(articleVideos)
+      .where(and(eq(articleVideos.id, videoId), eq(articleVideos.articleId, id)))
+      .returning();
+    if (!video) throw notFound("Video không tồn tại.");
+    await db.update(articles).set({ videoCount: sql`greatest(${articles.videoCount} - 1, 0)` }).where(eq(articles.id, id));
+    if (article.coverType === "video" && article.coverImageKey === video.thumbKey) await setCover(id, "none", null, 0);
+    membersOnlyKeys.delete(video.fileKey);
+    await removeVideoFile(video.fileKey, video.ext);
+    if (video.thumbKey) await removeImage("thumbs", video.thumbKey);
+    return ok(reply);
+  });
+
+  /** Picks which media shows as the cover of an article in listings. */
+  app.post("/api/admin/articles/:id/cover", async (req) => {
+    requireAdmin(req);
+    const { id } = parse(idParam, req.params);
+    const body = parse(
+      z.object({
+        type: z.enum(["none", "image", "video"]),
+        imageId: z.number().int().positive().optional(),
+        videoId: z.number().int().positive().optional(),
+      }),
+      req.body,
+    );
+    const article = await getArticle(id);
+    if (body.type === "image") {
+      if (!body.imageId) throw badRequest("Chưa chọn ảnh bìa.");
+      const [img] = await db
+        .select({ id: articleImages.id, fileKey: articleImages.fileKey })
+        .from(articleImages)
+        .where(and(eq(articleImages.id, body.imageId), eq(articleImages.articleId, id)))
+        .limit(1);
+      if (!img) throw badRequest("Ảnh không thuộc bài viết này.");
+      await setCover(id, "image", img.fileKey, 0);
+      return { ok: true };
+    }
+    if (body.type === "video") {
+      if (!body.videoId) throw badRequest("Chưa chọn video bìa.");
+      const [v] = await db
+        .select({ id: articleVideos.id, thumbKey: articleVideos.thumbKey, duration: articleVideos.duration })
+        .from(articleVideos)
+        .where(and(eq(articleVideos.id, body.videoId), eq(articleVideos.articleId, id)))
+        .limit(1);
+      if (!v) throw badRequest("Video không thuộc bài viết này.");
+      await setCover(id, "video", v.thumbKey, v.duration);
+      return { ok: true };
+    }
+    await setCover(id, "none", null, 0);
+    return { ok: true, articleId: article.id };
+  });
+}
+
+/** Sets the cover of an article. `key` is an image file key or a video thumbnail key. */
+async function setCover(articleId: number, type: "none" | "image" | "video", key: string | null, duration: number) {
+  await db
+    .update(articles)
+    .set({ coverType: type, coverImageKey: key, coverDuration: type === "video" ? duration : 0 })
+    .where(eq(articles.id, articleId));
+}
+
+/** Marks every video of an article as members-only (or public) in the in-memory key set. */
+async function markMembersOnly(articleId: number, members: boolean) {
+  const rows = await db.select({ fileKey: articleVideos.fileKey }).from(articleVideos).where(eq(articleVideos.articleId, articleId));
+  for (const r of rows) {
+    if (members) membersOnlyKeys.add(r.fileKey);
+    else membersOnlyKeys.delete(r.fileKey);
+  }
+}

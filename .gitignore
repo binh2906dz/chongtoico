@@ -14,3 +14,4 @@ server/data/
 .DS_Store
 Thumbs.db
 *.log
+*.err

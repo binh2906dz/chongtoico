@@ -9,10 +9,9 @@ import { Avatar, PageSkeleton } from "./ui";
 
 const NAV = [
   { to: "/", label: "Trang chủ", end: true },
-  { to: "/video", label: "Video" },
+  { to: "/bai-viet", label: "Bài viết" },
   { to: "/dien-dan", label: "Diễn đàn" },
   { to: "/moi", label: "Có gì mới" },
-  { to: "/album", label: "Kho album" },
   { to: "/chat", label: "Chat" },
 ];
 
@@ -48,14 +47,7 @@ function CreateMenu() {
     );
   }
 
-  // Chỉ quản trị viên được đăng bài viết / video; mod chỉ tạo album; thành viên không được đăng.
-  if (user.role === "mod") {
-    return (
-      <Link to="/quan-tri?tab=albums" className="btn-ghost hidden px-3 py-1.5 sm:inline-flex">
-        📸 Tạo album
-      </Link>
-    );
-  }
+  // Chỉ quản trị viên được đăng bài viết (kèm ảnh/video); thành viên không được đăng.
   if (user.role !== "admin") return null;
 
   return (
@@ -66,14 +58,11 @@ function CreateMenu() {
       </button>
       {open && (
         <div className="panel absolute right-0 z-40 mt-2 w-56 overflow-hidden py-1 shadow-xl shadow-black/40">
+          <Link to="/quan-tri?tab=bai-viet" onClick={() => setOpen(false)} className="flex items-center gap-2 px-4 py-2 text-sm hover:bg-panel-2">
+            <span>📝</span> Đăng bài viết (ảnh/video)
+          </Link>
           <Link to="/tao-chu-de" onClick={() => setOpen(false)} className="flex items-center gap-2 px-4 py-2 text-sm hover:bg-panel-2">
-            <span>✍️</span> Đăng bài viết
-          </Link>
-          <Link to="/quan-tri?tab=videos" onClick={() => setOpen(false)} className="flex items-center gap-2 px-4 py-2 text-sm hover:bg-panel-2">
-            <span>🎬</span> Đăng video
-          </Link>
-          <Link to="/quan-tri?tab=albums" onClick={() => setOpen(false)} className="flex items-center gap-2 px-4 py-2 text-sm hover:bg-panel-2">
-            <span>📸</span> Tạo album
+            <span>✍️</span> Đăng chủ đề
           </Link>
         </div>
       )}
@@ -122,11 +111,11 @@ function UserMenu() {
           <Link to="/dang-theo-doi" onClick={() => setOpen(false)} className="block px-4 py-2 text-sm hover:bg-panel-2">
             Đang theo dõi
           </Link>
-          <Link to="/video/yeu-thich" onClick={() => setOpen(false)} className="block px-4 py-2 text-sm hover:bg-panel-2">
+          <Link to="/bai-viet/yeu-thich" onClick={() => setOpen(false)} className="block px-4 py-2 text-sm hover:bg-panel-2">
             Yêu thích / Xem sau
           </Link>
-          <Link to="/video/da-xem" onClick={() => setOpen(false)} className="block px-4 py-2 text-sm hover:bg-panel-2">
-            Video đã xem
+          <Link to="/bai-viet/da-xem" onClick={() => setOpen(false)} className="block px-4 py-2 text-sm hover:bg-panel-2">
+            Bài viết đã xem
           </Link>
           <Link to="/thong-bao" onClick={() => setOpen(false)} className="block px-4 py-2 text-sm hover:bg-panel-2">
             Thông báo
@@ -199,7 +188,7 @@ export default function Layout() {
             <span className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-sm text-muted">🔍</span>
             <input
               className="input w-56 rounded-full bg-panel py-1.5 pl-9 transition-all focus:w-72"
-              placeholder="Tìm video, chủ đề..."
+              placeholder="Tìm bài viết, chủ đề..."
               value={q}
               onChange={(e) => setQ(e.target.value)}
             />
@@ -213,7 +202,7 @@ export default function Layout() {
         {menuOpen && (
           <nav className="border-t border-line px-4 py-2 lg:hidden">
             <form onSubmit={search} className="mb-2 md:hidden">
-              <input className="input" placeholder="Tìm video, chủ đề..." value={q} onChange={(e) => setQ(e.target.value)} />
+              <input className="input" placeholder="Tìm bài viết, chủ đề..." value={q} onChange={(e) => setQ(e.target.value)} />
             </form>
             {NAV.map((n) => (
               <NavLink

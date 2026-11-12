@@ -90,7 +90,7 @@ server {
 
     client_max_body_size 200M;
 
-    location ^~ /api/admin/videos {
+    location ^~ /api/admin/articles {
         client_max_body_size 2100M;
         client_body_timeout 3600s;
         proxy_request_buffering off;
