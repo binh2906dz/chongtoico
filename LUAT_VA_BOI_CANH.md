@@ -152,6 +152,9 @@ Mỗi dòng: **lỗi / tình huống** → **cách tránh**.
 - **B10 — `trustProxy: true` cho phép giả mạo IP.** Fastify tin mọi `X-Forwarded-For` → kẻ xấu đổi IP tuỳ ý, vượt giới hạn đăng nhập / chống spam / chống đếm trùng lượt xem. → Sau reverse proxy chỉ tin đúng IP/dải mạng của proxy (`TRUST_PROXY`, mặc định loopback + dải nội bộ Docker); Fastify không nhận số hop dạng số, phải là chuỗi IP/CIDR.
 - **B12 — Tách code theo trang (lazy) làm tab đang mở hỏng sau khi cập nhật web.** Mỗi lần build, tên file trang đổi; tab cũ xin file cũ không còn → trang trắng. Ngoài ra trang vừa import tĩnh vừa lazy thì Vite không tách được (cảnh báo `INEFFECTIVE_DYNAMIC_IMPORT`). → Bọc `lazy` để tự tải lại trang một lần khi thiếu file (`App.tsx`); trang nào trang chủ đã import tĩnh thì import tĩnh luôn.
 - **B11 — Dọn file "rác" có thể xoá nhầm file đang dùng.** Ảnh trình soạn thảo (bảng `uploads`) được nhắc bằng `[img:key]` ở nhiều nơi (bài viết, cài đặt trang, mô tả video). → Job dọn phải kiểm tra MỌI nơi có thể chứa `[img:..]`; thêm chỗ mới dùng trình soạn thảo thì cập nhật `maintenance.ts`.
+- **B13 — `DROP TABLE ... CASCADE` tự xoá khoá ngoại trỏ tới bảng bị xoá.** Câu `ALTER TABLE notifications DROP CONSTRAINT ...` chạy sau đó báo "constraint does not exist". → Luôn dùng `DROP CONSTRAINT IF EXISTS` trong migration.
+- **B14 — Dọn file media lỗi làm hỏng cả request.** `rm()` file bị khoá (Windows + OneDrive/antivirus, hoặc trình duyệt đang đọc) ném EBUSY/EPERM → request xoá bài viết trả 500 dù dữ liệu đã xoá xong. → `removeImage` / `removeVideoFile` phải nuốt lỗi xoá file (file sót lại vô hại), không làm hỏng request.
+- **B15 — `drizzle-kit generate` hỏi tương tác (đổi tên bảng) chết trong môi trường không có TTY.** → Với thay đổi lớn, tự viết SQL migration + snapshot + entry trong `_journal.json` thay vì chạy `generate` ở chế độ tương tác.
 
 ## 10. Nhật ký làm việc
 
@@ -304,6 +307,6 @@ Mẫu mỗi mục:
   - `drizzle-kit generate` hỏi tương tác (đổi tên bảng) → chết trong môi trường không TTY. Cách tránh: tự viết SQL migration + snapshot, không chạy generate ở chế độ tương tác.
   - `DROP TABLE videos CASCADE` đã tự xoá khoá ngoại `notifications_video_id_videos_id_fk` ⇒ câu `ALTER TABLE ... DROP CONSTRAINT` sau đó báo lỗi "does not exist". Cách tránh: luôn dùng `DROP CONSTRAINT IF EXISTS`.
 - Bài học / cách tránh: khi gộp hai mảng nội dung, phải gộp **cả bảng DB, cả API, cả route, cả thẻ giao diện, cả điều hướng, cả biến thông báo** — nếu để sót một chỗ (ví dụ `notifications.videoId`) thì sẽ hỏng âm thầm. Với bài viết đa phương tiện, cần một trường "ảnh bìa do admin chọn" tách rời khỏi danh sách media, nếu không sẽ không kiểm soát được thẻ hiển thị ngoài.
-- Đã kiểm tra: `npm run build` (máy chủ) không lỗi; `npm test` **16/16 pass**; `npm run build` (giao diện) không lỗi; chạy app thật tại máy (cổng 8090) — tạo bài viết, tải **3 ảnh + 1 video** thật qua API, đặt ảnh bìa là ảnh thứ 3, xem `/bai-viet` và `/bai-viet/1` trên trình duyệt (thẻ hiện "🖼️ 3 🎬 1", trang chi tiết hiện đủ ảnh + video).
+- Đã kiểm tra: `npm run build` (máy chủ) không lỗi; `npm test` **17/17 pass** (thêm ca "deletes an article and cleans up its media"); `npm run build` (giao diện) không lỗi; chạy app thật tại máy (cổng 8090) — tạo bài viết, tải **3 ảnh + 1 video** thật qua API, đặt ảnh bìa là ảnh thứ 3, xem `/bai-viet` và `/bai-viet/1` trên trình duyệt (thẻ hiện "🖼️ 3 🎬 1", trang chi tiết hiện đủ ảnh + video), `/quan-tri?tab=bai-viet` hiện đủ tab "Bài viết" / "Thể loại bài viết".
   - **Chưa chạy thử:** trên điện thoại thật; trên VPS; tải video lớn (>100MB) qua Nginx; ffmpeg faststart với video thật.
-- File / commit: (chưa commit — sẽ ghi sau khi push).
+- File / commit: `a4952df` (+ `docs` cho nhật ký).
