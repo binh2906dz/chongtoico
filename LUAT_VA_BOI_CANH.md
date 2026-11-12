@@ -271,4 +271,4 @@ Mẫu mỗi mục:
 - Bài học / cách tránh: luôn đặt ngoặc nhọn khi kết hợp `||` và `&&` trong điều kiện JSX.
 - Đã kiểm tra: `npm run build` giao diện không lỗi; chạy app thật tại máy, đăng nhập admin: menu thả xuống hiện đủ 3 mục (Đăng bài viết / Đăng video / Tạo album), trang chủ hiện dải nút; khách chưa đăng nhập thấy nút "✍️ Đăng bài" trên thanh đầu.
   - **Chưa chạy thử:** trên điện thoại thật; không đăng bài / video thật qua giao diện mới.
-- File / commit: (xem huongdan.txt mục 7).
+- File / commit: `759fcb5`.
