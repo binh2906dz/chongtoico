@@ -310,3 +310,10 @@ Mẫu mỗi mục:
 - Đã kiểm tra: `npm run build` (máy chủ) không lỗi; `npm test` **17/17 pass** (thêm ca "deletes an article and cleans up its media"); `npm run build` (giao diện) không lỗi; chạy app thật tại máy (cổng 8090) — tạo bài viết, tải **3 ảnh + 1 video** thật qua API, đặt ảnh bìa là ảnh thứ 3, xem `/bai-viet` và `/bai-viet/1` trên trình duyệt (thẻ hiện "🖼️ 3 🎬 1", trang chi tiết hiện đủ ảnh + video), `/quan-tri?tab=bai-viet` hiện đủ tab "Bài viết" / "Thể loại bài viết".
   - **Chưa chạy thử:** trên điện thoại thật; trên VPS; tải video lớn (>100MB) qua Nginx; ffmpeg faststart với video thật.
 - File / commit: `a4952df` (+ `docs` cho nhật ký).
+
+### 2026-11-13 — Thêm — Dữ liệu mẫu 10 bài viết để test giao diện (chỉ ở máy dev)
+- Việc đã làm: tạo 10 bài viết mẫu trong dữ liệu thử của máy dev (PGlite `server/data/` — bị gitignore, **không lên repo, không lên VPS**): 6 bài chỉ có ảnh, 4 bài có cả ảnh lẫn video; 4 bài có video được đặt **ảnh bìa là video** để thử hiển thị bìa dạng video; 1 bài "chỉ thành viên" để thử khoá nội dung; có đủ 10 chuyên mục, 9 thẻ, 2 bài đánh dấu HOT. Script: `server/data/seed-articles.mjs`, `set-video-covers.mjs`, `fix-categories.mjs` (chạy lại được bằng `node data/seed-articles.mjs` khi app đang chạy ở cổng 8090).
+- Lý do: chủ dự án yêu cầu "đăng 10 bài viết để test" sau khi gộp video + album.
+- Đã kiểm tra: `/api/articles?sort=new` trả đúng 10 bài (id 34–43) với `imageCount` / `videoCount` / `coverType` đúng; media phục vụ 200 (`/media/a/*.webp` image/webp, `/media/v/*.mp4` video/mp4, `/media/t/*.webp` ảnh bìa video); xem trên trình duyệt: `/bai-viet` hiện 10 thẻ, `/bai-viet/34` hiện đủ ảnh + video + thẻ + bài liên quan, trang chủ hiện banner trượt + "Bài viết mới nhất" + "Hay nhất tuần" + "Xem nhiều hôm nay" + "Đang được xem" + "Có thể bạn chưa xem" + "Thẻ phổ biến" đầy dữ liệu.
+- **Lưu ý**: file video mẫu là MP4 giả (76 byte, chỉ có header) nên trình duyệt **không phát được** — chỉ dùng để kiểm tra bố cục / nhãn / số liệu, không kiểm tra phát video thật. Muốn xem video thật thì đăng bằng tay ở Quản trị > Bài viết.
+- **Chưa làm**: không commit dữ liệu mẫu; chưa chạy thử trên điện thoại thật / VPS.
