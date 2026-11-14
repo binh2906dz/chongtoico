@@ -290,6 +290,7 @@ Hàng chờ: Quản trị > Báo vi phạm (mod + admin).
 7) LỊCH SỬ GIT (oneline — cập nhật sau mỗi lần push)
 --------------------------------------------------------------------------------
 (xem `git log --oneline`; các commit chính)
+fb15e94 fix(security): chan khach doc binh luan va media cua bai chi thanh vien; responsive cover variants; docs
 a4952df feat: hop nhat video va album thanh bai viet da phuong tien
 1f9dae9 feat(auth): admin-only posting - threads, replies and image uploads restricted to admin; staff keeps album management
 1cf2319 docs: record 759fcb5
