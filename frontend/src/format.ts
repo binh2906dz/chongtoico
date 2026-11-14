@@ -33,8 +33,33 @@ export function formatBytes(bytes: number): string {
   return `${Math.ceil(bytes / 1024)} KB`;
 }
 
-/** Size variants served by /media: `s` ≈ 480px wide, `m` ≈ 1280px (albums), `t` = album thumbnail. */
-export const imageVariant = (url: string, variant: "s" | "m" | "t") => url.replace(/(_[tsm])?\.webp$/, `_${variant}.webp`);
+/**
+ * Các biến thể ảnh của một ảnh bìa, kèm chiều rộng thật để khai báo `srcSet`.
+ * - Ảnh bìa do admin chọn trong bộ ảnh: `/media/a/<key>_t.webp` (thumb 480px) -> bản gốc 2000px.
+ * - Ảnh bìa lấy từ video: `/media/t/<key>.webp` (tối đa 1280px).
+ * Không khai đúng kích thước sẽ khiến trình duyệt tải bản 480px rồi phóng to -> ảnh mờ.
+ */
+export function coverVariants(url: string): { small: string; large: string; full: string; fullWidth: number } | null {
+  const album = /^\/media\/a\/([a-f0-9]{32})_t\.webp$/.exec(url);
+  if (album) {
+    return {
+      small: `/media/a/${album[1]}_s.webp`,
+      large: `/media/a/${album[1]}_m.webp`,
+      full: `/media/a/${album[1]}.webp`,
+      fullWidth: 2000,
+    };
+  }
+  const thumb = /^\/media\/t\/([a-f0-9]{32})\.webp$/.exec(url);
+  if (thumb) {
+    return {
+      small: `/media/t/${thumb[1]}_s.webp`,
+      large: `/media/t/${thumb[1]}_m.webp`,
+      full: `/media/t/${thumb[1]}.webp`,
+      fullWidth: 1280,
+    };
+  }
+  return null;
+}
 
 export const isNew = (createdAt: string, hours = 48) => Date.now() - new Date(createdAt).getTime() < hours * 3600_000;
 

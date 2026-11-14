@@ -44,7 +44,7 @@ function captureFrame(video: HTMLVideoElement): Promise<Blob | null> {
   return new Promise((resolve) => canvas.toBlob((b) => resolve(b), "image/jpeg", 0.85));
 }
 
-function UploadForm({ categories, onDone }: { categories: ArticleCategory[]; onDone: () => void }) {
+function UploadForm({ categories, onDone, onCreated }: { categories: ArticleCategory[]; onDone: () => void; onCreated: (id: number) => void }) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [categoryId, setCategoryId] = useState("");
@@ -70,6 +70,8 @@ function UploadForm({ categories, onDone }: { categories: ArticleCategory[]; onD
       setMembersOnly(false);
       setIsHot(false);
       onDone();
+      // Mở thẳng trình thêm ảnh/video cho bài vừa tạo.
+      onCreated(res.article.id);
     } catch (err) {
       setError(errorMessage(err));
     } finally {
@@ -135,7 +137,7 @@ function UploadForm({ categories, onDone }: { categories: ArticleCategory[]; onD
 }
 
 /** Quản lý media của một bài viết: thêm ảnh, thêm video, chọn ảnh bìa. */
-function ArticleMediaEditor({ articleId, onChanged }: { articleId: number; onChanged: () => void }) {
+function ArticleMediaEditor({ articleId, onChanged, onBack }: { articleId: number; onChanged: () => void; onBack: () => void }) {
   const { data, error, loading, reload } = useFetch<{ article: AdminArticle }>(`/api/admin/articles/${articleId}`);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -212,7 +214,12 @@ function ArticleMediaEditor({ articleId, onChanged }: { articleId: number; onCha
   return (
     <div className="space-y-4">
       <div className="panel space-y-3 p-4">
-        <h3 className="text-lg font-bold">{article.title}</h3>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3 className="text-lg font-bold">{article.title}</h3>
+          <button className="btn-ghost px-3 py-1 text-sm" onClick={onBack}>
+            ← Quay lại danh sách
+          </button>
+        </div>
         <div className="flex flex-wrap gap-2">
           <button className="btn-primary" disabled={busy} onClick={() => imageRef.current?.click()}>
             🖼️ Tải ảnh lên
@@ -250,8 +257,10 @@ function ArticleMediaEditor({ articleId, onChanged }: { articleId: number; onCha
             disabled={busy}
             onClick={async () => {
               if (!confirm("Xoá bài viết và toàn bộ media?")) return;
+              // Sau khi xoá, bài viết không còn tồn tại -> phải quay lại danh sách.
               await act(() => api(`/api/admin/articles/${articleId}`, { method: "DELETE" }));
               onChanged();
+              onBack();
             }}
           >
             Xoá bài viết
@@ -392,13 +401,14 @@ export default function AdminArticles() {
         onChanged={() => {
           setTick((t) => t + 1);
         }}
+        onBack={() => setEditing(null)}
       />
     );
   }
 
   return (
     <div className="space-y-4">
-      <UploadForm categories={categories} onDone={() => setTick((t) => t + 1)} />
+      <UploadForm categories={categories} onDone={() => setTick((t) => t + 1)} onCreated={(id) => setEditing(id)} />
       <section className="panel">
         <div className="panel-head flex-wrap">
           <h2 className="font-bold">📝 Danh sách bài viết {data && <span className="text-muted">({formatNumber(data.total)})</span>}</h2>

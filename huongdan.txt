@@ -257,10 +257,21 @@ Hàng chờ: Quản trị > Báo vi phạm (mod + admin).
   coverDuration) — thẻ ngoài danh sách chỉ hiện 1 ảnh hoặc 1 video. Đổi tên
   trường hoặc bảng => sửa schema.ts, tạo migration mới, cập nhật frontend/src/types.ts
   + routes/articles.ts + components/ArticleCard.tsx + pages/Article*.tsx cùng lúc.
+- BÀI VIẾT "CHỈ THÀNH VIÊN" (2026-11-14): mọi endpoint trả nội dung của bài
+  viết phải tự kiểm tra articles.visibility + req.user — chi tiết, bình luận
+  (GET /api/articles/:id/comments), media /media/a/ (ảnh) và /media/t/ (thumbnail
+  video). Khách nhận coverUrl = null, membersOnly = true; chi tiết locked = true,
+  images = []. Thêm endpoint mới trả nội dung bài => kiểm tra lại quyền ở đó.
+- CÁCH KIỂM TRA QUYỀN (2026-11-14): cache trình duyệt có thể trả 200 cho ảnh
+  đã cache khi còn đăng nhập => kiểm tra bằng request bypass cache; nếu server
+  trả 403 thì không phải lỗi code.
 
 --------------------------------------------------------------------------------
 6) VIỆC CÒN LẠI / KẾ HOẠCH
 --------------------------------------------------------------------------------
+- [2026-11-14] TẠM DỪNG theo yêu cầu chủ dự án ("mai tôi sẽ sửa tiếp"). Toàn bộ
+  thay đổi đã commit + push lên main. Phiên sau: đọc LUAT_VA_BOI_CANH.md mục 9
+  (B16–B19) và mục 10 trước khi làm tiếp; không mở thêm tính năng mới.
 - Chủ dự án chỉnh sửa / thêm chức năng sau khi xem bản đầu.
 - Giai đoạn kiểm thử (khi chủ dự án yêu cầu): viết bài test cho theo
   dõi / BBCode / thông báo / báo vi phạm / tag / yêu thích; thử tải + phát +
@@ -342,6 +353,15 @@ b22c5f7 feat: scaffold new platform (đã thay thế — xoá ở bản Node.js)
   SavedVideos, Albums, AlbumView, admin/AdminVideos, admin/AdminAlbums. URL
   /bai-viet, /bai-viet/:id, /bai-viet/da-xem, /bai-viet/yeu-thich, /bai-viet/tag/:slug.
   Khối "Album mới" / "Video mới nhất" -> "Bài viết mới nhất".
+[2026-11-14] Vá lỗ hổng "chỉ thành viên": GET /api/articles/:id/comments chặn
+  khách (403); /media/a/ và /media/t/ tra articles.visibility theo fileKey /
+  thumbKey, khách -> 403; khách nhận coverUrl = null + membersOnly = true, chi
+  tiết locked = true + images = []. Bài test mới trong server/test/api.test.ts.
+  Không đổi DB. Giao diện: ArticleCard hiện nhãn 🔒 + ảnh responsive (small
+  480w / large 1280w / full); admin/AdminArticles thêm nút "← Quay lại danh sách".
+[2026-11-14] TẠM DỪNG phát triển theo yêu cầu chủ dự án; toàn bộ thay đổi đã
+  commit + push lên main. Phiên sau đọc LUAT_VA_BOI_CANH.md mục 9 (B16–B19) và
+  mục 10 trước khi làm tiếp.
 
 ================================================================================
 Hết — lưu ý: không lưu mật khẩu / token thật trong file này.

@@ -319,10 +319,29 @@ describe("Chống Tối Cổ API", () => {
     assert.equal((await app.inject({ url: member.article.images[0].thumbUrl, headers: { cookie: bob.cookie } })).statusCode, 200);
     assert.equal((await app.inject("/media/a/../../etc.webp")).statusCode, 404);
 
+    // Khách không được đọc bình luận của bài "chỉ thành viên".
+    const cm = await app.inject({
+      method: "POST",
+      url: `/api/articles/${articleId}/comments`,
+      headers: { ...H, cookie: bob.cookie },
+      payload: { content: "Bình luận nội bộ" },
+    });
+    assert.equal(cm.statusCode, 200, cm.body);
+    const guestComments = await app.inject(`/api/articles/${articleId}/comments`);
+    assert.equal(guestComments.statusCode, 403);
+    const memberComments = await app.inject({ url: `/api/articles/${articleId}/comments`, headers: { cookie: bob.cookie } });
+    assert.equal(memberComments.statusCode, 200);
+    assert.equal(memberComments.json().comments.length, 1);
+
     const list = (await app.inject("/api/articles?sort=new")).json();
     assert.equal(list.articles.length, 1);
     assert.equal(list.articles[0].imageCount, 2);
-    assert.ok(list.articles[0].coverUrl);
+    // Khách không được thấy ảnh bìa của bài "chỉ thành viên" (ảnh sẽ trả 403).
+    assert.equal(list.articles[0].coverUrl, null);
+    assert.equal(list.articles[0].membersOnly, true);
+    // Thành viên đã đăng nhập thì thấy ảnh bìa.
+    const memberList = (await app.inject({ url: "/api/articles?sort=new", headers: { cookie: bob.cookie } })).json();
+    assert.ok(memberList.articles[0].coverUrl);
 
     // Chọn ảnh bìa thứ 2.
     res = await app.inject({

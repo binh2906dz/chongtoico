@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { compactNumber, formatDuration, imageVariant } from "../format";
+import { compactNumber, coverVariants, formatDuration } from "../format";
 import type { ArticleItem } from "../types";
 
 export interface HeroSlide {
@@ -20,19 +20,23 @@ export function buildHeroSlides(articles: ArticleItem[], max = 7): HeroSlide[] {
   return articles
     .filter((a) => a.coverUrl)
     .slice(0, max)
-    .map((a) => ({
-      key: `a${a.id}`,
-      to: `/bai-viet/${a.id}`,
-      image: imageVariant(a.coverUrl!, "m"),
-      label: a.recentViews ? "🔥 Hot hôm nay" : a.hasVideo ? "🎬 Bài viết nổi bật" : "🖼️ Bài viết nổi bật",
-      title: a.title,
-      meta: [
-        ...(a.recentViews ? [`${compactNumber(a.recentViews)} lượt xem hôm nay`] : a.viewCount ? [`${compactNumber(a.viewCount)} lượt xem`] : []),
-        ...(a.hasVideo && a.coverDuration > 0 ? [formatDuration(a.coverDuration)] : []),
-        ...(a.category ? [a.category.name] : []),
-      ],
-      cta: a.hasVideo ? "▶ Xem ngay" : "Xem bài viết ›",
-    }));
+    .map((a) => {
+      // Hero hiển thị ngang: dùng bản 1280px nếu có, không thì bản gốc.
+      const variants = coverVariants(a.coverUrl!);
+      return {
+        key: `a${a.id}`,
+        to: `/bai-viet/${a.id}`,
+        image: variants?.large ?? a.coverUrl!,
+        label: a.recentViews ? "🔥 Hot hôm nay" : a.hasVideo ? "🎬 Bài viết nổi bật" : "🖼️ Bài viết nổi bật",
+        title: a.title,
+        meta: [
+          ...(a.recentViews ? [`${compactNumber(a.recentViews)} lượt xem hôm nay`] : a.viewCount ? [`${compactNumber(a.viewCount)} lượt xem`] : []),
+          ...(a.hasVideo && a.coverDuration > 0 ? [formatDuration(a.coverDuration)] : []),
+          ...(a.category ? [a.category.name] : []),
+        ],
+        cta: a.hasVideo ? "▶ Xem ngay" : "Xem bài viết ›",
+      };
+    });
 }
 
 function TopList({ title, articles }: { title: string; articles: ArticleItem[] }) {
@@ -48,7 +52,14 @@ function TopList({ title, articles }: { title: string; articles: ArticleItem[] }
             <Link to={`/bai-viet/${a.id}`} className="group flex items-center gap-3 rounded-lg p-1.5 transition hover:bg-panel-2">
               <span className={`w-6 shrink-0 text-center text-2xl font-black italic ${i < 3 ? "text-gradient" : "text-muted"}`}>{i + 1}</span>
               <span className="relative aspect-video w-24 shrink-0 overflow-hidden rounded-md bg-panel-2">
-                {a.coverUrl && <img src={imageVariant(a.coverUrl, "s")} alt="" loading="lazy" className="h-full w-full object-cover transition duration-500 group-hover:scale-110" />}
+                {a.coverUrl && (
+                  <img
+                    src={coverVariants(a.coverUrl)?.small ?? a.coverUrl}
+                    alt=""
+                    loading="lazy"
+                    className="h-full w-full object-cover transition duration-500 group-hover:scale-110"
+                  />
+                )}
                 {a.hasVideo && <span className="absolute inset-0 flex items-center justify-center text-lg text-white/90">▶</span>}
                 {a.coverDuration > 0 && (
                   <span className="absolute right-0.5 bottom-0.5 rounded bg-black/80 px-1 text-[10px] font-bold text-white">{formatDuration(a.coverDuration)}</span>

@@ -113,6 +113,8 @@ Bản 2 (2026-11-07) — lai thêm mảng video:
 | 2026-11-07 | Thêm: **theo dõi chủ đề / theo dõi thành viên** (trang "Đang theo dõi"), **trình soạn thảo đẹp hơn** (đậm, nghiêng, gạch, trích dẫn, ẩn nội dung, liên kết, ảnh, emoji). Chưa làm thông báo, tin nhắn riêng, báo vi phạm. Phần "sửa giao diện/chức năng có sẵn": chờ chủ dự án mô tả. |
 | 2026-11-12 | **Quyền đăng bài: chỉ ADMIN.** Chủ dự án chốt: tài khoản người dùng (member) **không được đăng bài viết / chủ đề, không được trả lời trong chủ đề, không được tải ảnh lên**; **mod và admin mới được tạo album**; **chỉ admin** được đăng bài viết, đăng video, tải ảnh lên. Thực hiện ở **cả máy chủ (API) và giao diện** — ẩn nút ở giao diện không đủ, phải chặn ở API. Thành viên vẫn xem, thích, bình luận video, đăng tin nhắn chat. |
 | 2026-11-12 | **Gộp "Video" và "Album" thành một mục "Bài viết".** Chủ dự án chốt: giữ nguyên cấu trúc diễn đàn, nhưng hợp nhất mảng video + album thành **một loại nội dung: bài viết**. Xoá nhãn "📸 Album mới" / "🆕 Video mới nhất" → **"Bài viết mới nhất"**. Một bài viết **có thể chứa nhiều ảnh VÀ nhiều video** (hoặc chỉ ảnh, hoặc chỉ video). Khi hiển thị ra ngoài (thẻ trang chủ, banner trượt) **chỉ hiện 1 ảnh hoặc 1 video do admin chọn làm ảnh bìa** (`articles.coverType` = none/image/video, `coverImageKey`, `coverDuration`). Dữ liệu video + album cũ **xoá sạch** (không chuyển sang). Bảng DB mới: `articles`, `article_images`, `article_videos`, `article_categories`, `article_tags`, `article_tag_links`, `article_votes`, `article_comments`, `article_comment_votes`, `article_saves`, `article_view_days`, `article_history` (thay `videos` / `albums` / `album_images` / `video_*`). Migration `0003_articles.sql`. URL: `/bai-viet`, `/bai-viet/:id`, `/bai-viet/da-xem`, `/bai-viet/yeu-thich`, `/bai-viet/tag/:slug`. |
+| 2026-11-14 | **Bảo mật "chỉ thành viên" phải chặn ở MỌI endpoint.** Mọi đường trả nội dung của bài viết đều phải tự kiểm tra `articles.visibility === "members"` + `req.user` (chi tiết, bình luận, media `/media/a/` + `/media/t/`, ảnh bìa trả `coverUrl: null` cho khách). Suy ra từ lỗ hổng: chỉ khoá media mà quên endpoint bình luận ⇒ khách đọc được bình luận của bài khoá (B16). |
+| 2026-11-14 | **Tạm dừng phát triển.** Chủ dự án dừng để nghỉ ("mai tôi sẽ sửa tiếp"): toàn bộ thay đổi đã commit + push lên `main`; ghi chú kiểm toán vào mục 9 (B16–B19) và mục 10. Không mở thêm tính năng mới cho tới khi chủ dự án yêu cầu. |
 
 ## 7. Câu hỏi còn mở
 
@@ -155,6 +157,10 @@ Mỗi dòng: **lỗi / tình huống** → **cách tránh**.
 - **B13 — `DROP TABLE ... CASCADE` tự xoá khoá ngoại trỏ tới bảng bị xoá.** Câu `ALTER TABLE notifications DROP CONSTRAINT ...` chạy sau đó báo "constraint does not exist". → Luôn dùng `DROP CONSTRAINT IF EXISTS` trong migration.
 - **B14 — Dọn file media lỗi làm hỏng cả request.** `rm()` file bị khoá (Windows + OneDrive/antivirus, hoặc trình duyệt đang đọc) ném EBUSY/EPERM → request xoá bài viết trả 500 dù dữ liệu đã xoá xong. → `removeImage` / `removeVideoFile` phải nuốt lỗi xoá file (file sót lại vô hại), không làm hỏng request.
 - **B15 — `drizzle-kit generate` hỏi tương tác (đổi tên bảng) chết trong môi trường không có TTY.** → Với thay đổi lớn, tự viết SQL migration + snapshot + entry trong `_journal.json` thay vì chạy `generate` ở chế độ tương tác.
+- **B16 — "Chỉ thành viên" chỉ khoá ảnh/video, bình luận vẫn lộ cho khách.** `GET /api/articles/:id/comments` không kiểm tra `visibility` → khách đọc được bình luận của bài khoá (kể cả nội dung công khai trong bài đó). → Mọi endpoint trả nội dung của bài viết phải kiểm tra `visibility === "members"` + `req.user`: chi tiết, bình luận, media (`/media/a/`, `/media/t/`), ảnh bìa (`coverUrl: null` khi khách). Thêm bài test cho từng đường (khách → 403).
+- **B17 — Cache trình duyệt làm tưởng "chặn không được".** Ảnh `_s.webp` / `_m.webp` đã cache từ lúc đăng nhập vẫn hiện sau khi đăng xuất (HTTP 200 từ cache). → Kiểm tra quyền bằng request bypass cache (`Cache-Control: no-cache`) hoặc xoá cache; nếu server trả 403 đúng thì không phải lỗi code.
+- **B18 — Ảnh bìa bài "chỉ thành viên" cho khách: phải trả `null` chứ không trả URL 403.** Nếu trả URL, thẻ giao diện sẽ hỏng ảnh. → `coverUrl: null` + `membersOnly: true` trong danh sách, `locked: true` + `images: []` trong chi tiết; giao diện hiện nhãn 🔒.
+- **B19 — Tắt cưỡng bức tiến trình Node giữa lúc PGlite đang chạy → hỏng dữ liệu dev.** `postmaster.pid` bị khoá, WAL không ghi được ⇒ lần mở sau báo lỗi database. → Đóng server bằng `Ctrl+C` sạch (hoặc `taskkill` sau khi đóng cửa sổ), không `Stop-Process -Force`. Nếu đã hỏng: xoá thư mục `server/data/` và tạo lại dữ liệu dev + chạy lại script seed (`server/data/seed-articles.mjs`).
 
 ## 10. Nhật ký làm việc
 
@@ -317,3 +323,24 @@ Mẫu mỗi mục:
 - Đã kiểm tra: `/api/articles?sort=new` trả đúng 10 bài (id 34–43) với `imageCount` / `videoCount` / `coverType` đúng; media phục vụ 200 (`/media/a/*.webp` image/webp, `/media/v/*.mp4` video/mp4, `/media/t/*.webp` ảnh bìa video); xem trên trình duyệt: `/bai-viet` hiện 10 thẻ, `/bai-viet/34` hiện đủ ảnh + video + thẻ + bài liên quan, trang chủ hiện banner trượt + "Bài viết mới nhất" + "Hay nhất tuần" + "Xem nhiều hôm nay" + "Đang được xem" + "Có thể bạn chưa xem" + "Thẻ phổ biến" đầy dữ liệu.
 - **Lưu ý**: file video mẫu là MP4 giả (76 byte, chỉ có header) nên trình duyệt **không phát được** — chỉ dùng để kiểm tra bố cục / nhãn / số liệu, không kiểm tra phát video thật. Muốn xem video thật thì đăng bằng tay ở Quản trị > Bài viết.
 - **Chưa làm**: không commit dữ liệu mẫu; chưa chạy thử trên điện thoại thật / VPS.
+
+### 2026-11-14 — Sửa lỗi + Thay đổi — Kiểm tra toàn bộ web, vá lỗ hổng "chỉ thành viên", dọn giao diện quản trị
+- Việc đã làm:
+  - **Vá lỗ hổng lộ bình luận bài "chỉ thành viên"** (`server/src/routes/articles.ts`): `GET /api/articles/:id/comments` — khách chưa đăng nhập nhận **403** `Bài viết chỉ dành cho thành viên.` Trước đó khách đọc được toàn bộ bình luận.
+  - **Vá lỗ hổng lộ media bài "chỉ thành viên"** (`server/src/routes/media.ts`): `/media/a/` (ảnh) và `/media/t/` (thumbnail video) tra `articles.visibility` theo `fileKey` / `thumbKey`; nếu bài `members` mà khách ⇒ **403**; thành viên ⇒ phục vụ với `cache: private, max-age=86400`.
+  - **Ảnh bìa**: khách nhận `coverUrl: null` + `membersOnly: true` trong danh sách; chi tiết trả `locked: true` + `images: []` (không trả URL 403 để giao diện không hỏng ảnh).
+  - **Giao diện**: `components/ArticleCard.tsx` hiện nhãn 🔒 cho bài khoá, dùng biến thể ảnh responsive (`small` 480w / `large` 1280w / `full`); `pages/admin/AdminArticles.tsx` thêm nút "← Quay lại danh sách" trong trình sửa media và tự quay lại danh sách sau khi xoá bài viết.
+  - **Kiểm thử**: bổ sung ca kiểm tra bình luận members-only trong `server/test/api.test.ts` (khách → 403, thành viên → 200 và thấy bình luận).
+  - Xoá file tạm `server/test/audit.ts` (script audit dùng một lần, không commit).
+- Lý do: chủ dự án yêu cầu kiểm tra lại toàn bộ web tìm chỗ chưa logic, sau đó yêu cầu dừng lại, push lên GitHub và ghi lưu ý vào luật.
+- Nguyên nhân gốc (lỗi bảo mật): chỉ khoá ở tầng media/chi tiết mà **quên endpoint bình luận** ⇒ nội dung của bài khoá bị lộ công khai (B16). Ngoài ra cache trình duyệt làm tưởng chặn không được (B17).
+- Bài học / cách tránh: **mỗi endpoint trả nội dung của bài viết phải tự kiểm tra `visibility`** — không được dựa vào việc "đã khoá ở chỗ khác". Thêm bài test cho từng đường (khách 403 / thành viên 200).
+- Đã kiểm tra: `npx tsc --noEmit` (máy chủ) không lỗi; `npm test` **17/17 pass** (đã thêm ca bình luận members-only); `npm run build` (giao diện) không lỗi.
+  - **Chưa chạy thử:** trên trình duyệt với cache sạch; trên điện thoại thật; trên VPS; video thật (>100 MB) qua Nginx; `backup.sh` + khôi phục.
+- File / commit: `server/src/routes/articles.ts`, `server/src/routes/media.ts`, `server/test/api.test.ts`, `frontend/src/components/ArticleCard.tsx`, `frontend/src/pages/admin/AdminArticles.tsx` (+ `frontend/src/components/Hero.tsx`, `frontend/src/format.ts`, `frontend/src/pages/ArticlePage.tsx`, `frontend/src/pages/admin/AdminReports.tsx`, `frontend/src/pages/admin/AdminSettings.tsx`, `server/src/auth.ts`, `server/src/media.ts`, `server/src/routes/members.ts`).
+
+### 2026-11-14 — Quyết định — Tạm dừng phát triển, push toàn bộ thay đổi lên GitHub
+- Việc đã làm: chủ dự án yêu cầu dừng lại ("mai tôi sẽ sửa tiếp"), push toàn bộ nội dung đã chỉnh sửa lên GitHub `main` và ghi lưu ý vào luật.
+- Quyết định: không mở thêm tính năng mới cho tới khi chủ dự án yêu cầu; các ghi chú kiểm toán được chuyển vào mục 9 (B16–B19) và mục 10 của file này, `huongdan.txt` cập nhật mục 6/7/8.
+- Lý do: giữ trạng thái làm việc an toàn để phiên sau tiếp tục đúng chỗ.
+- File / commit: `LUAT_VA_BOI_CANH.md`, `huongdan.txt`.

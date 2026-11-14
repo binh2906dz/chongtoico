@@ -11,7 +11,7 @@ type Status = "open" | "resolved" | "dismissed" | "all";
 
 interface Report {
   id: number;
-  targetType: "video" | "video_comment" | "post" | "site";
+  targetType: "article" | "article_comment" | "post" | "site";
   targetId: number;
   reason: string;
   message: string;

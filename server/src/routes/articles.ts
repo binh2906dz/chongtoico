@@ -6,7 +6,7 @@ import { pipeline } from "node:stream/promises";
 import { and, asc, count, desc, eq, gte, ilike, inArray, isNull, notInArray, sql, type SQL } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { author, authorColumns, isStaff, requireActive, requireAdmin, requireStaff, requireUser } from "../auth.js";
+import { author, authorColumns, isStaff, requireActive, requireAdmin, requireStaff, requireUser, type User } from "../auth.js";
 import { config } from "../config.js";
 import { db } from "../db/index.js";
 import {
@@ -70,6 +70,7 @@ const cardColumns = {
   dislikeCount: articles.dislikeCount,
   commentCount: articles.commentCount,
   visibility: articles.visibility,
+  isHot: articles.isHot,
   createdAt: articles.createdAt,
   category: { id: articleCategories.id, slug: articleCategories.slug, name: articleCategories.name },
 };
@@ -81,6 +82,7 @@ type CardRow = {
   likeCount: number;
   dislikeCount: number;
   visibility: string;
+  isHot?: boolean;
 } & Record<string, unknown>;
 
 /** Most viewed articles of the last 7 days (at least HOT_MIN_VIEWS), shown with a HOT badge; refreshed every 5 minutes. */
@@ -108,18 +110,41 @@ async function refreshHotIds() {
   }
 }
 
+/**
+ * Ảnh bìa của bài viết. Nguồn phụ thuộc `coverType`:
+ * - "image": ảnh trong bộ sưu tập bài viết (thư mục albums) -> /media/a/
+ * - "video": khung hình lấy từ video (thư mục thumbs) -> /media/t/
+ * Trước đây cả hai đều trỏ về /media/a/ nên bìa video luôn 404.
+ */
+export const articleCoverUrl = (coverType: string, key: string | null) => {
+  if (!key) return null;
+  if (coverType === "video") return `/media/t/${key}.webp`;
+  if (coverType === "image") return `/media/a/${key}_t.webp`;
+  return null;
+};
+
 function mapCard<T extends CardRow>(row: T) {
   const { coverImageKey, coverType, visibility, ...rest } = row;
   const votes = row.likeCount + row.dislikeCount;
   return {
     ...rest,
     coverType,
-    coverUrl: articleImageUrl(coverImageKey, true),
+    coverUrl: articleCoverUrl(coverType, coverImageKey),
     hasVideo: coverType === "video",
     membersOnly: visibility === "members",
-    hot: hotIds.has(row.id),
+    // Bài được admin đánh dấu HOT luôn nổi bật, kể cả khi chưa đủ lượt xem.
+    hot: row.isHot === true || hotIds.has(row.id),
     rating: votes ? Math.round((row.likeCount * 100) / votes) : null,
   };
+}
+
+/**
+ * Bài "chỉ thành viên" không được lộ link ảnh bìa cho khách: ảnh sẽ trả 403 và giao diện
+ * hiện ảnh vỡ. Vì vậy danh sách công khai trả coverUrl = null cho bài này.
+ */
+function hideLockedCover<T extends { coverUrl: string | null; membersOnly: boolean }>(card: T, viewer: User | null): T {
+  if (card.membersOnly && !viewer) return { ...card, coverUrl: null };
+  return card;
 }
 
 function likePattern(q: string) {
@@ -197,6 +222,8 @@ export async function listArticles(opts: {
   tagId?: number;
   q?: string;
   excludeIds?: number[];
+  /** Người đang xem; null = khách. Bài "chỉ thành viên" không lộ ảnh bìa cho khách. */
+  viewer?: User | null;
 }) {
   await refreshHotIds();
   const conds: SQL[] = [];
@@ -217,16 +244,17 @@ export async function listArticles(opts: {
       .groupBy(articleViewDays.articleId)
       .as("recent");
     // Articles with views in the period come first; the rest follow by all-time views.
+    // Bài do admin gắn HOT luôn đứng đầu nhóm.
     const rows = await db
       .select({ ...cardColumns, recentViews: sql<number>`coalesce(${recent.n}, 0)::int` })
       .from(articles)
       .leftJoin(articleCategories, eq(articleCategories.id, articles.categoryId))
       .leftJoin(recent, eq(recent.articleId, articles.id))
       .where(where)
-      .orderBy(desc(sql`coalesce(${recent.n}, 0)`), desc(articles.viewCount), desc(articles.id))
+      .orderBy(desc(articles.isHot), desc(sql`coalesce(${recent.n}, 0)`), desc(articles.viewCount), desc(articles.id))
       .limit(opts.limit)
       .offset(offset);
-    return { rows: rows.map(mapCard), where };
+    return { rows: rows.map((r) => hideLockedCover(mapCard(r), opts.viewer ?? null)), where };
   }
 
   if (opts.sort === "week") {
@@ -255,7 +283,7 @@ export async function listArticles(opts: {
       )
       .limit(opts.limit)
       .offset(offset);
-    return { rows: rows.map(mapCard), where };
+    return { rows: rows.map((r) => hideLockedCover(mapCard(r), opts.viewer ?? null)), where };
   }
 
   let order: SQL[];
@@ -279,10 +307,10 @@ export async function listArticles(opts: {
     .orderBy(...order)
     .limit(opts.limit)
     .offset(offset);
-  return { rows: rows.map(mapCard), where };
+  return { rows: rows.map((r) => hideLockedCover(mapCard(r), opts.viewer ?? null)), where };
 }
 
-export async function articlesByIds(ids: number[]) {
+export async function articlesByIds(ids: number[], viewer: User | null = null) {
   if (!ids.length) return [];
   await refreshHotIds();
   const rows = await db
@@ -290,7 +318,7 @@ export async function articlesByIds(ids: number[]) {
     .from(articles)
     .leftJoin(articleCategories, eq(articleCategories.id, articles.categoryId))
     .where(inArray(articles.id, ids));
-  const byId = new Map(rows.map((r) => [r.id, mapCard(r)]));
+  const byId = new Map(rows.map((r) => [r.id, hideLockedCover(mapCard(r), viewer)]));
   return ids.map((id) => byId.get(id)).filter((v) => v !== undefined);
 }
 
@@ -355,8 +383,19 @@ async function assertCategory(categoryId: number | null | undefined) {
   if (!cat) throw badRequest("Thể loại không tồn tại.");
 }
 
-/** Runs after the upload response: faststart remux, and server-side meta/thumbnail when the browser could not provide them. */
-async function postProcess(videoId: number, file: string, ext: string, needMeta: boolean, needThumb: boolean, log: (msg: string) => void) {
+/**
+ * Runs after the upload response: faststart remux, and server-side meta/thumbnail when the browser could not provide them.
+ * `articleId` is used to set the article cover when this video is the first media and the browser sent no thumbnail.
+ */
+async function postProcess(
+  videoId: number,
+  articleId: number,
+  file: string,
+  ext: string,
+  needMeta: boolean,
+  needThumb: boolean,
+  log: (msg: string) => void,
+) {
   try {
     if (await faststart(file, ext)) {
       const { size } = await stat(file);
@@ -378,7 +417,20 @@ async function postProcess(videoId: number, file: string, ext: string, needMeta:
           .set({ thumbKey: stored.key })
           .where(and(eq(articleVideos.id, videoId), isNull(articleVideos.thumbKey)))
           .returning({ id: articleVideos.id });
-        if (!still) await removeImage("thumbs", stored.key);
+        if (!still) {
+          await removeImage("thumbs", stored.key);
+        } else {
+          // Bài chưa có ảnh bìa: dùng luôn khung hình vừa tạo làm bìa,
+          // nếu không thì bài sẽ mất ảnh bìa vĩnh viễn (trước đây coverImageKey = null).
+          const [art] = await db
+            .select({ coverType: articles.coverType, coverImageKey: articles.coverImageKey })
+            .from(articles)
+            .where(eq(articles.id, articleId))
+            .limit(1);
+          if (art && (art.coverType === "none" || !art.coverImageKey)) {
+            await setCover(articleId, "video", stored.key, meta?.duration ? Math.round(meta.duration) : 0);
+          }
+        }
       }
     }
   } catch (err) {
@@ -459,6 +511,7 @@ export default async function articleRoutes(app: FastifyInstance) {
       categoryId: cat?.id,
       tagId: tag?.id,
       q: q.q || undefined,
+      viewer: req.user,
     });
     const [{ total }] = await db.select({ total: count() }).from(articles).where(where);
     return {
@@ -476,16 +529,16 @@ export default async function articleRoutes(app: FastifyInstance) {
       z.object({ limit: z.coerce.number().int().min(1).max(24).default(8), exclude: z.coerce.number().int().positive().optional() }),
       req.query,
     );
-    const { rows } = await listArticles({ sort: "random", limit: q.limit, excludeIds: q.exclude ? [q.exclude] : undefined });
+    const { rows } = await listArticles({ sort: "random", limit: q.limit, excludeIds: q.exclude ? [q.exclude] : undefined, viewer: req.user });
     return { articles: rows };
   });
 
-  app.get("/api/articles/watching", async () => ({ articles: await articlesByIds(watchingNowIds(12)) }));
+  app.get("/api/articles/watching", async (req) => ({ articles: await articlesByIds(watchingNowIds(12), req.user) }));
 
   app.get("/api/articles/by-ids", async (req) => {
     const { ids } = parse(z.object({ ids: z.string().max(1000).default("") }), req.query);
     const list = [...new Set(ids.split(",").map(Number).filter((n) => Number.isInteger(n) && n > 0))].slice(0, 100);
-    return { articles: await articlesByIds(list) };
+    return { articles: await articlesByIds(list, req.user) };
   });
 
   app.get("/api/articles/history", async (req) => {
@@ -507,8 +560,7 @@ export default async function articleRoutes(app: FastifyInstance) {
     return { articles: rows.map(mapCard), page, totalPages: Math.max(1, Math.ceil(total / PER_PAGE)) };
   });
 
-  app.delete("/api/articles/history", async (req, reply) => {
-    const user = requireUser(req);
+  app.delete("/api/articles/history", async (req, reply) => {    const user = requireUser(req);
     await db.delete(articleHistory).where(eq(articleHistory.userId, user.id));
     return ok(reply);
   });
@@ -611,7 +663,7 @@ export default async function articleRoutes(app: FastifyInstance) {
       for (const l of lists) if (l.list === "favorite" || l.list === "later") saved[l.list] = true;
     }
 
-    const { categoryId, author: authorRow, description, ...card } = row;
+    const { categoryId, author: authorRow, description, ...rest } = row;
 
     // Locked articles hide their media entirely.
     let images: (typeof mediaFileSchema)["_output"][] = [];
@@ -644,11 +696,14 @@ export default async function articleRoutes(app: FastifyInstance) {
     }
 
     // Half from the same category, the rest random so older articles keep resurfacing.
-    const sameCat = categoryId ? (await listArticles({ sort: "today", limit: 6, categoryId, excludeIds: [id] })).rows : [];
-    const random = await listArticles({ sort: "random", limit: 12 - sameCat.length, excludeIds: [id, ...sameCat.map((v) => v.id)] });
+    const sameCat = categoryId ? (await listArticles({ sort: "today", limit: 6, categoryId, excludeIds: [id], viewer: req.user })).rows : [];
+    const random = await listArticles({ sort: "random", limit: 12 - sameCat.length, excludeIds: [id, ...sameCat.map((v) => v.id)], viewer: req.user });
+    const card = mapCard(rest);
     return {
       article: {
-        ...mapCard(card),
+        ...card,
+        // Bài "chỉ thành viên" không lộ link ảnh bìa cho khách (ảnh sẽ trả 403 -> vỡ ảnh).
+        coverUrl: locked ? null : card.coverUrl,
         description: locked ? "" : description,
         locked,
         author: author(authorRow),
@@ -715,6 +770,8 @@ export default async function articleRoutes(app: FastifyInstance) {
     const { id } = parse(idParam, req.params);
     const { page } = parse(pageQuery, req.query);
     const article = await getArticle(id);
+    // Bài "chỉ thành viên": khách không được đọc bình luận, nếu không nội dung bị lộ công khai.
+    if (article.visibility === "members" && !req.user) throw forbidden("Bài viết chỉ dành cho thành viên.");
     const { limit, offset } = paginate(page, COMMENTS_PER_PAGE);
     const topLevel = and(eq(articleComments.articleId, id), isNull(articleComments.parentId));
     const [[{ total }], parents] = await Promise.all([
@@ -1136,9 +1193,10 @@ export default async function articleRoutes(app: FastifyInstance) {
           .returning({ id: articleVideos.id });
         cleanup.length = 0;
         await db.update(articles).set({ videoCount: sql`${articles.videoCount} + 1` }).where(eq(articles.id, id));
-        // First video becomes the cover unless the admin picked another one.
-        if (article.coverType === "none") await setCover(id, "video", thumbKey, duration);
-        void postProcess(video.id, finalPath, saved.ext, !duration || !width, !thumbKey, (msg) => req.log.info(msg));
+        // Video đầu tiên làm ảnh bìa (nếu admin có gửi khung hình). Nếu không có khung hình
+        // thì server sẽ tự chụp và đặt bìa sau khi xử lý xong (postProcess).
+        if (article.coverType === "none" && thumbKey) await setCover(id, "video", thumbKey, duration);
+        void postProcess(video.id, id, finalPath, saved.ext, !duration || !width, !thumbKey, (msg) => req.log.info(msg));
         return { video: { id: video.id, url: videoFileUrl(saved.key, saved.ext), thumbUrl: articleThumbUrl(thumbKey), duration } };
       } finally {
         for (const file of cleanup) await rm(file, { force: true });

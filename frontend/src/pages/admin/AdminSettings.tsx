@@ -21,9 +21,9 @@ interface Settings {
 
 const SLOTS: { id: AdSlot; label: string; hint: string }[] = [
   { id: "top", label: "Đầu mọi trang", hint: "Ngay dưới thanh menu, hiện ở tất cả các trang. Ảnh ngang, ví dụ 1200×120." },
-  { id: "home", label: "Giữa trang chủ", hint: "Giữa các khung video trên trang chủ. Ví dụ 1200×150." },
-  { id: "video", label: "Dưới trình phát video", hint: "Ngay dưới video đang xem. Ví dụ 800×100." },
-  { id: "sidebar", label: "Cột phải trang video", hint: "Trên danh sách video đề xuất. Ví dụ 400×300." },
+  { id: "home", label: "Giữa trang chủ", hint: "Giữa các khung bài viết trên trang chủ. Ví dụ 1200×150." },
+  { id: "video", label: "Dưới nội dung bài viết", hint: "Ngay dưới phần ảnh/video của bài viết đang xem. Ví dụ 800×100." },
+  { id: "sidebar", label: "Cột phải trang bài viết", hint: "Trên danh sách bài viết đề xuất. Ví dụ 400×300." },
 ];
 
 function Section({ title, children }: { title: string; children: ReactNode }) {

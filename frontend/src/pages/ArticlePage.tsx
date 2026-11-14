@@ -540,6 +540,7 @@ export default function ArticlePage() {
               )}
               {article.imageCount > 0 && ` · 🖼️ ${article.imageCount} ảnh`}
               {article.videoCount > 0 && ` · 🎬 ${article.videoCount} video`}
+              {article.commentCount > 0 && ` · 💬 ${formatNumber(article.commentCount)} bình luận`}
             </div>
             <VoteBar key={article.id} article={article} initialVote={data.myVote} />
           </div>

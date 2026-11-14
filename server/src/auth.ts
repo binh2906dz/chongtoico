@@ -7,6 +7,8 @@ import { db } from "./db/index.js";
 import { sessions, users, type User } from "./db/schema.js";
 import { forbidden, unauthorized } from "./http.js";
 
+export type { User };
+
 export const SESSION_COOKIE = "ctc_sid";
 export const ROLES = ["member", "mod", "admin"] as const;
 export type Role = (typeof ROLES)[number];

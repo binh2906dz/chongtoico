@@ -1,7 +1,7 @@
 import { count, desc, eq, gt } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { author, authorColumns, profileUser } from "../auth.js";
+import { author, authorColumns, profileUser, type User } from "../auth.js";
 import { db } from "../db/index.js";
 import { articleTags, posts, threads, users } from "../db/schema.js";
 import { notFound, parse } from "../http.js";
@@ -26,13 +26,13 @@ export async function forumStats() {
   };
 }
 
-async function homeData() {
+async function homeData(viewer: User | null = null) {
   const [today, week, newest, random, watching, articleCategories, tags, latest, hot, trending, stats] = await Promise.all([
-    listArticles({ sort: "today", limit: 8 }),
-    listArticles({ sort: "week", limit: 8 }),
-    listArticles({ sort: "new", limit: 24 }),
-    listArticles({ sort: "random", limit: 8 }),
-    articlesByIds(watchingNowIds(8)),
+    listArticles({ sort: "today", limit: 8, viewer }),
+    listArticles({ sort: "week", limit: 8, viewer }),
+    listArticles({ sort: "new", limit: 24, viewer }),
+    listArticles({ sort: "random", limit: 8, viewer }),
+    articlesByIds(watchingNowIds(8), viewer),
     listArticleCategories(),
     db
       .select({ id: articleTags.id, slug: articleTags.slug, name: articleTags.name, articleCount: articleTags.articleCount })
@@ -72,7 +72,7 @@ function cachedGuestHome() {
 export default async function memberRoutes(app: FastifyInstance) {
   app.get("/api/stats", async () => forumStats());
 
-  app.get("/api/home", async (req) => (req.user ? homeData() : cachedGuestHome()));
+  app.get("/api/home", async (req) => (req.user ? homeData(req.user) : cachedGuestHome()));
 
   app.get("/api/members/:username", async (req) => {
     const { username } = parse(z.object({ username: z.string().max(32) }), req.params);

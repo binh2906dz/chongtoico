@@ -3,7 +3,7 @@ import { stat } from "node:fs/promises";
 import { eq } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { db } from "../db/index.js";
-import { articleImages, articles } from "../db/schema.js";
+import { articleImages, articles, articleVideos } from "../db/schema.js";
 import { forbidden, notFound } from "../http.js";
 import { ensureVariant, mediaPath, VARIANTS, type MediaKind, type Variant } from "../media.js";
 
@@ -20,15 +20,23 @@ export default async function mediaRoutes(app: FastifyInstance) {
     if ((suffix === "s" || suffix === "m") && !VARIANTS[suffix].kinds.includes(kind)) throw notFound();
 
     let cache = "public, max-age=31536000, immutable";
-    if (kind === "albums") {
-      const [row] = await db
+    if (kind === "albums" || kind === "thumbs") {
+      // Ảnh bìa của bài viết thuộc loại albums (ảnh) hoặc thumbs (khung hình video).
+      // Bài "chỉ thành viên" phải khoá cả hai loại này, nếu không ảnh bị lộ công khai.
+      const [imgRow] = await db
         .select({ visibility: articles.visibility })
         .from(articleImages)
         .innerJoin(articles, eq(articles.id, articleImages.articleId))
         .where(eq(articleImages.fileKey, match[1]))
         .limit(1);
-      if (!row) throw notFound();
-      if (row.visibility === "members") {
+      const [vidRow] = await db
+        .select({ visibility: articles.visibility })
+        .from(articleVideos)
+        .innerJoin(articles, eq(articles.id, articleVideos.articleId))
+        .where(eq(articleVideos.thumbKey, match[1]))
+        .limit(1);
+      const visibility = imgRow?.visibility ?? vidRow?.visibility;
+      if (visibility === "members") {
         if (!req.user) throw forbidden("Bài viết chỉ dành cho thành viên.");
         cache = "private, max-age=86400";
       }

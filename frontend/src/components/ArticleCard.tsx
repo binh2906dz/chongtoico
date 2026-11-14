@@ -1,19 +1,25 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
-import { compactNumber, formatDuration, imageVariant, isNew, timeAgo } from "../format";
+import { compactNumber, coverVariants, formatDuration, isNew, timeAgo } from "../format";
 import type { ArticleItem } from "../types";
 import { Empty } from "./ui";
 
 const CARD_SIZES = "(min-width: 1024px) 280px, (min-width: 640px) 33vw, 50vw";
 
 export function ArticleThumb({ url, alt, sizes = CARD_SIZES, eager = false }: { url: string; alt: string; sizes?: string; eager?: boolean }) {
+  // Ảnh bài "chỉ thành viên" trả 403 cho khách -> hiện ô trống thay vì ảnh vỡ.
+  const [failed, setFailed] = useState(false);
+  if (failed) return <div className="h-full w-full bg-panel-2" />;
+  const variants = coverVariants(url);
   return (
     <img
-      src={url}
-      srcSet={`${imageVariant(url, "s")} 480w, ${url} 1280w`}
+      src={variants?.large ?? url}
+      srcSet={variants ? `${variants.small} 480w, ${variants.large} 1280w, ${variants.full} ${variants.fullWidth}w` : undefined}
       sizes={sizes}
       alt={alt}
       loading={eager ? "eager" : "lazy"}
       decoding="async"
+      onError={() => setFailed(true)}
       className="h-full w-full object-cover transition duration-500 group-hover:scale-110"
     />
   );
@@ -24,7 +30,7 @@ export function ArticleCover({ article, sizes = CARD_SIZES, eager = false }: { a
   if (!article.coverUrl) {
     return (
       <div className="flex h-full w-full items-center justify-center text-4xl text-muted">
-        {article.imageCount > 0 ? "🖼️" : article.videoCount > 0 ? "🎬" : "📝"}
+        {article.membersOnly ? "🔒" : article.imageCount > 0 ? "🖼️" : article.videoCount > 0 ? "🎬" : "📝"}
       </div>
     );
   }

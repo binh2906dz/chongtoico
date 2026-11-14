@@ -54,10 +54,18 @@ export async function storeImage(kind: MediaKind, input: Buffer): Promise<Stored
   if (kind === "albums") {
     const thumb = await base.clone().resize(480, 480, { fit: "inside", withoutEnlargement: true }).webp({ quality: 75 }).toBuffer();
     await writeFile(mediaPath(kind, `${key}_t.webp`), thumb);
+    // Pre-generate the responsive variants so the first request does not have to build them.
+    const small = await sharp(full.data).resize({ width: VARIANTS.s.width, withoutEnlargement: true }).webp({ quality: 74 }).toBuffer();
+    await writeFile(mediaPath(kind, `${key}_s.webp`), small);
+    const large = await sharp(full.data).resize({ width: VARIANTS.m.width, withoutEnlargement: true }).webp({ quality: 76 }).toBuffer();
+    await writeFile(mediaPath(kind, `${key}_m.webp`), large);
   }
   if (kind === "thumbs") {
     const small = await sharp(full.data).resize({ width: VARIANTS.s.width, withoutEnlargement: true }).webp({ quality: 74 }).toBuffer();
     await writeFile(mediaPath(kind, `${key}_s.webp`), small);
+    // Video thumbnails are also used as article covers, so they need the large variant too.
+    const large = await sharp(full.data).resize({ width: VARIANTS.m.width, withoutEnlargement: true }).webp({ quality: 76 }).toBuffer();
+    await writeFile(mediaPath(kind, `${key}_m.webp`), large);
   }
   return { key, width: full.info.width, height: full.info.height };
 }
@@ -65,7 +73,7 @@ export async function storeImage(kind: MediaKind, input: Buffer): Promise<Stored
 /** Extra sizes generated from the full image: `_s` for cards on phones, `_m` for large banners. */
 export const VARIANTS = {
   s: { width: 480, kinds: ["thumbs", "albums"] as MediaKind[] },
-  m: { width: 1280, kinds: ["albums"] as MediaKind[] },
+  m: { width: 1280, kinds: ["thumbs", "albums"] as MediaKind[] },
 };
 export type Variant = keyof typeof VARIANTS;
 
