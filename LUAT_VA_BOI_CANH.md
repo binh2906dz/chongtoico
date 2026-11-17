@@ -161,6 +161,7 @@ Mỗi dòng: **lỗi / tình huống** → **cách tránh**.
 - **B17 — Cache trình duyệt làm tưởng "chặn không được".** Ảnh `_s.webp` / `_m.webp` đã cache từ lúc đăng nhập vẫn hiện sau khi đăng xuất (HTTP 200 từ cache). → Kiểm tra quyền bằng request bypass cache (`Cache-Control: no-cache`) hoặc xoá cache; nếu server trả 403 đúng thì không phải lỗi code.
 - **B18 — Ảnh bìa bài "chỉ thành viên" cho khách: phải trả `null` chứ không trả URL 403.** Nếu trả URL, thẻ giao diện sẽ hỏng ảnh. → `coverUrl: null` + `membersOnly: true` trong danh sách, `locked: true` + `images: []` trong chi tiết; giao diện hiện nhãn 🔒.
 - **B19 — Tắt cưỡng bức tiến trình Node giữa lúc PGlite đang chạy → hỏng dữ liệu dev.** `postmaster.pid` bị khoá, WAL không ghi được ⇒ lần mở sau báo lỗi database. → Đóng server bằng `Ctrl+C` sạch (hoặc `taskkill` sau khi đóng cửa sổ), không `Stop-Process -Force`. Nếu đã hỏng: xoá thư mục `server/data/` và tạo lại dữ liệu dev + chạy lại script seed (`server/data/seed-articles.mjs`).
+- **B20 — Cờ phân quyền (`staffOnly`) chỉ chặn ở lần GHI, không chặn ở lần ĐỌC.** Kênh chat "chỉ BQT" kiểm tra `staffOnly` khi **gửi** tin nhắn, nhưng `GET /api/chat/channels` trả về cả kênh nội bộ, `GET /api/chat/channels/:id/messages` không kiểm tra, và socket `chat:join` cho vào phòng `ch:<id>` không kiểm tra ⇒ khách chỉ cần biết id kênh là đọc được tin nhắn nội bộ (và nhận realtime). → **Mọi cờ phân quyền phải có chốt chặn ở MỌI đường đọc, kể cả đường realtime** — không chỉ ở đường ghi. Cờ `staffOnly` nay có 4 chốt: danh sách kênh, đọc tin nhắn, gửi tin nhắn, vào phòng socket. Cùng kiểu lỗi với B16 → nguyên tắc chung: **đừng dựa vào việc "đã chặn ở chỗ khác"**.
 
 ## 10. Nhật ký làm việc
 
@@ -344,3 +345,22 @@ Mẫu mỗi mục:
 - Quyết định: không mở thêm tính năng mới cho tới khi chủ dự án yêu cầu; các ghi chú kiểm toán được chuyển vào mục 9 (B16–B19) và mục 10 của file này, `huongdan.txt` cập nhật mục 6/7/8.
 - Lý do: giữ trạng thái làm việc an toàn để phiên sau tiếp tục đúng chỗ.
 - File / commit: `LUAT_VA_BOI_CANH.md`, `huongdan.txt`.
+
+### 2026-11-17 — Sửa lỗi — Rà soát toàn bộ máy chủ + giao diện, vá lỗ hổng kênh chat "chỉ BQT"
+- Việc đã làm:
+  - **Lỗ hổng kênh chat "chỉ BQT"** (3 chỗ, đồng thời sửa cả máy chủ và realtime):
+    - `GET /api/chat/channels` — trước đây trả về **toàn bộ** kênh cho mọi người, kể cả kênh `staffOnly`. Nay chỉ BQT (`mod`/`admin`) mới thấy kênh "chỉ BQT"; khách / thành viên thường không thấy.
+    - `GET /api/chat/channels/:id/messages` — trước đây **không kiểm tra quyền**: khách gọi thẳng là đọc được tin nhắn kênh nội bộ. Nay kênh `staffOnly` mà không phải BQT ⇒ **403**.
+    - `socket "chat:join"` (realtime) — trước đây bất kỳ ai cũng vào được phòng `ch:<id>` và nhận tin nhắn realtime của kênh "chỉ BQT". Nay kiểm tra `chatChannels.staffOnly` trước khi vào phòng.
+  - **Bộ đếm tin nhắn chat không giảm khi xoá**: `DELETE /api/chat/messages/:id` chỉ xoá bản ghi, `users.message_count` vẫn giữ số cũ ⇒ trang cá nhân hiện sai. Nay trừ 1 (tối thiểu 0).
+  - **"Tính lại bộ đếm" thiếu 2 cột**: `POST /api/admin/recount` cập nhật `like_count`/`dislike_count`/`comment_count` của bài viết nhưng **không** tính lại `image_count`/`video_count` ⇒ số ảnh/video trên thẻ lệch sau khi xoá media. Nay đã tính lại cả hai.
+  - **Giao diện hiện nội dung cũ khi chuyển trang** (`frontend/src/useFetch.ts`): hook giữ `data` của URL trước trong lúc tải URL mới ⇒ chuyển giữa 2 bài viết / 2 thành viên thấy nội dung của trang cũ. Nay khi URL đổi thì xoá `data` cũ (hiện khung skeleton đúng).
+  - **Trang bài "chỉ thành viên" hiện khung lỗi đỏ** (`frontend/src/pages/ArticlePage.tsx`): khách gọi `GET /api/articles/:id/comments` nhận 403 ⇒ khung lỗi đỏ hiện ra trang. Nay khi `article.locked` thì hiện dòng nhắc "Bình luận chỉ hiện với thành viên" thay vì gọi API.
+  - **Trang chủ trống banner** (`frontend/src/pages/Home.tsx`): banner trượt chỉ lấy từ nhóm "xem nhiều hôm nay" — hôm đó không có lượt xem thì banner trống. Nay lùi tạm: hôm nay → trong tuần → bài mới nhất.
+  - **Kiểm thử** (`server/test/api.test.ts`): ca "chat messages" nay kiểm tra khách **không** thấy kênh "luat" (chỉ BQT) và **không** đọc được tin nhắn kênh đó (403).
+- Lý do: chủ dự án yêu cầu "chỉ cần fix lỗi, chỉnh sửa logic, không cần giải thích, sau khi làm xong hết mới báo cáo" — rà soát toàn bộ máy chủ (`server/src/routes/*.ts`, `auth.ts`, `http.ts`, `media.ts`, `notify.ts`, `realtime.ts`, `maintenance.ts`, `settings.ts`, `seed.ts`, `app.ts`) và toàn bộ 36 file giao diện, sửa lỗi logic + lỗ hổng quyền.
+- Nguyên nhân gốc (lỗi bảo mật): cờ `staffOnly` mới chỉ được **kiểm tra ở lúc GỬI tin nhắn** (`POST .../messages`) mà không kiểm tra ở lúc **ĐỌC** danh sách kênh, đọc tin nhắn và vào phòng realtime ⇒ chỉ cần biết id kênh là đọc được nội dung nội bộ. Cùng kiểu lỗi với B16 (khoá ở tầng media mà quên endpoint khác) → bài học B20.
+- Bài học / cách tránh: **một cờ phân quyền phải được kiểm tra ở MỌI đường đọc**, kể cả đường realtime (Socket.IO) — không chỉ ở đường ghi. Cờ `staffOnly` giờ có 4 chốt chặn: danh sách kênh, đọc tin nhắn, gửi tin nhắn, vào phòng realtime.
+- Đã kiểm tra: `npx tsc --noEmit` (máy chủ) không lỗi; `npm test` **17/17 pass**; `npm run build` (giao diện) không lỗi.
+  - **Chưa chạy thử:** trên trình duyệt; trên điện thoại thật; trên VPS; kênh chat "chỉ BQT" trong thời gian thực (socket) trên app thật.
+- File / commit: `server/src/routes/chat.ts`, `server/src/realtime.ts`, `server/src/routes/admin.ts`, `server/test/api.test.ts`, `frontend/src/useFetch.ts`, `frontend/src/pages/ArticlePage.tsx`, `frontend/src/pages/Home.tsx`.

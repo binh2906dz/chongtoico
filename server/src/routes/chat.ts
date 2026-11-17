@@ -24,12 +24,17 @@ function messageSelect() {
 }
 
 export default async function chatRoutes(app: FastifyInstance) {
-  app.get("/api/chat/channels", async () => ({
-    channels: await db.select().from(chatChannels).orderBy(asc(chatChannels.sortOrder), asc(chatChannels.id)),
-  }));
+  app.get("/api/chat/channels", async (req) => {
+    const rows = await db.select().from(chatChannels).orderBy(asc(chatChannels.sortOrder), asc(chatChannels.id));
+    // Kênh "chỉ BQT" không hiện và không đọc được với khách / thành viên thường.
+    return { channels: isStaff(req.user) ? rows : rows.filter((c) => !c.staffOnly) };
+  });
 
   app.get("/api/chat/channels/:id/messages", async (req) => {
     const { id } = parse(idParam, req.params);
+    const [channel] = await db.select().from(chatChannels).where(eq(chatChannels.id, id)).limit(1);
+    if (!channel) throw notFound("Kênh chat không tồn tại.");
+    if (channel.staffOnly && !isStaff(req.user)) throw forbidden("Chỉ ban quản trị được xem kênh này.");
     const q = parse(
       z.object({
         before: z.coerce.number().int().positive().optional(),
@@ -79,6 +84,11 @@ export default async function chatRoutes(app: FastifyInstance) {
     const { id } = parse(idParam, req.params);
     const [msg] = await db.delete(chatMessages).where(eq(chatMessages.id, id)).returning();
     if (!msg) throw notFound("Tin nhắn không tồn tại.");
+    // Giảm bộ đếm tin nhắn của người gửi để khớp với dữ liệu thực.
+    await db
+      .update(users)
+      .set({ messageCount: sql`greatest(${users.messageCount} - 1, 0)` })
+      .where(eq(users.id, msg.userId));
     emitTo(`ch:${msg.channelId}`, "chat:deleted", { id, channelId: msg.channelId });
     return ok(reply);
   });

@@ -265,10 +265,27 @@ Hàng chờ: Quản trị > Báo vi phạm (mod + admin).
 - CÁCH KIỂM TRA QUYỀN (2026-11-14): cache trình duyệt có thể trả 200 cho ảnh
   đã cache khi còn đăng nhập => kiểm tra bằng request bypass cache; nếu server
   trả 403 thì không phải lỗi code.
+- KÊNH CHAT "CHỈ BQT" (2026-11-17): cờ chat_channels.staffOnly phải được kiểm
+  tra ở MỌI đường đọc, không chỉ lúc gửi tin. Hiện có 4 chốt chặn:
+  (1) GET /api/chat/channels — chỉ staff thấy kênh staffOnly; (2) GET
+  /api/chat/channels/:id/messages — không phải staff thì 403; (3) POST tin nhắn
+  — đã chặn từ trước; (4) socket "chat:join" trong server/src/realtime.ts —
+  kiểm tra staffOnly trước khi vào phòng ch:<id>. Thêm endpoint/đường đọc mới
+  của chat => kiểm tra lại quyền ở đó.
+- GIAO DIỆN TẢI DỮ LIỆU (2026-11-17): frontend/src/useFetch.ts giữ data của URL
+  cũ khi đang tải URL mới => chuyển trang thấy nội dung cũ. Đã sửa bằng cách
+  so sánh lastUrl và setData(null) khi URL đổi. Thêm hook tương tự => làm
+  theo.
 
 --------------------------------------------------------------------------------
 6) VIỆC CÒN LẠI / KẾ HOẠCH
 --------------------------------------------------------------------------------
+- [2026-11-17] Rà soát toàn bộ máy chủ + giao diện: đã vá lỗ hổng kênh chat
+  "chỉ BQT" (3 đường đọc + realtime), sửa bộ đếm tin nhắn khi xoá, tính lại
+  image_count / video_count trong "Tính lại bộ đếm", sửa useFetch loại bỏ dữ
+  liệu cũ khi chuyển trang, bỏ khung lỗi đỏ ở bài "chỉ thành viên", thêm
+  banner dự phòng ở trang chủ. Đã commit + push lên main. Phiên sau: đọc
+  LUAT_VA_BOI_CANH.md mục 9 (B16–B20) và mục 10 trước khi làm tiếp.
 - [2026-11-14] TẠM DỪNG theo yêu cầu chủ dự án ("mai tôi sẽ sửa tiếp"). Toàn bộ
   thay đổi đã commit + push lên main. Phiên sau: đọc LUAT_VA_BOI_CANH.md mục 9
   (B16–B19) và mục 10 trước khi làm tiếp; không mở thêm tính năng mới.
@@ -363,6 +380,25 @@ b22c5f7 feat: scaffold new platform (đã thay thế — xoá ở bản Node.js)
 [2026-11-14] TẠM DỪNG phát triển theo yêu cầu chủ dự án; toàn bộ thay đổi đã
   commit + push lên main. Phiên sau đọc LUAT_VA_BOI_CANH.md mục 9 (B16–B19) và
   mục 10 trước khi làm tiếp.
+[2026-11-17] Rà soát toàn bộ máy chủ + giao diện và sửa lỗi logic:
+  - Vá lỗ hổng kênh chat "chỉ BQT" (chat_channels.staffOnly): GET
+    /api/chat/channels giờ chỉ trả kênh không staffOnly cho khách/thành viên;
+    GET /api/chat/channels/:id/messages trả 403 nếu kênh staffOnly mà người
+    gọi không phải staff; socket "chat:join" trong server/src/realtime.ts
+    kiểm tra staffOnly trước khi vào phòng ch:<id>.
+  - DELETE /api/chat/messages/:id giờ trừ users.message_count của tác giả.
+  - POST /api/admin/recount tính lại thêm articles.image_count và
+    articles.video_count.
+  - frontend/src/useFetch.ts: xoá dữ liệu cũ khi URL đổi (không còn hiện nội
+    dung trang trước khi trang mới tải xong).
+  - frontend/src/pages/ArticlePage.tsx: bài "chỉ thành viên" hiện dòng nhắc
+    "bình luận chỉ hiện với thành viên" thay vì khung lỗi đỏ 403.
+  - frontend/src/pages/Home.tsx: banner trượt lùi về nhóm trong tuần / bài mới
+    nhất khi không có bài "xem nhiều hôm nay".
+  - server/test/api.test.ts: ca chat kiểm tra khách không thấy và không đọc được
+    kênh staffOnly.
+  Không đổi DB. Đã kiểm tra: tsc không lỗi, npm test 17/17 pass, build giao
+  diện không lỗi. Chưa chạy thử trên trình duyệt / điện thoại / VPS.
 
 ================================================================================
 Hết — lưu ý: không lưu mật khẩu / token thật trong file này.

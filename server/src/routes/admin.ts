@@ -260,7 +260,9 @@ export default async function adminRoutes(app: FastifyInstance) {
       update articles a set
         like_count = (select count(*) from article_votes x where x.article_id = a.id and x.value = 1),
         dislike_count = (select count(*) from article_votes x where x.article_id = a.id and x.value = -1),
-        comment_count = (select count(*) from article_comments c where c.article_id = a.id)`);
+        comment_count = (select count(*) from article_comments c where c.article_id = a.id),
+        image_count = (select count(*) from article_images i where i.article_id = a.id),
+        video_count = (select count(*) from article_videos v where v.article_id = a.id)`);
     await db.execute(sql`
       update article_comments c set
         like_count = (select count(*) from article_comment_votes x where x.comment_id = c.id and x.value = 1),

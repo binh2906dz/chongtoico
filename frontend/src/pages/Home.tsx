@@ -143,7 +143,13 @@ export default function Home() {
   if (error || !data) return <ErrorBox message={error || "Không tải được dữ liệu."} />;
 
   const noArticles = !data.articles.newest.length;
-  const slides = buildHeroSlides(data.articles.today);
+  // Banner trượt: ưu tiên bài xem nhiều hôm nay, nếu chưa có bìa thì lùi sang bài trong tuần rồi bài mới,
+  // để trang chủ luôn có banner thay vì trống.
+  const slides = buildHeroSlides(data.articles.today).length
+    ? buildHeroSlides(data.articles.today)
+    : buildHeroSlides(data.articles.week).length
+      ? buildHeroSlides(data.articles.week)
+      : buildHeroSlides(data.articles.newest);
 
   return (
     <div className="space-y-8">

@@ -3,7 +3,7 @@ import { eq, or } from "drizzle-orm";
 import { Server, type Socket } from "socket.io";
 import { isStaff, SESSION_COOKIE, userFromToken } from "./auth.js";
 import { db } from "./db/index.js";
-import { supportConversations } from "./db/schema.js";
+import { supportConversations, chatChannels } from "./db/schema.js";
 
 export const GUEST_COOKIE = "ctc_guest";
 
@@ -92,8 +92,23 @@ export function initRealtime(server: HttpServer) {
 
     socket.on("chat:join", (channelId: unknown) => {
       if (typeof channelId !== "number" || !Number.isInteger(channelId)) return;
-      for (const room of socket.rooms) if (room.startsWith("ch:")) socket.leave(room);
-      socket.join(`ch:${channelId}`);
+      // Kênh "chỉ BQT": khách / thành viên không được vào phòng để xem tin nhắn.
+      const allowed = db
+        .select({ id: chatChannels.id, staffOnly: chatChannels.staffOnly })
+        .from(chatChannels)
+        .where(eq(chatChannels.id, channelId))
+        .limit(1)
+        .then((rows) => {
+          if (!rows.length) return false;
+          if (!rows[0].staffOnly) return true;
+          return isStaff(user);
+        })
+        .catch(() => false);
+      allowed.then((ok) => {
+        if (!ok) return;
+        for (const room of socket.rooms) if (room.startsWith("ch:")) socket.leave(room);
+        socket.join(`ch:${channelId}`);
+      });
     });
 
     socket.on("support:join", () => {

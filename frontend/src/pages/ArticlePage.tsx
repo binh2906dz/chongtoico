@@ -578,7 +578,15 @@ export default function ArticlePage() {
             </div>
           )}
         </div>
-        <Comments key={article.id} articleId={article.id} />
+        {article.locked ? (
+          // Bài "chỉ thành viên": khách không được đọc bình luận (API trả 403) nên không gọi,
+          // tránh hiện khung lỗi đỏ trên trang.
+          <div className="panel p-6 text-center text-sm text-muted">
+            💬 Bình luận chỉ hiện với thành viên đã đăng nhập.
+          </div>
+        ) : (
+          <Comments key={article.id} articleId={article.id} />
+        )}
       </div>
 
       <aside className="space-y-3">

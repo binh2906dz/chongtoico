@@ -235,7 +235,11 @@ describe("Chống Tối Cổ API", () => {
   });
 
   it("chat messages", async () => {
-    const chans = (await app.inject("/api/chat/channels")).json().channels;
+    // Kênh "chỉ BQT" không được hiện cho khách.
+    const guestChans = (await app.inject("/api/chat/channels")).json().channels;
+    assert.ok(guestChans.some((c: { slug: string }) => c.slug === "chung"));
+    assert.ok(!guestChans.some((c: { slug: string }) => c.slug === "luat"));
+    const chans = (await app.inject({ url: "/api/chat/channels", headers: { cookie: admin } })).json().channels;
     const general = chans.find((c: { slug: string }) => c.slug === "chung");
     const rules = chans.find((c: { slug: string }) => c.slug === "luat");
     let res = await app.inject({ method: "POST", url: `/api/chat/channels/${general.id}/messages`, headers: H, payload: { content: "hi" } });
@@ -254,6 +258,8 @@ describe("Chống Tối Cổ API", () => {
       payload: { content: "x" },
     });
     assert.equal(res.statusCode, 403);
+    // Khách không được đọc nội dung kênh chỉ BQT.
+    assert.equal((await app.inject(`/api/chat/channels/${rules.id}/messages`)).statusCode, 403);
     const msgs = (await app.inject(`/api/chat/channels/${general.id}/messages`)).json().messages;
     assert.equal(msgs.length, 1);
     assert.equal(msgs[0].author.username, "alice");
