@@ -1,10 +1,13 @@
+import { sql } from "drizzle-orm";
 import {
   type AnyPgColumn,
   bigint,
+  bigserial,
   boolean,
   date,
   index,
   integer,
+  jsonb,
   pgTable,
   primaryKey,
   serial,
@@ -25,6 +28,12 @@ export const users = pgTable(
     passwordHash: text("password_hash").notNull(),
     avatarKey: varchar("avatar_key", { length: 64 }),
     bio: varchar("bio", { length: 500 }).notNull().default(""),
+    /** Display name shown in the UI. For Telegram-created accounts this is the Telegram first_name. */
+    displayName: varchar("display_name", { length: 80 }),
+    /** "web" | "miniapp" | "telegram" — where the account was created. */
+    source: varchar("source", { length: 16 }).notNull().default("web"),
+    /** Linked Telegram account (1 account per Telegram user). */
+    telegramId: bigint("telegram_id", { mode: "number" }),
     role: varchar("role", { length: 16 }).notNull().default("member"),
     bannedAt: timestamp("banned_at", { withTimezone: true }),
     bannedUntil: timestamp("banned_until", { withTimezone: true }),
@@ -36,7 +45,12 @@ export const users = pgTable(
     createdAt: createdAt(),
     lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [uniqueIndex("users_username_lower_uq").on(t.usernameLower)],
+  (t) => [
+    uniqueIndex("users_username_lower_uq").on(t.usernameLower),
+    // Partial unique index: most accounts are web-only (NULL telegram_id). A plain
+    // UNIQUE index would reject the second NULL, so the index is partial.
+    uniqueIndex("users_telegram_id_uq").on(t.telegramId).where(sql`${t.telegramId} IS NOT NULL`),
+  ],
 );
 
 export const sessions = pgTable(
@@ -493,3 +507,225 @@ export const articleHistory = pgTable(
 );
 
 export type User = typeof users.$inferSelect;
+
+/* ------------------------------------------------------------------ *
+ * Telegram bridge (web <-> Telegram bot service)
+ *
+ * The bot service (separate Node process) holds the Telegram bot tokens and
+ * never touches this database directly: it talks to the web over
+ * /api/bot/* (guarded by X-Bot-Secret). The web owns every decision
+ * (who to message, what to send, when) and stores the queue + logs here.
+ * ------------------------------------------------------------------ */
+
+/** A Telegram person, tracked independently of any web account. */
+export const telegramUsers = pgTable(
+  "telegram_users",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    telegramId: bigint("telegram_id", { mode: "number" }).notNull(),
+    username: varchar("username", { length: 64 }),
+    firstName: varchar("first_name", { length: 80 }),
+    ageVerifiedAt: timestamp("age_verified_at", { withTimezone: true }),
+    captchaOk: boolean("captcha_ok").notNull().default(false),
+    /** The person pressed "Từ chối nhận" — never message them again. */
+    optOut: boolean("opt_out").notNull().default(false),
+    optedOutAt: timestamp("opted_out_at", { withTimezone: true }),
+    /** The person pressed "Nhận thông báo" to opt back in. */
+    notifyEnabled: boolean("notify_enabled").notNull().default(true),
+    /** "unknown" | "active" | "blocked" | "invalid" */
+    status: varchar("status", { length: 16 }).notNull().default("unknown"),
+    lastBotId: varchar("last_bot_id", { length: 64 }),
+    createdAt: createdAt(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("telegram_users_tid_uq").on(t.telegramId),
+    index("telegram_users_status_idx").on(t.status),
+    index("telegram_users_optout_idx").on(t.optOut),
+  ],
+);
+
+/** Which bots a Telegram person has started (a person may start several). */
+export const telegramUserLinks = pgTable(
+  "telegram_user_links",
+  {
+    telegramId: bigint("telegram_id", { mode: "number" })
+      .notNull()
+      .references(() => telegramUsers.id, { onDelete: "cascade" }),
+    botId: varchar("bot_id", { length: 64 }).notNull(),
+    startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.telegramId, t.botId] }), index("telegram_user_links_bot_idx").on(t.botId)],
+);
+/**
+ * Ties a Telegram person to a web account. This is the backbone of every
+ * measurement feature: without it we cannot tell which Telegram person opened
+ * which campaign. `userId` is NULL until the person has a web account.
+ */
+export const telegramLinks = pgTable(
+  "telegram_links",
+  {
+    telegramId: bigint("telegram_id", { mode: "number" })
+      .notNull()
+      .primaryKey()
+      .references(() => telegramUsers.id, { onDelete: "cascade" }),
+    userId: integer("user_id").references(() => users.id, { onDelete: "set null" }),
+    /** "miniapp" | "browser" | "code" */
+    method: varchar("method", { length: 16 }).notNull().default("unknown"),
+    linkedAt: timestamp("linked_at", { withTimezone: true }).notNull().defaultNow(),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
+  },
+  (t) => [index("telegram_links_user_idx").on(t.userId)],
+);
+
+/**
+ * Delivery history — the guard against sending the same campaign twice.
+ * Primary key (campaign_id, telegram_id) makes a duplicate INSERT a no-op.
+ */
+export const deliveryLog = pgTable(
+  "delivery_log",
+  {
+    campaignId: varchar("campaign_id", { length: 64 }).notNull(),
+    telegramId: bigint("telegram_id", { mode: "number" }).notNull(),
+    botId: varchar("bot_id", { length: 64 }),
+    /** "sent" | "failed" | "blocked" | "skipped" */
+    status: varchar("status", { length: 16 }).notNull().default("sent"),
+    error: text("error"),
+    sentAt: timestamp("sent_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.campaignId, t.telegramId] }),
+    index("delivery_log_user_idx").on(t.telegramId),
+    index("delivery_log_sent_idx").on(t.sentAt),
+  ],
+);
+
+/** Web visits coming from Telegram — measures how effective the reminders are. */
+export const telegramVisits = pgTable(
+  "telegram_visits",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    telegramId: bigint("telegram_id", { mode: "number" }),
+    userId: integer("user_id"),
+    campaignId: varchar("campaign_id", { length: 64 }),
+    articleId: integer("article_id"),
+    /** "bot" | "miniapp" | "campaign" | "start" */
+    ref: varchar("ref", { length: 24 }),
+    /** "start" | "campaign" | "push" */
+    src: varchar("src", { length: 24 }),
+    path: text("path"),
+    visitedAt: timestamp("visited_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("telegram_visits_camp_idx").on(t.campaignId),
+    index("telegram_visits_user_idx").on(t.telegramId),
+    index("telegram_visits_time_idx").on(t.visitedAt),
+  ],
+);
+
+/** The send queue: the web decides, the bot executes. */
+export const notificationJobs = pgTable(
+  "notification_jobs",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    campaignId: varchar("campaign_id", { length: 64 }).notNull(),
+    telegramId: bigint("telegram_id", { mode: "number" }).notNull(),
+    /** NULL = the bot picks a live bot by itself. */
+    botId: varchar("bot_id", { length: 64 }),
+    /** { text, parseMode, buttons[], webUrl, media{} } */
+    payload: jsonb("payload").notNull(),
+    /** "queued" | "sending" | "sent" | "failed" | "skipped" | "cancelled" */
+    status: varchar("status", { length: 16 }).notNull().default("queued"),
+    attempts: integer("attempts").notNull().default(0),
+    scheduledAt: timestamp("scheduled_at", { withTimezone: true }).notNull().defaultNow(),
+    sentAt: timestamp("sent_at", { withTimezone: true }),
+    error: text("error"),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index("notification_jobs_pick_idx").on(t.status, t.scheduledAt),
+    index("notification_jobs_camp_idx").on(t.campaignId),
+  ],
+);
+
+/**
+ * Bot registry — metadata only. Tokens live exclusively in the bot service,
+ * never in the web (unless the encrypted fallback is explicitly enabled).
+ */
+export const telegramBots = pgTable(
+  "telegram_bots",
+  {
+    id: varchar("id", { length: 64 }).primaryKey(),
+    username: varchar("username", { length: 64 }),
+    displayName: varchar("display_name", { length: 80 }),
+    /** "live" | "ban" | "error" | "unknown" */
+    status: varchar("status", { length: 16 }).notNull().default("unknown"),
+    autoResponder: boolean("auto_responder").notNull().default(true),
+    /** Distribution weight when picking a bot for a message. */
+    weight: integer("weight").notNull().default(1),
+    sentCount: integer("sent_count").notNull().default(0),
+    blockedCount: integer("blocked_count").notNull().default(0),
+    lastCheckedAt: timestamp("last_checked_at", { withTimezone: true }),
+    lastError: text("last_error"),
+    sortOrder: integer("sort_order").notNull().default(0),
+  },
+  (t) => [index("telegram_bots_status_idx").on(t.status)],
+);
+
+/** One-time link code — only the SHA-256 hash is stored, never the code itself. */
+export const telegramLinkCodes = pgTable(
+  "telegram_link_codes",
+  {
+    codeHash: varchar("code_hash", { length: 64 }).primaryKey(),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    botId: varchar("bot_id", { length: 64 }).notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    usedAt: timestamp("used_at", { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [index("telegram_link_codes_exp_idx").on(t.expiresAt)],
+);
+
+/** A reminder campaign written by an admin. */
+export const telegramCampaigns = pgTable(
+  "telegram_campaigns",
+  {
+    id: varchar("id", { length: 64 }).primaryKey(),
+    name: varchar("name", { length: 120 }).notNull(),
+    text: text("text").notNull().default(""),
+    /** "image" | "video" | "none" */
+    mediaType: varchar("media_type", { length: 16 }),
+    /** Media file key inside media/. */
+    mediaKey: varchar("media_key", { length: 64 }),
+    /** "article" | "upload" */
+    mediaSource: varchar("media_source", { length: 16 }),
+    mediaNote: text("media_note"),
+    /** [{ label, url }] */
+    buttons: jsonb("buttons").notNull().default([]),
+    /** "all_linked" | "visited" | "stalled" | "status" | "ids" */
+    targetType: varchar("target_type", { length: 16 }).notNull(),
+    targetIds: jsonb("target_ids").notNull().default([]),
+    /** "now" | "at" | "daily" | "weekly" */
+    schedule: varchar("schedule", { length: 16 }).notNull().default("now"),
+    /** "paused" | "active" | "done" — a schedule never runs until an admin activates it. */
+    scheduleStatus: varchar("schedule_status", { length: 16 }).notNull().default("paused"),
+    scheduledAt: timestamp("scheduled_at", { withTimezone: true }),
+    /** Hour of day in Vietnam time. */
+    hour: integer("hour").notNull().default(8),
+    minute: integer("minute").notNull().default(0),
+    /** 0 = Sunday .. 6 = Saturday (weekly schedule). */
+    dayOfWeek: integer("day_of_week"),
+    /** "draft" | "queued" | "sending" | "done" | "cancelled" | "paused" */
+    status: varchar("status", { length: 16 }).notNull().default("draft"),
+    total: integer("total").notNull().default(0),
+    sentCount: integer("sent_count").notNull().default(0),
+    failedCount: integer("failed_count").notNull().default(0),
+    clickCount: integer("click_count").notNull().default(0),
+    createdBy: integer("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("telegram_campaigns_status_idx").on(t.status, t.createdAt)],
+);

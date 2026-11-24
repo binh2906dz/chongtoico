@@ -103,6 +103,8 @@ export function publicUser(u: User) {
   return {
     id: u.id,
     username: u.username,
+    // Display name shown in the UI; falls back to the login name.
+    displayName: u.displayName ?? u.username,
     avatarUrl: avatarUrl(u.avatarKey),
     role: u.role,
     isBanned: isBanned(u),
@@ -114,6 +116,8 @@ export function profileUser(u: User) {
   return {
     ...publicUser(u),
     bio: u.bio,
+    source: u.source,
+    telegramId: u.telegramId,
     threadCount: u.threadCount,
     postCount: u.postCount,
     likeCount: u.likeCount,
@@ -127,15 +131,32 @@ export function profileUser(u: User) {
 export const authorColumns = {
   id: users.id,
   username: users.username,
+  displayName: users.displayName,
   avatarKey: users.avatarKey,
   role: users.role,
   bannedAt: users.bannedAt,
   bannedUntil: users.bannedUntil,
 };
 
-export type AuthorRow = { id: number; username: string; avatarKey: string | null; role: string; bannedAt: Date | null; bannedUntil: Date | null };
+export type AuthorRow = {
+  id: number;
+  username: string;
+  displayName: string | null;
+  avatarKey: string | null;
+  role: string;
+  bannedAt: Date | null;
+  bannedUntil: Date | null;
+};
 
 export function author(row: AuthorRow | null) {
   if (!row) return null;
-  return { id: row.id, username: row.username, avatarUrl: avatarUrl(row.avatarKey), role: row.role, isBanned: isBanned(row) };
+  return {
+    id: row.id,
+    username: row.username,
+    // Display name shown in the UI; falls back to the login name.
+    displayName: row.displayName ?? row.username,
+    avatarUrl: avatarUrl(row.avatarKey),
+    role: row.role,
+    isBanned: isBanned(row),
+  };
 }

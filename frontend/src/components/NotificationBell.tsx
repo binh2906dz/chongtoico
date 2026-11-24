@@ -22,7 +22,7 @@ export function notificationLink(n: NotificationItem) {
 }
 
 export function notificationText(n: NotificationItem) {
-  const who = n.actor?.username ?? "Ai đó";
+  const who = n.actor?.displayName || n.actor?.username || "Ai đó";
   const thread = n.threadTitle ? `"${n.threadTitle}"` : "một chủ đề";
   switch (n.type) {
     case "reply":

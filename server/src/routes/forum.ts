@@ -17,6 +17,7 @@ const lastUser = alias(users, "last_user");
 const lastAuthorColumns = {
   id: lastUser.id,
   username: lastUser.username,
+  displayName: lastUser.displayName,
   avatarKey: lastUser.avatarKey,
   role: lastUser.role,
   bannedAt: lastUser.bannedAt,

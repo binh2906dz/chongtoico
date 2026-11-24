@@ -226,7 +226,7 @@ export default function ThreadPage() {
 
   function quote(p: Post) {
     const excerpt = stripQuotes(p.content).trim().slice(0, 1000);
-    setReply((r) => `${r}${r ? "\n" : ""}[quote=${p.author.username}]${excerpt}[/quote]\n`);
+    setReply((r) => `${r}${r ? "\n" : ""}[quote=${p.author.displayName || p.author.username}]${excerpt}[/quote]\n`);
     document.getElementById("reply-box")?.scrollIntoView({ behavior: "smooth" });
   }
 

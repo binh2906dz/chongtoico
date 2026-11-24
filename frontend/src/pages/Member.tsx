@@ -154,7 +154,7 @@ export default function Member() {
             <Avatar user={user} size={96} />
           </div>
           <div className="min-w-0 flex-1">
-            <h1 className={`text-2xl font-black ${user.isBanned ? "text-slate-500 line-through" : ""}`}>{user.username}</h1>
+            <h1 className={`text-2xl font-black ${user.isBanned ? "text-slate-500 line-through" : ""}`}>{user.displayName || user.username}</h1>
             <div className="flex items-center gap-2 text-sm text-muted">
               <RoleBadge role={user.role} /> {roleLabel[user.role]} · Tham gia {formatDate(user.createdAt)} · Hoạt động {timeAgo(user.lastSeenAt)}
             </div>

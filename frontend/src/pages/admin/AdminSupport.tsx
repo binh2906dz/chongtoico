@@ -81,7 +81,7 @@ function Conversation({ id, onChanged }: { id: number; onChanged: () => void }) 
         {messages.map((m) => (
           <div key={m.id} className={`flex ${m.fromStaff ? "justify-end" : "justify-start"}`}>
             <div className={`max-w-[75%] rounded-2xl px-3 py-2 text-sm whitespace-pre-wrap ${m.fromStaff ? "bg-brand text-white" : "bg-panel-2"}`}>
-              {m.fromStaff && <div className="text-[11px] font-bold">{m.staff?.username}</div>}
+              {m.fromStaff && <div className="text-[11px] font-bold">{m.staff?.displayName || m.staff?.username}</div>}
               {m.content}
               <div className={`mt-0.5 text-[10px] ${m.fromStaff ? "text-slate-800" : "text-muted"}`}>{timeAgo(m.createdAt)}</div>
             </div>
@@ -144,7 +144,7 @@ export default function AdminSupport() {
               <li key={c.id}>
                 <button onClick={() => setActive(c.id)} className={`block w-full cursor-pointer px-4 py-3 text-left hover:bg-panel-2 ${active === c.id ? "bg-panel-2" : ""}`}>
                   <div className="flex items-center justify-between gap-2">
-                    <span className="truncate text-sm font-semibold">{c.user ? c.user.username : `Khách: ${c.guestName || `#${c.id}`}`}</span>
+                    <span className="truncate text-sm font-semibold">{c.user ? c.user.displayName || c.user.username : `Khách: ${c.guestName || `#${c.id}`}`}</span>
                     {c.unreadStaff > 0 && <span className="rounded-full bg-red-600 px-2 text-xs text-white">{c.unreadStaff}</span>}
                   </div>
                   <div className="truncate text-xs text-muted">

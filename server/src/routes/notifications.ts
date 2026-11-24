@@ -35,6 +35,7 @@ export default async function notificationRoutes(app: FastifyInstance) {
         actor: {
           id: actor.id,
           username: actor.username,
+          displayName: actor.displayName,
           avatarKey: actor.avatarKey,
           role: actor.role,
           bannedAt: actor.bannedAt,

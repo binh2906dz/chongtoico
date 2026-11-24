@@ -1,0 +1,21 @@
+{
+  "name": "chongtoico-bot",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "build": "tsc -p .",
+    "start": "node dist/main.js",
+    "test": "node --import tsx --test test/*.test.ts"
+  },
+  "dependencies": {
+    "fastify": "^5.12.8",
+    "grammy": "^1.38.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  }
+}

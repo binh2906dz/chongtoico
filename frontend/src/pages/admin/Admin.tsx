@@ -10,8 +10,15 @@ import AdminArticles from "./AdminArticles";
 import AdminReports from "./AdminReports";
 import AdminSettings from "./AdminSettings";
 import AdminSupport from "./AdminSupport";
+import {
+  AdminTelegramBots,
+  AdminTelegramCampaigns,
+  AdminTelegramImport,
+  AdminTelegramOverview,
+  AdminTelegramUsers,
+} from "./AdminTelegram";
 
-const TABS = ["overview", "reports", "bai-viet", "the-loai", "users", "categories", "channels", "support", "settings"] as const;
+const TABS = ["overview", "reports", "bai-viet", "the-loai", "users", "categories", "channels", "support", "telegram", "settings"] as const;
 type Tab = (typeof TABS)[number];
 
 function Overview() {
@@ -360,6 +367,7 @@ export default function Admin() {
           { id: "categories", label: "Chuyên mục" },
           { id: "channels", label: "Kênh chat" },
           { id: "support", label: "CSKH" },
+          ...(admin ? [{ id: "telegram" as const, label: "Telegram" }] : []),
           ...(admin ? [{ id: "settings" as const, label: "Cài đặt trang" }] : []),
         ]}
         value={tab}
@@ -415,6 +423,33 @@ export default function Admin() {
         />
       )}
       {tab === "support" && <AdminSupport />}
+      {tab === "telegram" && admin && <AdminTelegram />}
+    </div>
+  );
+}
+
+const TG_TABS = ["tong-quan", "chien-dich", "nguoi-dung", "bot", "nhap-id"] as const;
+
+function AdminTelegram() {
+  const [sub, setSub] = useState<(typeof TG_TABS)[number]>("tong-quan");
+  return (
+    <div className="space-y-4">
+      <Tabs
+        tabs={[
+          { id: "tong-quan", label: "Tổng quan" },
+          { id: "chien-dich", label: "Chiến dịch" },
+          { id: "nguoi-dung", label: "Người Telegram" },
+          { id: "bot", label: "Bot" },
+          { id: "nhap-id", label: "Nhập ID" },
+        ]}
+        value={sub}
+        onChange={setSub}
+      />
+      {sub === "tong-quan" && <AdminTelegramOverview />}
+      {sub === "chien-dich" && <AdminTelegramCampaigns />}
+      {sub === "nguoi-dung" && <AdminTelegramUsers />}
+      {sub === "bot" && <AdminTelegramBots />}
+      {sub === "nhap-id" && <AdminTelegramImport />}
     </div>
   );
 }

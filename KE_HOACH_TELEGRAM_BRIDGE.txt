@@ -1,0 +1,942 @@
+================================================================================
+KẾ HOẠCH PHÁT TRIỂN — WEB LÕI + BOT GIỮ CHÂN (Telegram Bridge)
+================================================================================
+
+> Tài liệu bàn giao cho AI thực hiện.
+> Repo đích: https://github.com/binh2906dz/chongtoico (nhánh main)
+> Ngày lập: 2026-11-24
+> Trạng thái: KHÔNG có file nào trong repo bị sửa khi soạn tài liệu này.
+
+
+--------------------------------------------------------------------------------
+0. MANDATE CHO AI NHẬN VIỆC (đặt lên đầu tài liệu)
+--------------------------------------------------------------------------------
+
+BẠN ĐANG LÀM VIỆC TRONG REPO: https://github.com/binh2906dz/chongtoico
+BƯỚC 1 — BẮT BUỘC: đọc ĐẦY ĐỦ file LUAT_VA_BOI_CANH.md (đặc biệt mục 4 luật
+nghiệp vụ, mục 5 luật làm việc với AI, mục 6 quyết định đã chốt, mục 9 bài học
+& lỗi đã gặp).
+BƯỚC 2 — BẮT BUỘC: đọc huongdan.txt (tài liệu kỹ thuật).
+BƯỚC 3 — TUYỆT ĐỐI KHÔNG sửa repo telegram-bot-dashboard (repo cũ) trừ khi tài
+liệu này nói rõ chuyển gì.
+BƯỚC 4 — Sau MỖI đợt thay đổi: ghi 1 mục vào LUAT_VA_BOI_CANH.md mục 10 (Nhật
+ký làm việc) theo đúng mẫu, có nguyên nhân gốc + bài học. Sửa lỗi thì ghi thêm
+vào mục 9.
+BƯỚC 5 — Mỗi đợt: chạy `npm run build` (server), `npm test` (server), `npm run
+build` (frontend). Báo cáo trung thực cái gì đã chạy thử, cái gì CHƯA chạy thử.
+BƯỚC 6 — LÀM TỪNG GIAI ĐOẠN (GĐ0 → GĐ5), không làm gộp. Dừng lại sau mỗi GĐ để
+báo cáo.
+
+Stack repo mới (đã xác nhận): Node 24 · TypeScript · Fastify 5 · Socket.IO ·
+Drizzle ORM · PostgreSQL 17 (PGlite khi chạy local) · React 19 + Vite + Tailwind v4
+· Docker Compose (app + db) · Nginx reverse proxy · app nghe 127.0.0.1:8090,
+thư mục VPS /opt/chongtoico.
+
+
+--------------------------------------------------------------------------------
+1. BỐI CẢNH
+--------------------------------------------------------------------------------
+
+Hệ thống mới `chongtoico` là một CỘNG ĐỒNG WEB (diễn đàn, bài viết đa phương
+tiện, chat, CSKH), xây theo mẫu shiperx.net nhưng có thương hiệu riêng "Chống
+Tối Cổ" và nội dung hợp pháp.
+
+Hệ thống cũ `telegram-bot-dashboard` là một BẢNG ĐIỀU KHIỂN VẬN HÀNH TELEGRAM
+BOT (broadcast, quản lý bot, quản lý ID Telegram, bàn phím bot, sao lưu).
+
+Mô hình mới đảo ngược vai trò:
+
+  |                | Mô hình cũ               | Mô hình mới              |
+  |----------------|-------------------------|--------------------------|
+  | Trung tâm      | BOT (bot chứa nội dung) | WEB (web chứa nội dung)  |
+  | Bot làm gì     | Phát nội dung, quản lý  | NHẮC người dùng quay    |
+  |                | ID, quản lý nội dung    | lại web                  |
+  | Nội dung lưu ở| albums (SQLite của bot) | articles (PostgreSQL web)|
+  | Người dùng tương tác | Mini App → trang bridge → view album | Trực tiếp trên web |
+  | Thành công =   | Gửi được tin nhắn      | NGƯỜI DÙNG MỞ WEB      |
+
+Hệ quả: phần lớn chức năng quản trị nội dung của repo cũ trở nên vô nghĩa (nội
+dung do web quản lý). Cái cần chuyển KHÔNG PHẢI "chức năng", mà là CƠ CHẾ ĐO LƯỜNG
+VÀ NHẮC NHỞ.
+
+
+--------------------------------------------------------------------------------
+2. CÁC QUYẾT ĐỊNH ĐÃ CHỐT (do chủ dự án — không cần hỏi lại)
+--------------------------------------------------------------------------------
+
+Q1  Mở bằng Mini App trong Telegram → TỰ TẠO TÀI KHOẢN (không hỏi mật khẩu),
+    đăng nhập tức thì.
+Q2  Mở bằng trình duyệt ngoài → BẮT BUỘC TẠO TÀI KHOẢN (username + mật khẩu).
+Q3  Sau khi tạo tài khoản (cả 2 đường) → LIÊN KẾT VỚI TELEGRAM bằng lệnh /start
+    gửi tới 1 bot NGẪU NHIÊN trong các bot đang hoạt động.
+Q4  Bot dùng stack nào TIỆN, ÍT RỦI RO, KHỚP HỆ THỐNG MỚI → Python, service
+    riêng, chỉ giao tiếp qua API web.
+Q5  Admin TỰ CHỌN NỘI DUNG muốn gửi (không tự động chọn hộ) — kể cả chọn ẢNH
+    HOẶC VIDEO kèm.
+Q6  GIỮ NHIỀU BOT để tránh bị ban; có trọng số phân phối + tự tạm dừng bot lỗi.
+Q7  Tài khoản ĐÃ ĐĂNG NHẬP (dù đường nào) → ĐƯỢC XEM nội dung "chỉ thành viên"
+    ngay.
+Q8  Tên hiển thị lấy từ TELEGRAM (first_name).
+Q9  DIGEST ĐỊNH KỲ DO ADMIN QUẢN LÝ (bật/tạm dừng thủ công), không tự bật.
+Q10 /start CHỈ HIỆN NÚT TRUY CẬP WEB (không có menu bàn phím, không có flow
+    node).
+
+
+--------------------------------------------------------------------------------
+3. QUYẾT ĐỊNH KIẾN TRÚC
+--------------------------------------------------------------------------------
+
+3.1 Bot làm bằng gì → PYTHON, SERVICE RIÊNG, CHỈ GIAO TIẾP QUA API
+
+  | Phương án                                        | Rủi ro | Công sức | Khớp hệ thống mới? |
+  |--------------------------------------------------|--------|----------|--------------------|
+  | A. Python (giữ code bot cũ, tách ra service riêng) | Thấp   | Thấp     | Tách biệt hoàn toàn |
+  | B. Node/grammY                                    | Cao    | Cao      | Đẹp hơn, 1 stack   |
+
+  CHỌN A. Lý do:
+  - Logic broadcast cũ đã xử lý 429 theo từng bot, giới hạn 25 msg/s, multipart
+    upload, Forbidden → đánh dấu blocked — TÀI SẢN QUÝ, đừng viết lại.
+  - Bot là SERVICE RIÊNG → lỗi bot không kéo web chết (đúng tinh thần N3/N4).
+  - 2 stack trên 1 VPS là chấp nhận được; đổi lại: rủi ro thấp, lên nhanh.
+  - Nếu sau này muốn gộp sang Node → dễ, vì giao tiếp qua HTTP API, không phụ
+    thuộc DB.
+
+3.2 Ranh giới trách nhiệm (bắt buộc)
+
+  ┌──────────────── WEB (chongtoico, Node) ────────────────────────┐
+  │ • Quyết định: gửi cho ai, gửi gì, lúc nào                     │
+  │ • Lưu: notification_jobs, delivery_log, telegram_visits        │
+  │ • KHÔNG giữ token Telegram (xem Mục 8 — verify initData)       │
+  └───────▲───────────────────────────────┬────────────────────────┘
+          │ GET  /api/bot/jobs            │ POST /api/bot/result
+          │ POST /api/bot/heartbeat       │ POST /api/bot/link
+          │ GET  /api/bot/link-code       │ POST /api/bot/start
+          │ POST /api/bot/optout          │ POST /api/bot/register
+  ┌───────┴───────────────────────────────▼────────────────────────┐
+  │ BOT (service riêng, Python)                                     │
+  │ • Giữ token Telegram của N bot                                  │
+  │ • Gửi tin, nhận /start, health check getMe, chọn bot ngẫu nhiên  │
+  │ • KHÔNG đụng DB PostgreSQL của web                              │
+  └─────────────────────────────────────────────────────────────────┘
+
+  Xác thực giữa 2 bên: header `X-Bot-Secret: <BOT_API_SECRET>` (biến môi trường
+  chung, KHÔNG commit). Mọi endpoint /api/bot/* kiểm tra header này bằng
+  crypto.timingSafeEqual; sai → 401.
+
+
+--------------------------------------------------------------------------------
+4. SƠ ĐỒ TỔNG THỂ
+--------------------------------------------------------------------------------
+
+                    ┌──────────────────────────────┐
+                    │   NGƯỜI DÙNG TELEGRAM        │
+                    └───────┬──────────────┬───────┘
+              /start, /stop  │              │ bấm nút Mini App
+                            ▼              ▼
+        ┌───────────────────────────┐   ┌──────────────────────────┐
+        │  BOT (Python)             │   │  WEB: /tg/entry          │
+        │  - /start → nút mở web   │   │  - verify initData       │
+        │  - /stop → opt-out        │   │  - tự tạo tài khoản     │
+        │  - gửi tin nhắn nhắc nhở │   │  - tên từ Telegram      │
+        │  - health check getMe     │   │  - set cookie phiên 30d  │
+        │  - chọn bot theo trọng số│   │  - ghi telegram_visits   │
+        └──────────┬────────────────┘   └────────────┬─────────────┘
+                   │  poll job                    │  tạo link code
+                   │  (X-Bot-Secret)              ▼
+                   │                    ┌──────────────────────────┐
+                   └───────────────────►│  WEB API + DB            │
+                                        │  users / articles /      │
+                                        │  telegram_* / jobs       │
+                                        │  telegram_campaigns      │
+                                        └────────────┬─────────────┘
+                                                     │
+                                          ┌──────────▼───────────┐
+                                          │  ADMIN (giao diện)   │
+                                          │  - soạn chiến dịch    │
+                                          │  - chọn nội dung+media│
+                                          │  - chọn lịch, đối tượng│
+                                          │  - xem thống kê CTR   │
+                                          │  - quản lý người TG   │
+                                          │  - quản lý bot        │
+                                          └──────────────────────┘
+
+3 bảng then chốt (không được bỏ):
+
+  • telegram_links — Nối người Telegram ↔ tài khoản web. Nền của mọi tính năng
+    đo lường.
+  • delivery_log  — Chống gửi trùm (mang từ repo cũ).
+  • telegram_visits — Đo hiệu quả nhắc nhở (chưa từng có trong repo cũ).
+
+
+--------------------------------------------------------------------------------
+5. GIAI ĐOẠN 0 — SCHEMA
+--------------------------------------------------------------------------------
+
+5.1 File cần tạo/sửa
+  - server/src/db/schema.ts — thêm bảng mới + cột mới
+  - server/drizzle/0004_telegram.sql — migration TỰ VIẾT (không chạy
+    drizzle-kit generate ở chế độ tương tác — xem bài học B15 ở LUAT mục 9)
+  - server/drizzle/meta/0004_snapshot.json + server/drizzle/meta/_journal.json
+
+5.2 Bảng mới
+
+-- 1) Người Telegram (KHÁC HOÀN TOÀN với bảng users của web)
+CREATE TABLE telegram_users (
+  id                bigserial PRIMARY KEY,
+  telegram_id      bigint NOT NULL UNIQUE,
+  username         text,
+  first_name       text,
+  age_verified_at  timestamptz,
+  captcha_ok       boolean NOT NULL DEFAULT false,
+  opt_out          boolean NOT NULL DEFAULT false,      -- đã bấm "Từ chối nhận"
+  opted_out_at     timestamptz,
+  notify_enabled   boolean NOT NULL DEFAULT true,       -- nút "Nhận thông báo"
+  status           text NOT NULL DEFAULT 'unknown',      -- unknown|active|blocked|invalid
+  last_bot_id      text,
+  created_at       timestamptz NOT NULL DEFAULT now(),
+  updated_at       timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX telegram_users_status_idx ON telegram_users(status);
+CREATE INDEX telegram_users_optout_idx ON telegram_users(opt_out);
+
+-- 2) Người Telegram đã /start với bot nào
+CREATE TABLE telegram_user_links (
+  telegram_id bigint NOT NULL REFERENCES telegram_users(id) ON DELETE CASCADE,
+  bot_id      text NOT NULL,
+  started_at  timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (telegram_id, bot_id)
+);
+CREATE INDEX telegram_user_links_bot_idx ON telegram_user_links(bot_id);
+
+-- 3) NỐI Telegram ↔ tài khoản WEB (bảng then chốt)
+CREATE TABLE telegram_links (
+  telegram_id  bigint NOT NULL PRIMARY KEY REFERENCES telegram_users(id) ON DELETE CASCADE,
+  user_id      integer REFERENCES users(id) ON DELETE SET NULL,  -- NULL = chưa đăng nhập web
+  method       text NOT NULL DEFAULT 'unknown',  -- miniapp|browser|code
+  linked_at    timestamptz NOT NULL DEFAULT now(),
+  last_seen_at timestamptz
+);
+CREATE INDEX telegram_links_user_idx ON telegram_links(user_id);
+
+-- 4) Lịch sử gửi — CHỐNG GỬI TRÙM (đã có ở repo cũ, mang sang)
+CREATE TABLE delivery_log (
+  campaign_id  text NOT NULL,
+  telegram_id  bigint NOT NULL,
+  bot_id       text,
+  status       text NOT NULL DEFAULT 'sent',  -- sent|failed|blocked|skipped
+  error        text,
+  sent_at      timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (campaign_id, telegram_id)
+);
+CREATE INDEX delivery_log_user_idx ON delivery_log(telegram_id);
+CREATE INDEX delivery_log_sent_idx ON delivery_log(sent_at);
+
+-- 5) Lần truy cập web từ Telegram — ĐO HIỆU QUẢ
+CREATE TABLE telegram_visits (
+  id          bigserial PRIMARY KEY,
+  telegram_id bigint,
+  user_id     integer,
+  campaign_id text,
+  article_id  integer,
+  ref         text,     -- 'bot' | 'miniapp' | 'campaign' | 'start'
+  src         text,     -- nguồn cụ thể: 'start' | 'campaign' | 'push'
+  path        text,
+  visited_at  timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX telegram_visits_camp_idx ON telegram_visits(campaign_id);
+CREATE INDEX telegram_visits_user_idx ON telegram_visits(telegram_id);
+CREATE INDEX telegram_visits_time_idx ON telegram_visits(visited_at);
+
+-- 6) HÀNG ĐỢI GỬI (web quyết định, bot thực thi)
+CREATE TABLE notification_jobs (
+  id           bigserial PRIMARY KEY,
+  campaign_id  text NOT NULL,
+  telegram_id  bigint NOT NULL,
+  bot_id       text,                 -- NULL = bot tự chọn bot sống
+  payload      jsonb NOT NULL,       -- {text, buttons[], webUrl, media{}}
+  status       text NOT NULL DEFAULT 'queued',  -- queued|sending|sent|failed|skipped|cancelled
+  attempts     integer NOT NULL DEFAULT 0,
+  scheduled_at timestamptz NOT NULL DEFAULT now(),
+  sent_at      timestamptz,
+  error        text,
+  created_at   timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX notification_jobs_pick_idx ON notification_jobs(status, scheduled_at);
+CREATE INDEX notification_jobs_camp_idx ON notification_jobs(campaign_id);
+
+-- 7) BOT (chỉ metadata, KHÔNG lưu token ở web)
+CREATE TABLE telegram_bots (
+  id             text PRIMARY KEY,
+  username       text,
+  display_name   text,
+  status         text NOT NULL DEFAULT 'unknown',  -- live|ban|error|unknown
+  auto_responder boolean NOT NULL DEFAULT true,
+  weight         integer NOT NULL DEFAULT 1,   -- trọng số phân phối
+  sent_count     integer NOT NULL DEFAULT 0,
+  blocked_count  integer NOT NULL DEFAULT 0,
+  last_checked_at timestamptz,
+  last_error     text,
+  sort_order     integer NOT NULL DEFAULT 0
+);
+
+-- 8) MÃ LIÊN KẾT MỘT LẦN
+CREATE TABLE telegram_link_codes (
+  code_hash    text PRIMARY KEY,     -- sha256(code) — KHÔNG lưu code thô
+  user_id      integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  bot_id       text NOT NULL,
+  expires_at   timestamptz NOT NULL,
+  used_at      timestamptz,
+  created_at   timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX telegram_link_codes_exp_idx ON telegram_link_codes(expires_at);
+
+-- 9) CHIẾN DỊCH (nội dung do admin soạn)
+CREATE TABLE telegram_campaigns (
+  id              text PRIMARY KEY,        -- uuid
+  name            text NOT NULL,
+  text            text NOT NULL DEFAULT '',
+  media_type      text,                    -- image|video|none
+  media_key       text,                    -- fileKey trong media/
+  media_source    text,                    -- article_id | upload
+  media_note      text,                    -- ghi chú cho admin
+  buttons         jsonb NOT NULL DEFAULT '[]',
+  target_type     text NOT NULL,           -- all_linked|visited|stalled|status|ids
+  target_ids      jsonb NOT NULL DEFAULT '[]',
+  schedule        text NOT NULL DEFAULT 'now',      -- now|at|daily|weekly
+  schedule_status text NOT NULL DEFAULT 'paused',  -- paused|active|done
+  scheduled_at    timestamptz,
+  hour            integer NOT NULL DEFAULT 8,       -- giờ VN
+  minute          integer NOT NULL DEFAULT 0,
+  day_of_week     integer,                           -- 0=CN..6=T7 (weekly)
+  status          text NOT NULL DEFAULT 'draft',    -- draft|queued|sending|done|cancelled|paused
+  total           integer NOT NULL DEFAULT 0,
+  sent_count      integer NOT NULL DEFAULT 0,
+  failed_count    integer NOT NULL DEFAULT 0,
+  click_count     integer NOT NULL DEFAULT 0,
+  created_by      integer REFERENCES users(id),
+  created_at      timestamptz NOT NULL DEFAULT now(),
+  updated_at      timestamptz NOT NULL DEFAULT now()
+);
+
+5.3 Cột mới cần thêm vào bảng users
+
+ALTER TABLE users ADD COLUMN display_name varchar(80);
+ALTER TABLE users ADD COLUMN source text NOT NULL DEFAULT 'web';   -- web|miniapp
+ALTER TABLE users ADD COLUMN telegram_id bigint;
+-- Index PARTIAL: nhiều tài khoản thuần web có NULL, UNIQUE thường chỉ cho
+-- phép 1 NULL
+CREATE UNIQUE INDEX users_telegram_id_uq ON users(telegram_id) WHERE telegram_id IS NOT NULL;
+
+Bắt buộc:
+  - Tài khoản tự tạo từ Mini App → role='member', bannedAt=null, KHÔNG có quyền
+    ngoài đọc/thích/bình luận.
+  - display_name = first_name của Telegram (cắt còn 80 ký tự, bỏ ký tự control).
+  - username tự sinh: tg_<telegram_username>_<4 số> hoặc tg<telegram_id>, phải
+    unique → dùng INSERT ... ON CONFLICT với hậu tố ngẫu nhiên nếu trùng.
+
+5.4 Phải cập nhật khi thêm display_name
+
+server/src/auth.ts → profileUser() và author() phải trả displayName.
+Frontend phải hiển thị `displayName ?? username` ở MỌI chỗ:
+Member.tsx, ArticleCard.tsx, ThreadPage.tsx, components/ui.tsx (UserLink),
+ArticlePage.tsx, ChatBox.tsx, NotificationBell.tsx, pages/admin/Admin.tsx.
+
+→ AI nhận việc PHẢI grep `user.username` / `author.username` / `.username` trong
+frontend/src/ và sửa hết. Nếu sót, web sẽ hiện "tg123456789" ở một chỗ.
+
+
+--------------------------------------------------------------------------------
+6. GIAI ĐOẠN 1 — API WEB
+--------------------------------------------------------------------------------
+
+File mới: server/src/routes/telegram.ts (đăng ký trong server/src/app.ts cạnh
+route khác).
+
+6.1 Nhóm công khai (chưa đăng nhập)
+
+  GET  /api/telegram/entry
+       Điểm vào Mini App. Nhận initData (Telegram WebApp SDK tự truyền).
+       Trả { mode: "miniapp"|"browser", botUsername?, needsAccount }
+  POST /api/telegram/miniapp/auth
+       Body { initData }. Verify → TỰ TẠO TÀI KHOẢN (tên từ Telegram) → set
+       cookie phiên → trả { user, linked, linkRequired }
+  POST /api/telegram/browser/register
+       Body { username, password, displayName? } → tạo tài khoản thường →
+       trả { user, linkRequired: true, linkUrl, code }
+  GET  /api/telegram/link-code
+       (đã đăng nhập) trả { code, botUsername, deepLink, expiresAt } — CODE MỚI
+       MỖI LẦN GỌI, hạn 15 phút
+  POST /api/telegram/track
+       Body { campaignId?, articleId?, path?, ref?, src? } → ghi telegram_visits
+  POST /api/telegram/optout-public
+       Body { tid, cid } → đặt opt_out=true (nút "Từ chối nhận" trên web)
+
+6.2 Nhóm bot (header X-Bot-Secret bắt buộc)
+
+  POST /api/bot/register
+       Body { botId, username, displayName } — bot tự đăng ký khi khởi động
+       (ghi đè telegram_bots)
+  POST /api/bot/heartbeat
+       Body { botId, status, users?: [...] } — báo trạng thái + số người đã /start
+  GET  /api/bot/jobs?limit=50
+       Lấy job đến hạn. Trả [{ jobId, campaignId, telegramId, payload }], tự
+       đánh dấu status='sending'
+  POST /api/bot/result
+       Body { jobId, status: sent|failed|blocked|skipped, error?, botId } → cập
+       nhật job + ghi delivery_log
+  POST /api/bot/start
+       Body { telegramId, botId, username?, firstName?, code? } — bot báo "user
+       đã /start"
+  POST /api/bot/link
+       Body { code, telegramId, botId, username?, firstName? } — xác nhận liên kết
+  POST /api/bot/optout
+       Body { telegramId, botId } — đánh dấu opt-out
+  GET  /api/bot/bots
+       Danh sách bot live (bot dùng để chọn ngẫu nhiên)
+  GET  /api/bot/user/:telegramId
+       Trạng thái 1 user (đã liên kết chưa, opt-out chưa)
+  GET  /api/bot/stats
+       Số liệu tổng quá cho dashboard bot
+
+6.3 Nhóm admin (dùng requireAdmin)
+
+  GET   /api/admin/telegram/overview
+        Tổng quan: số người TG, đã liên kết, active/blocked, opt-out, CTR
+  GET   /api/admin/telegram/users?page=&q=&status=
+        Danh sách người Telegram + trạng thái
+  PATCH /api/admin/telegram/users/:telegramId
+        Đổi trạng thái (active/blocked/invalid), bật/tắt opt-out thủ công
+  GET   /api/admin/telegram/campaigns
+        Danh sách chiến dịch
+  POST  /api/admin/telegram/campaigns
+        Tạo chiến dịch (Mục 9)
+  POST  /api/admin/telegram/campaigns/:id/send
+        Đẩy job vào hàng đợi (tôn trọng luật tần suất)
+  POST  /api/admin/telegram/campaigns/:id/activate
+        Bật lịch (schedule_status='active')
+  POST  /api/admin/telegram/campaigns/:id/pause
+        Tạm dừng (schedule_status='paused')
+  POST  /api/admin/telegram/campaigns/:id/cancel
+        Huỷ chiến dịch chưa gửi
+  GET   /api/admin/telegram/campaigns/:id
+        Chi tiết + thống kê (gửi / click / quay lại)
+  GET   /api/admin/telegram/articles/recent?hours=24
+        Danh sách bài viết mới (để admin chọn nhanh)
+  POST  /api/admin/telegram/import-ids
+        Upload .txt/.csv danh sách ID (chuyển từ repo cũ /ids/upload)
+  POST  /api/admin/telegram/bots/:id/check
+        Ép kiểm tra getMe ngay
+  PATCH /api/admin/telegram/bots/:id
+        Đổi trọng số / bật-tắt auto_responder
+
+6.4 Ràng buộc kỹ thuật bắt buộc
+
+  - Mọi route /api/bot/*: X-Bot-Secret sai → 401, so sánh bằng
+    crypto.timingSafeEqual.
+  - Rate-limit riêng: /api/bot/jobs 120/phút; /api/telegram/miniapp/auth
+    20/10 phút; /api/telegram/browser/register 5/giờ.
+  - KHÔNG BAO GIỜ log initData, code liên kết, X-Bot-Secret, token bot (xem bài
+    học P3 của repo cũ).
+  - initData phải kiểm tra auth_date không quá 24h (chống replay).
+
+
+--------------------------------------------------------------------------------
+7. GIAI ĐOẠN 2 — LUỒNG LIÊN KẾT TÀI KHOẢN
+--------------------------------------------------------------------------------
+
+7.1 Luồng Mini App (tự tạo tài khoản, tên từ Telegram)
+
+  1. Telegram mở Mini App → initData chứa telegram_id, first_name
+  2. Web verify initData (Mục 8) → biết telegram_id, first_name
+  3. Tìm telegram_users theo telegram_id → nếu chưa có thì INSERT
+  4. Tìm telegram_links theo telegram_id
+     - có user_id → đã liên kết: set cookie phiên → vào web
+     - chưa có     → tạo user web tự động (role=member, source='miniapp',
+                    display_name=first_name) → INSERT telegram_links(user_id)
+                    → set cookie phiên → vào web
+  5. Ghi telegram_visits (campaignId từ ?cid= nếu có, ref='miniapp')
+  6. Nếu user CHƯA có telegram_id trong bảng users → UPDATE users SET telegram_id
+  7. Xong: user đã đăng nhập + đã liên kết Telegram tự động
+
+  ĐÃ ĐĂNG NHẬP → ĐƯỢC XEM nội dung "chỉ thành viên" (Q7). Cơ chế đã có sẵn,
+  không cần code mới:
+
+    // server/src/routes/media.ts:38-41
+    if (visibility === "members") {
+      if (!req.user) throw forbidden("Bài viết chỉ dành cho thành viên.");
+      cache = "private, max-age=86400";
+    }
+
+7.2 Luồng trình duyệt ngoài (bắt buộc tạo tài khoản)
+
+  1. Người dùng vào https://tenmien.com → xem được nội dung công khai → muốn
+     tương tác (like/comment) hoặc xem "chỉ thành viên" → bị yêu cầu tạo tài
+     khoản
+  2. POST /api/auth/register (đã có sẵn) → tạo user (username + password,
+     source='web')
+  3. Web tự gọi GET /api/telegram/link-code:
+     • chọn NGẪU NHIÊN 1 bot có status='live' trong telegram_bots
+     • sinh code random 8 ký tự base32 (loại ký tự dễ nhầm), lưu sha256(code) vào
+       telegram_link_codes, hạn 15 phút, gắn với user_id
+     • trả deepLink = https://t.me/<botUsername>?start=<code>
+  4. Web hiện màn hình "Bấm nút dưới để liên kết Telegram" (nút mở deepLink) +
+     mã code
+  5. Người dùng bấm → Telegram mở bot → gửi /start <code>
+  6. Bot nhận /start <code> → POST /api/bot/link { code, telegramId, botId }
+  7. Web: kiểm tra code hash tồn tại, chưa dùng, chưa hết hạn →
+     • UPDATE telegram_link_codes SET used_at = now()
+     • INSERT telegram_users (nếu chưa có)
+     • INSERT telegram_user_links (telegram_id, bot_id)
+     • INSERT/UPDATE telegram_links (telegram_id, user_id, method='code')
+     • UPDATE users SET telegram_id = <id>, source='telegram'
+  8. Bot nhắn: "✅ Đã liên kết thành công! Tài khoản <username> đã gắn với
+     Telegram."
+  9. Web (poll /api/auth/me) thấy user.telegram_id đã set → hiện badge "Đã liên
+     kết Telegram"
+
+  BẮT BUỘC: code dùng 1 lần, hạn 15 phút, lưu dạng hash, gắn với user_id cụ
+  thể (người A không dùng được code của B).
+
+7.3 Xử lý /start không có code
+
+  Bot nhận /start (không code):
+  1. Ghi telegram_users (nếu chưa có) + telegram_user_links
+  2. Nếu telegram_id CHƯA liên kết user web nào → bot gửi nút "🔗 Liên kết
+     tài khoản" (deep-link có ref=bot_start)
+  3. Nếu ĐÃ liên kết → bot gửi nút "🌐 Mở Website"
+
+7.4 /stop (opt-out) — bắt buộc có trong mọi tin nhắn
+
+  1. Bot POST /api/bot/optout { telegramId, botId }
+  2. Web đặt telegram_users.opt_out = true, opted_out_at = now()
+  3. Scheduler KHÔNG tạo job cho user này nữa
+  4. Bot nhắn: "✅ Đã từ chối nhắn. Gõ /start lại bất cứ lúc nào để nhận lại."
+
+7.5 Quy tắc "bot ngẫu nhiên" (Q6 — nhiều bot)
+
+  1. Lấy danh sách bot status='live' AND auto_responder=true
+  2. Nếu rỗng → KHÔNG tạo job → ghi log + báo admin + campaign status='paused'
+  3. Chọn theo trọng số: mỗi bot có sức chứa = weight / tổng weight; sau mỗi
+     lần gửi giảm sent_count của bot đó → cân bằng dần
+  4. Ưu tiên tránh bot vừa gặp 429 gần đây (< 15 phút)
+  5. Ghi bot_id vào job → biết bot nào đã gửi
+
+  Tự động tạm dừng bot:
+    getMe → 401          → status='ban'   → loại khỏi vòng chọn, báo admin NGAY
+    getMe → timeout/lỗi → status='error' → tạm loại 30 phút, thử lại
+    Nhiều lần 429 liên tiếp → tạm dừng bot đó 1 giờ
+
+
+--------------------------------------------------------------------------------
+8. GIAI ĐOẠN 3 — XỬ LÝ initData
+--------------------------------------------------------------------------------
+
+8.1 Vấn đề
+initData được Telegram ký bằng BOT TOKEN:
+secret_key = HMAC_SHA256(bot_token, "WebAppData"). Muốn web tự verify thì web
+PHẢI CÓ TOKEN BOT → vi phạm nguyên tắc "token chỉ ở bot".
+
+8.2 Khuyến nghị: WEB GỌI NỘI BỘ SERVICE BOT ĐỂ VERIFY
+
+  Web (POST /api/telegram/miniapp/auth, body {initData})
+    └─► gọi nội bộ 127.0.0.1:<BOT_INTERNAL_PORT>/verify  (X-Bot-Secret)
+          └─► Bot verify HMAC bằng TẤT CẢ token → trả
+              { ok, telegramId, username, firstName, authDate }
+    └─► Web kiểm tra authDate ≤ 24h → tạo/tìm user → set cookie
+
+  Ưu điểp: token không bao giờ nằm trong web. Web chỉ giữ BOT_API_SECRET.
+  Phương án dự phòng: web lưu token bot MÃ HÓA (AES-256-GCM, khóa trong env),
+  chỉ dùng để verify initData, KHÔNG dùng để gửi. Phải ghi rõ rủi ro trong LUAT
+  mục 6.
+
+8.3 Logic verify — tái dùng nguyên văn từ repo cũ
+
+3 hàm trong app.py repo cũ (chất lượng tốt, đã đọc):
+  - _parse_init_data_for_hash_check() — parse 1 lần
+  - _validate_telegram_init_data() — HMAC-SHA256 + so sánh hash
+  - _init_data_matches_any_bot_token() — thử MỌI token bot (đúng yêu cầu multi-bot)
+
+Cải tiến bắt buộc so với repo cũ: cache danh sách token trong RAM 5 phút (repo cũ
+đọc DB mỗi request → chậm).
+
+
+--------------------------------------------------------------------------------
+9. GIAI ĐOẠN 4 — COMPOSER CHIẾN DỊCH (admin tự chọn nội dung)
+--------------------------------------------------------------------------------
+
+9.1 Form "Chiến dịch nhắc nhở" (Quản trị → tab Telegram)
+
+  ┌─ Tạo chiến dịch ────────────────────────────────────────────┐
+  │ 1. NỘI DUNG                                                  │
+  │    • Nguồn:  ○ Chọn từ bài viết   ○ Nhập tay                │
+  │    • [Chọn bài viết] → multi-select (tiêu đề + ảnh bìa)     │
+  │    • [Bài viết mới 24 giờ] → điền sẵn danh sách              │
+  │    • Ô nội dung (hỗ trợ [img:key] như trình soạn thảo)        │
+  │                                                             │
+  │ 2. MEDIA (ảnh hoặc video) — admin chọn                      │
+  │    • ○ Không kèm media                                        │
+  │    • ○ Kèm ảnh   → chọn từ bài viết hoặc tải lên            │
+  │    • ○ Kèm video  → chọn từ bài viết hoặc tải lên            │
+  │    • Cảnh báo tự động:                                        │
+  │      - ảnh > 10MB    → "sẽ gửi link kèm ảnh bìa"            │
+  │      - video > 50MB  → "sẽ gửi link kèm ảnh bìa"            │
+  │      - video > 50MB  → chỉ gửi link                          │
+  │      - bài "chỉ thành viên" → KHÔNG kèm file (Telegram        │
+  │        không tải được media cần đăng nhập) → chỉ gửi link    │
+  │                                                             │
+  │ 3. NÚT TRONG TIN                                              │
+  │    • [🔥 Xem ngay] [🏠 Trang chủ] [🔕 Từ chối nhận]          │
+  │    • Tự thêm nút: nhãn + URL                                 │
+  │                                                             │
+  │ 4. ĐỐI TƯỢNG NHẬN                                            │
+  │    ○ Tất cả người đã liên kết (telegram_links.user_id ≠ null) │
+  │    ○ Chỉ người đã từng mở web ≥ 1 lần                         │
+  │    ○ Hồi sinh: đã liên kết nhưng ≥14 ngày không vào web      │
+  │    ○ Theo trạng thái: active | blocked | invalid              │
+  │    ○ Theo danh sách ID cụ thể (upload .txt)                   │
+  │                                                             │
+  │ 5. LỊCH GỬI (admin quản lý — Q9)                             │
+  │    ○ Gửi ngay                                                   │
+  │    ○ Hẹn giờ (chỉ trong khung 8:00–22:00 VN)                  │
+  │    ○ Lặp: hằng ngày lúc HH:MM | thứ N lúc HH:MM               │
+  │    → Mặc định PAUSED. Admin bấm "Kích hoạt lịch" mới chạy.   │
+  │                                                             │
+  │ 6. TẦN SUẤT (giới hạn cứng, admin không vượt được)             │
+  │    Tối đa 1 tin/ngày/người · 3 tin/tuần/người · ≥6 giờ/lần    │
+  │    Bỏ qua: đã opt-out · đã nhận cùng chiến dịch               │
+  │    Bỏ qua: đã nhận cùng nội dung trong 7 ngày                 │
+  │                                                             │
+  │ 7. XEM TRƯỚC:  [Xem trước tin nhắn]  (mô phỏng y hệt Telegram)│
+  │    Số người sẽ nhận: ___   Số bị bỏ qua: ___                   │
+  └──────────────────────────────────────────────────────────────┘
+
+9.2 Ràng buộc media của Telegram
+
+  | Ràng buộc             | Giá trị                          |
+  |-----------------------|----------------------------------|
+  | sendPhoto             | ảnh tối đa 10 MB                |
+  | sendVideo             | video tối đa 50 MB (bot thường)  |
+  | Video phải có codec h264 + âm thanh AAC | Telegram TỪ CHỐI codec khác |
+
+Repo mới cho phép upload video tới 2048 MB → phần lớn video sẽ vượt giới hạn.
+
+Quy tắc xử lý:
+  - Ảnh ≤10MB → gửi file trực tiếp (tải về tạm → sendPhoto) → Telegram hiện
+    preview đẹp
+  - Video ≤50MB + codec h264 → gửi file được (kiểm tra codec trước)
+  - Video >50MB hoặc sai codec → admin PHẢI chọn: (a) gửi ảnh bìa kèm link,
+    hoặc (b) chỉ gửi link
+  - KHÔNG tự động nén video để gửi (tốn CPU VPS, chậm)
+
+Kiểm tra codec:
+  ffprobe -v error -select_streams v:0 \
+    -show_entries stream=codec_name,width,height -of csv=p=0 <file>
+
+> Repo mới đã có server/src/ffmpeg.ts nhưng service bot là Python → cần ffprobe trên
+> host, hoặc bỏ qua kiểm tra và dùng quy tắc kích thước.
+
+Media "chỉ thành viên" → KHÔNG gửi file. Telegram server tải URL không có cookie →
+/media/a/<key>.webp trả 403. Chỉ chọn media từ bài CÔNG KHAI.
+
+9.3 Payload job (JSONB)
+
+  {
+    "text": "🔥 Bài mới hôm nay: <a href=\"https://tenmien.com/bai-viet/12\">Xem ngay</a>",
+    "parseMode": "HTML",
+    "buttons": [
+      { "label": "🔥 Xem ngay", "url": "https://tenmien.com/bai-viet/12" },
+      { "label": "🏠 Trang chủ", "url": "https://tenmien.com/" },
+      { "label": "🔕 Từ chối nhận", "url": "https://tenmien.com/tg/stop" }
+    ],
+    "webUrl": "https://tenmien.com/?ref=bot&cid=<campaignId>&tid=<telegramId>",
+    "media": {
+      "kind": "image",
+      "url": "https://tenmien.com/media/a/<key>.webp",
+      "sizeBytes": 842133,
+      "isPublic": true
+    }
+  }
+
+  - webUrl mang cid (chiến dịch) + tid (người nhận) → web ghi telegram_visits →
+    đo được CTR
+  - Nút "Từ chối nhận" → https://tenmien.com/tg/stop?tid=...&cid=... → web hiện
+    nút xác nhận → POST /api/telegram/optout-public
+  - parseMode HTML → PHẢI escape nội dung admin nhập (html.escape) để tránh HTML
+    injection trong tin nhắn
+
+9.4 Bot tự kiểm tra kích thước trước khi gửi
+
+  sizeBytes ≤ 10MB (ảnh) hoặc ≤ 50MB (video) → gửi file
+  vượt → gửi bản link-only, ghi delivery_log.error = 'media_too_large'
+
+
+--------------------------------------------------------------------------------
+10. GIAI ĐOẠN 5 — BỘ ĐẾM TẦN SUẤT + AN TOÀN (KHÔNG ĐƯỢC BỎ)
+--------------------------------------------------------------------------------
+
+  | Luật                                    | Giá trị | Nơi thực thi      |
+  |-----------------------------------------|---------|-------------------|
+  | Tối đa 1 tin / người / ngày             | 1       | Web khi tạo job  |
+  | Tối đa 3 tin / người / tuần             | 3       | Web khi tạo job  |
+  | Tối đa 1 tin / người / 6 giờ           | 1       | Web khi tạo job  |
+  | Chỉ gửi trong 8:00–22:00 VN            | —       | Web dời scheduled_at sang 8:00 sáng hôm sau |
+  | Bỏ qua người opt_out=true              | —       | Web               |
+  | Bỏ qua người notify_enabled=false      | —       | Web               |
+  | Bỏ qua người đã nhận cùng campaign_id  | —       | delivery_log      |
+  | Bỏ qua người đã nhận cùng NỘI DUNG trong 7 ngày | — | So sánh hash payload.text |
+  | Bot bị chặn (Forbidden) → không gửi lại| —       | telegram_users.status='blocked' |
+  | Telegram 429 → bot tự dừng, không phạt bot khác | — | Bot          |
+
+Chống gửi trùm:
+  INSERT INTO delivery_log ... ON CONFLICT (campaign_id, telegram_id) DO NOTHING.
+
+Job an toàn: status='sending' quá 10 phút → trả về queued (cron quét lại) → bot
+chết không làm mất job.
+
+
+--------------------------------------------------------------------------------
+11. GIAI ĐOẠN 6 — PHÍA BOT (service Python riêng)
+--------------------------------------------------------------------------------
+
+11.1 Tái dùng từ repo cũ (telegram-bot-dashboard)
+
+GIỮ NGUYÊN logic, chỉ đổi chỗ chạy:
+  - bot.py → chỉ giữ: xử lý /start, /stop, handle_reply_menu_cell (đã bỏ phần
+    menu), phần gửi tin
+  - Từ app.py:
+    ✅ _init_data_matches_any_bot_token() — verify initData
+    ✅ _build_telegram_payload() — dựng payload
+    ✅ _build_multipart_payload() — upload file
+    ✅ _async_run_ids_broadcast() — logic 429 per-bot, 25 msg/s, Forbidden → blocked
+    ✅ db_create_album_token / db_validate_album_token → KHÔNG dùng (đã thay bằng
+       session cookie)
+
+BỎ (không chuyển):
+  ❌ reply_menu.py (bàn phím JSON) — Q10
+  ❌ Flow kịch bản node (/messages, /messages/<node>) — Q10
+  ❌ /slogans — Q10
+  ❌ Menu danh mục trong bot (menu, category_page, album_click) — Q10
+  ❌ handle_message (auto-responder khớp tiêu đề) — thay bằng nút cố định
+  ❌ process_video_to_hls, run_daily_backup, _cleanup_old_backups_vn_calendar
+  ❌ Toàn bộ route Flask album/catalog, Flask-Limiter
+  ❌ File lock BotManager (giữ nếu bot chạy nhiều worker)
+
+11.2 Phần MỚI phải viết
+
+  | File             | Mô tả                                                        |
+  |------------------|--------------------------------------------------------------|
+  | bot/client.py    | HTTP client gọi API web (/api/bot/*), httpx, header X-Bot-Secret, retry + backoff |
+  | bot/jobs.py      | Vòng lặp poll /api/bot/jobs (mỗi 3–5 giây), gửi, báo kết quả |
+  | bot/verifier.py  | Endpoint nội bộ POST /internal/verify — verify initData bằng mọi token (chỉ bind 127.0.0.1) |
+  | bot/registry.py  | POST /api/bot/register khi khởi động; heartbeat mỗi 5 phút; getMe → live/ban/error → POST /api/bot/heartbeat |
+  | bot/commands.py | /start [code], /stop, /help — 3 NÚT CỐ ĐỊNH (Q10)          |
+  | bot/selector.py  | Chọn bot theo trọng số trong nhóm live; tránh bot vừa gặp 429 |
+
+11.3 Hành vi /start (Q10 — chỉ nút truy cập web)
+
+  /start (không code)
+    → "👋 Chào mừng đến Chống Tối Cổ!"
+      [ 🌐 Mở Website ]      ← url = deep-link có ?ref=bot&tid=<id>&src=start
+      [ 🔔 Nhận thông báo ]  ← toggle notify_enabled
+      [ 🔕 Từ chối nhận ]     ← chỉ hiện khi đang bật
+
+  /start <code>
+    → "✅ Đã liên kết thành công! Tài khoản <username> đã gắn với Telegram."
+      [ 🌐 Mở Website ]
+
+  /stop
+    → "✅ Đã từ chối nhắn. Gõ /start lại bất cứ lúc nào để nhận lại."
+
+  3 nút cố định, KHÔNG cấu hình được.
+
+11.4 Cấu hình service bot (.env)
+
+  BOT_API_URL=http://127.0.0.1:8090
+  BOT_API_SECRET=<khớp với web>
+  BOT_INTERNAL_PORT=8091        # endpoint verify initData, chỉ bind 127.0.0.1
+  TELEGRAM_BOT_TOKENS=123:ABC,456:DEF
+  ADMIN_CHAT_ID=<your id>
+  WEB_BASE_URL=https://tenmien.com
+
+  Bảo mật: service bot bind 127.0.0.1 → không ai từ internet gọi được
+  /internal/verify.
+
+11.5 Tốc độ gửi
+
+Broadcast cũ dùng 25 msg/s (thử tốc độ). CHO NHẮC NHỞ NÊN DÙNG 1–2 TIN/GIÂY — an
+toàn hơn, không cần tốc độ. Khi gặp 429 → ngủ đúng retry_after CHỈ BOT ĐÓ, các
+bot khác chạy tiếp.
+
+
+--------------------------------------------------------------------------------
+12. GIAI ĐOẠN 7 — GIAO DIỆN
+--------------------------------------------------------------------------------
+
+12.1 File mới/sửa trong frontend/src/
+  - pages/admin/AdminTelegram.tsx — tab mới trong Admin.tsx (thêm "telegram" vào
+    mảng TABS)
+  - pages/admin/AdminTelegramCampaigns.tsx — danh sách + form soạn chiến dịch
+  - pages/admin/AdminTelegramUsers.tsx — danh sách người Telegram + trạng thái +
+    opt-out
+  - pages/admin/AdminTelegramBots.tsx — danh sách bot: trạng thái, trọng số, số
+    tin đã gửi, nút kiểm tra / tạm dừng / bật lại
+  - pages/telegram/Entry.tsx — điểm vào Mini App (/tg/entry)
+  - pages/telegram/LinkAccount.tsx — trang liên kết (nút deep-link + mã code +
+    trạng thái)
+  - pages/telegram/Stop.tsx — trang opt-out (/tg/stop)
+  - components/TelegramCampaignForm.tsx — form soạn tin (multi-select bài viết,
+    media, nút, xem trước)
+
+  Dùng lại component có sẵn: components/ui.tsx (Tabs, Pagination, ErrorBox,
+  Spinner), components/ArticleCard.tsx, useFetch.ts, api.ts, format.ts.
+
+12.2 Route mới trong frontend/src/App.tsx
+  /tg/entry      → Entry
+  /tg/lien-ket   → LinkAccount
+  /tg/stop       → Stop
+
+12.3 Cần hiển thị displayName ?? username ở mọi nơi
+  Grep frontend/src/ cho user.username, author.username, .username → sửa hết (xem
+  Mục 5.4).
+
+
+--------------------------------------------------------------------------------
+13. CHECKLIST FILE CẦN TẠO / SỬA
+--------------------------------------------------------------------------------
+
+GĐ0 — Schema
+  [ ] server/src/db/schema.ts — 9 bảng mới + 3 cột mới vào users
+  [ ] server/drizzle/0004_telegram.sql — SQL migration
+  [ ] server/drizzle/meta/0004_snapshot.json, server/drizzle/meta/_journal.json
+  [ ] server/src/db/index.ts — export bảng mới nếu có
+
+GĐ1 — API lõi
+  [ ] server/src/routes/telegram.ts — nhóm công khai + /api/bot/*
+  [ ] server/src/app.ts — đăng ký route
+  [ ] server/src/config.ts — thêm botApiSecret, botInternalUrl
+  [ ] server/src/auth.ts — profileUser()/author() trả displayName
+
+GĐ2 — Bridge + tracking
+  [ ] server/src/routes/telegram.ts — /miniapp/auth, /browser/register,
+      /link-code, /track, /optout-public
+  [ ] frontend/src/pages/telegram/Entry.tsx, LinkAccount.tsx, Stop.tsx
+  [ ] frontend/src/App.tsx — thêm route
+  [ ] Sửa hiển thị displayName ở mọi nơi
+
+GĐ3 — Chiến dịch
+  [ ] server/src/routes/telegram.ts — CRUD campaign + send/cancel/activate/pause +
+      thống kê
+  [ ] server/src/scheduler.ts (file mới) — cron: tạo job theo lịch đã bật, áp
+      luật tần suất, quét job sending quá 10 phút
+  [ ] server/src/index.ts — khởi động scheduler
+  [ ] frontend/src/pages/admin/AdminTelegram*.tsx + Admin.tsx — thêm tab
+
+GĐ4 — Bot service (repo/service riêng)
+  [ ] Toàn bộ thư mục bot (Python) theo Mục 11
+
+GĐ5 — Nhật ký + tài liệu
+  [ ] LUAT_VA_BOI_CANH.md mục 6 — ghi quyết định Q1–Q10 vào bảng quyết định
+  [ ] LUAT_VA_BOI_CANH.md mục 10 — nhật ký từng đợt
+  [ ] LUAT_VA_BOI_CANH.md mục 9 — ghi bài học nếu gặp lỗi
+  [ ] huongdan.txt — cập nhật kiến trúc (thêm mục Telegram/Bot)
+
+
+--------------------------------------------------------------------------------
+14. EDGE CASE BẮT BUỘC XỬ LÝ
+--------------------------------------------------------------------------------
+
+  | Tình huống                                          | Xử lý                                      |
+  |-----------------------------------------------------|--------------------------------------------|
+  | initData hỏng / hết hạn                            | Trả "Phiên Telegram đã hết hạn, mở lại từ bot" — KHÔNG tạo tài khoản |
+  | initData hợp lệ nhưng tài khoản đã có telegram_id khác | Không cho đổi → "Tài khoản đã liên kết với Telegram khác" |
+  | Người tạo tài khoản ở trình duyệt, sau đó mở Mini App | Tìm theo telegram_id → chưa có → hỏi "Bạn đã có tài khoản? Đăng nhập để liên kết" → sau khi đăng nhập gọi /link-code |
+  | Code liên kết hết hạn / đã dùng                     | Lỗi rõ ràng, cho tạo code mới              |
+  | Bot bị Telegram ban (getMe → 401)                   | telegram_bots.status='ban', không chọn bot này, báo admin |
+  | Tất cả bot đều ban/error                            | Không gửi gì; ghi log; báo admin; campaign → paused |
+  | Telegram trả 429                                    | Bot dừng đúng retry_after; các bot khác chạy tiếp |
+  | Telegram trả 403 Forbidden                           | telegram_users.status='blocked', không gửi lại, delivery_log.status='blocked' |
+  | Bot bị giới hạn spam (429 kéo dài)                  | Tự giảm tần suất toàn hệ thống 24h, cảnh báo admin |
+  | Job đã lấy nhưng bot chết trước khi gửi             | status='sending' quá 10 phút → trả về queued |
+  | Web restart khi đang chạy chiến dịch                | Job nằm trong DB → không mất; cron tiếp tục |
+  | Người nhấn "Từ chối nhận" trên web                   | Cũng đặt opt_out=true (tìm telegram_id qua telegram_links) |
+  | 2 tab Mini App mở cùng lúc                         | INSERT ... ON CONFLICT DO NOTHING trên telegram_links.telegram_id |
+  | Admin tạo chiến dịch daily nhưng quên bấm "Kích hoạt" | schedule_status='paused' → KHÔNG tự gửi (Q9) |
+  | Video >50MB được chọn                               | Admin phải chọn "gửi link" hoặc "ảnh bìa kèm link" — hệ thống không tự nén |
+
+
+--------------------------------------------------------------------------------
+15. ĐỊNH NGHĨA "XONG" (ACCEPTANCE CRITERIA)
+--------------------------------------------------------------------------------
+
+GĐ0
+  [ ] npm run build (server) không lỗi
+  [ ] npm test vẫn xanh (17 ca cũ không hỏng)
+  [ ] Migration chạy được trên PGlite (local) VÀ PostgreSQL 17 (VPS) không lỗi
+
+GĐ1
+  [ ] npm test CÓ THÊM ca mới: tạo user từ Mini App, link code 1 lần, opt-out, bộ
+      lọc tần suất, chống gửi trùm
+  [ ] POST /api/bot/jobs trả job đúng hạn; job đã gửi không trả lại
+  [ ] X-Bot-Secret sai → 401
+
+GĐ2
+  [ ] Mini App (phải dùng bot thật để test initData) → tự tạo tài khoản, tên lấy
+      từ Telegram → vào thẳng web, cookie phiên 30 ngày
+  [ ] Mở bằng trình duyệt ngoài → bắt buộc tạo tài khoản → nhận deep-link → bấm →
+      bot nhận /start <code> → web hiện "Đã liên kết"
+  [ ] Mở deep-link có ?cid= → telegram_visits có bản ghi
+  [ ] Đã đăng nhập → xem được bài visibility='members'
+
+GĐ3
+  [ ] Admin soạn chiến dịch, chọn bài viết, chọn media, xem trước, gửi → job được
+      tạo → bot gửi → Telegram nhận đúng nội dung + nút
+  [ ] Bấm "Xem ngay" → mở web → telegram_visits.telegram_id = người nhận,
+      campaign_id = chiến dịch
+  [ ] Người đã nhận chiến dịch này rồi → không nhận lần 2
+  [ ] Người opt-out → không có job nào cho họ
+  [ ] Campaign daily mặc định KHÔNG gửi gì cho tới khi admin bấm "Kích hoạt lịch"
+
+GĐ4
+  [ ] Bot chạy 24h không rò rỉ token ra log (kiểm tra bằng grep)
+  [ ] Tắt 1 bot → health check phát hiện → job không còn chọn bot đó → các bot
+      khác gửi tiếp
+  [ ] Bot chết giữa chừng → job không bị mất (quay lại queued sau 10 phút)
+  [ ] /start chỉ hiện đúng 3 nút, không có menu bàn phím
+
+
+--------------------------------------------------------------------------------
+16. RỦI RO & BIỆN PHÁP
+--------------------------------------------------------------------------------
+
+  | Rủi ro                                    | Mức | Biện pháp                                                  |
+  |-------------------------------------------|------|-------------------------------------------------------------|
+  | Telegram ban bot vì spam                  | 🔴   | Luật tần suất cứng + opt-out + nhiều bot dự phòng + trọng số + health check 5 phút |
+  | Token lộ                                  | 🔴   | Token chỉ ở service bot; web chỉ có BOT_API_SECRET; redact log |
+  | Web bị hack → mất kênh phân phối           | 🟠   | Token không nằm trong web (trừ phương án dự phòng §8.2)     |
+  | Bot ghi sai DB web                        | 🟠   | Bot CHỈ ghi qua API, không có quyền DB                        |
+  | Nội dung rỗng → nhắc "không có gì"        | 🟠   | Trước khi cho phép gửi, kiểm tra có ≥1 bài viết công khai; cảnh báo admin |
+  | Web chậm → user Telegram vào không được  | 🟠   | Đo telegram_visits; nếu >30% mở link mà không đăng nhập → tìm lỗi tốc độ |
+  | Người thấy "tạo tài khoản" ở cửa sổ ngoài → bỏ | 🟠 | Cho xem nội dung công khai KHÔNG cần tài khoản; chỉ bắt tạo khi tương tác hoặc xem "chỉ thành viên" |
+  | users.telegram_id lệch với telegram_links.user_id | 🟡 | Transaction + ON CONFLICT; thêm job kiểm tra định kỳ (mở rộng /api/admin/recount) |
+  | Tài khoản tự tạo lạm dụng               | 🟡   | Rate-limit đăng ký + giới hạn tài khoản/telegram_id 1-1 + có thể khoá hàng loạt |
+
+
+--------------------------------------------------------------------------------
+17. GHI CHÚ CUỐI
+--------------------------------------------------------------------------------
+
+- Tài liệu này KHÔNG kèm code — chỉ là bản đồ để AI khác thực hiện.
+- Nguồn tham khảo đã đọc: LUAT_VA_BOI_CANH.md (toàn bộ 10 mục), huongdan.txt,
+  server/src/{app,auth,config,http,notify,realtime,settings,media}.ts,
+  server/src/routes/{admin,articles,auth,chat,follow,members,notifications,site}.ts,
+  server/src/db/schema.ts, frontend/src/{App,api,auth}.tsx, frontend/index.html,
+  docker-compose.yml, .env.example, scripts/*.sh, server/src/routes/media.ts.
+- CHƯA ĐỌC HẾT (AI nhận việc nên tự đọc trước khi sửa):
+  server/src/routes/articles.ts (51KB), server/src/routes/forum.ts (22KB),
+  frontend/src/pages/ArticlePage.tsx (22KB),
+  frontend/src/pages/admin/AdminArticles.tsx (21KB),
+  frontend/src/components/ui.tsx (14KB), templates/index.html của repo cũ (190KB).
+
+================================================================================
+HẾT TÀI LIỆU
+================================================================================

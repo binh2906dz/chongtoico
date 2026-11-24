@@ -115,6 +115,14 @@ Bản 2 (2026-11-07) — lai thêm mảng video:
 | 2026-11-12 | **Gộp "Video" và "Album" thành một mục "Bài viết".** Chủ dự án chốt: giữ nguyên cấu trúc diễn đàn, nhưng hợp nhất mảng video + album thành **một loại nội dung: bài viết**. Xoá nhãn "📸 Album mới" / "🆕 Video mới nhất" → **"Bài viết mới nhất"**. Một bài viết **có thể chứa nhiều ảnh VÀ nhiều video** (hoặc chỉ ảnh, hoặc chỉ video). Khi hiển thị ra ngoài (thẻ trang chủ, banner trượt) **chỉ hiện 1 ảnh hoặc 1 video do admin chọn làm ảnh bìa** (`articles.coverType` = none/image/video, `coverImageKey`, `coverDuration`). Dữ liệu video + album cũ **xoá sạch** (không chuyển sang). Bảng DB mới: `articles`, `article_images`, `article_videos`, `article_categories`, `article_tags`, `article_tag_links`, `article_votes`, `article_comments`, `article_comment_votes`, `article_saves`, `article_view_days`, `article_history` (thay `videos` / `albums` / `album_images` / `video_*`). Migration `0003_articles.sql`. URL: `/bai-viet`, `/bai-viet/:id`, `/bai-viet/da-xem`, `/bai-viet/yeu-thich`, `/bai-viet/tag/:slug`. |
 | 2026-11-14 | **Bảo mật "chỉ thành viên" phải chặn ở MỌI endpoint.** Mọi đường trả nội dung của bài viết đều phải tự kiểm tra `articles.visibility === "members"` + `req.user` (chi tiết, bình luận, media `/media/a/` + `/media/t/`, ảnh bìa trả `coverUrl: null` cho khách). Suy ra từ lỗ hổng: chỉ khoá media mà quên endpoint bình luận ⇒ khách đọc được bình luận của bài khoá (B16). |
 | 2026-11-14 | **Tạm dừng phát triển.** Chủ dự án dừng để nghỉ ("mai tôi sẽ sửa tiếp"): toàn bộ thay đổi đã commit + push lên `main`; ghi chú kiểm toán vào mục 9 (B16–B19) và mục 10. Không mở thêm tính năng mới cho tới khi chủ dự án yêu cầu. |
+| 2026-11-24 | **Telegram Bridge — kiến trúc đảo ngược vai trò.** Web giữ nội dung, **bot chỉ nhắc người dùng quay lại web**. Thành công = **người dùng mở web**, không phải "gửi được tin nhắn". 3 bảng then chốt (không được bỏ): `telegram_links` (nối Telegram ↔ tài khoản web), `delivery_log` (chống gửi trùm), `telegram_visits` (đo hiệu quả). |
+| 2026-11-24 | **Q1–Q10 (chủ dự án chốt):** Q1 Mini App → **tự tạo tài khoản**, không hỏi mật khẩu, đăng nhập tức thì. Q2 Trình duyệt ngoài → **bắt buộc tạo tài khoản** (username + mật khẩu). Q3 Sau khi tạo tài khoản → **liên kết Telegram bằng /start** gửi tới 1 bot **ngẫu nhiên** trong các bot đang hoạt động. Q4 Bot là **service riêng**, chỉ giao tiếp qua API web. Q5 Admin **tự chọn nội dung** muốn gửi (kể cả ẢNH hoặc VIDEO kèm) — không tự động chọn hộ. Q6 **Giữ nhiều bot** để tránh bị ban; có trọng số phân phối + tự tạm dừng bot lỗi. Q7 Tài khoản **đã đăng nhập** → được xem nội dung "chỉ thành viên" ngay. Q8 Tên hiển thị lấy từ **Telegram (first_name)**. Q9 **Digest định kỳ do admin quản lý** (bật/tạm dừng thủ công), không tự bật. Q10 `/start` **chỉ hiện nút truy cập web** — không menu bàn phím, không flow node. |
+| 2026-11-24 | **Service bot dùng Node.js + grammY** (thay vì Python như bản kế hoạch gốc) — chủ dự án chọn để **chạy và kiểm thử được trong môi trường hiện tại** (máy không có Python; xem mục 8). Một ngôn ngữ cho cả hai phía. |
+| 2026-11-24 | **Xác minh initData: web KHÔNG giữ token bot.** Web gọi nội bộ `127.0.0.1:8091/internal/verify` (header `X-Bot-Secret`) để service bot verify HMAC bằng **mọi** token. Token chỉ nằm ở service bot. Phương án dự phòng (web lưu token mã hoá AES-256-GCM) **chưa dùng** — phải ghi rõ rủi ro nếu chuyển sang. |
+| 2026-11-24 | **Liên kết tài khoản Mini App: tự tạo theo Telegram ID** (`auto_by_tid`) — Mini App **luôn tạo tài khoản mới theo telegram_id**, không âm thầm gộp vào tài khoản đã có. Tránh việc một người dùng bị nhầm vào tài khoản của người khác. |
+| 2026-11-24 | **Luật tần suất cứng do WEB thực thi** (bot không tự quyết định): tối đa **1 tin/người/ngày**, **3 tin/người/tuần**, **≥6 giờ** giữa hai tin, chỉ gửi trong khung **08:00–22:00 giờ Việt Nam**. Bỏ qua: đã opt-out · `notify_enabled=false` · đã nhận cùng chiến dịch · đã nhận cùng nội dung trong 7 ngày · `status='blocked'`. Admin **không vượt được** các luật này. |
+| 2026-11-24 | **Mọi endpoint `/api/bot/*` kiểm tra header `X-Bot-Secret`** bằng `crypto.timingSafeEqual`; sai → 401. `BOT_API_SECRET` là biến môi trường, **KHÔNG commit**. |
+| 2026-11-24 | **Media Telegram giới hạn cứng:** ảnh ≤ 10 MB, video ≤ 50 MB. Media "chỉ thành viên" **không bao giờ gửi file** (Telegram tải URL không có cookie → 403) → chỉ gửi link. Hệ thống **không tự nén video**. |
 
 ## 7. Câu hỏi còn mở
 
@@ -163,6 +171,15 @@ Mỗi dòng: **lỗi / tình huống** → **cách tránh**.
 - **B19 — Tắt cưỡng bức tiến trình Node giữa lúc PGlite đang chạy → hỏng dữ liệu dev.** `postmaster.pid` bị khoá, WAL không ghi được ⇒ lần mở sau báo lỗi database. → Đóng server bằng `Ctrl+C` sạch (hoặc `taskkill` sau khi đóng cửa sổ), không `Stop-Process -Force`. Nếu đã hỏng: xoá thư mục `server/data/` và tạo lại dữ liệu dev + chạy lại script seed (`server/data/seed-articles.mjs`).
 - **B20 — Cờ phân quyền (`staffOnly`) chỉ chặn ở lần GHI, không chặn ở lần ĐỌC.** Kênh chat "chỉ BQT" kiểm tra `staffOnly` khi **gửi** tin nhắn, nhưng `GET /api/chat/channels` trả về cả kênh nội bộ, `GET /api/chat/channels/:id/messages` không kiểm tra, và socket `chat:join` cho vào phòng `ch:<id>` không kiểm tra ⇒ khách chỉ cần biết id kênh là đọc được tin nhắn nội bộ (và nhận realtime). → **Mọi cờ phân quyền phải có chốt chặn ở MỌI đường đọc, kể cả đường realtime** — không chỉ ở đường ghi. Cờ `staffOnly` nay có 4 chốt: danh sách kênh, đọc tin nhắn, gửi tin nhắn, vào phòng socket. Cùng kiểu lỗi với B16 → nguyên tắc chung: **đừng dựa vào việc "đã chặn ở chỗ khác"**.
 - **B21 — Ảnh bìa bài viết không nhất quán với media thực sự tồn tại.** Ba đường dẫn làm bài mất ảnh bìa: (1) admin chọn **video chưa có khung hình** làm bìa → `coverImageKey = null` → thẻ và banner trượt mất ảnh; (2) **xoá ảnh đang làm bìa** → code cũ đặt bìa về `none` thay vì chọn lại ảnh khác còn trong bài; (3) **xoá video đang làm bìa** → cũng đặt bìa về `none`. → **Ảnh bìa phải luôn trỏ tới một file thật.** Thêm hàm `resolveCover(articleId)` chọn lại media còn tồn tại (ảnh đầu tiên → video có khung hình → none) sau khi xoá media; khi chọn video làm bìa mà video chưa có khung hình thì **trả lỗi 400 rõ ràng** thay vì âm thầm làm mất bìa. Nguyên tắc chung: **mọi trường "con trỏ tới file" phải được kiểm tra còn tồn tại trước khi trả về cho giao diện**.
+- **B22 — `nextAllowedTime` tính sai giờ Việt Nam vì cộng offset sai chiều.** Dùng `setUTCHours(vn.hour - 7 + 8)` — với `vn.hour = 23` ra `24` giờ UTC ⇒ **06:00 VN hôm sau**, không phải 08:00. Sai số 2 giờ, âm thầm ⇒ tin nhắn gửi ngoài khung giờ cấm mà vẫn "thành công". → Tính giờ VN theo **phút kể từ nửa đêm**, rồi suy ra mốc UTC của 08:00 VN trong ngày đó (`Date.UTC(y, m, d) - 7*3600_000 + 8*3600_000`); không cộng/trừ offset vào giờ đã quy đổi.
+- **B23 — Chống gửi trùm chỉ dựa vào `delivery_log` thì lỗi khi job chưa gửi xong.** `delivery_log` chỉ có bản ghi **sau khi bot báo kết quả**; trong lúc đó `queueCampaign` chạy lại vẫn tạo job thứ hai cho cùng người ⇒ gửi trùng thật. → Chống trùm phải kiểm tra **cả job đang chờ/đang gửi** (`notification_jobs.status IN ('queued','sending')`) lẫn `delivery_log`. Job đã tồn tại thì bỏ qua với lý do `already_queued`.
+- **B24 — Hash nội dung phải băm trên văn bản GỐC, không phải bản đã escape.** `payload.text` đã escape HTML (`&` → `&amp;`) nên hash khác hash của `campaign.text` ⇒ luật "không gửi lại cùng nội dung trong 7 ngày" **không bao giờ chạy**. → Lưu sẵn `contentHash` của text gốc vào payload lúc tạo job, rồi bot đọc luôn giá trị đó.
+- **B25 — Endpoint admin cần phiên đăng nhập; test phải đăng nhập trước.** `requireAdmin` trả 401 nếu chưa có cookie phiên — test gọi thẳng `/api/admin/telegram/campaigns` sẽ fail với 401 chứ không phải lỗi logic. → Trong test: `POST /api/auth/login` trước rồi gắn cookie vào request sau.
+- **B26 — grammY đổi API: `chat_id` là tham số đầu tiên, không phải option.** `api.sendPhoto(chatId, file, opts)`; gọi `api.sendPhoto(file, { caption })` bị TypeScript chặn (`caption` không thuộc `InputFile`). Ngoài ra grammY **không có** sự kiện `bot.on("start")`. → Đọc `node_modules/grammy/out/core/api.d.ts` khi nâng cấp grammY; đừng đoán chữ ký.
+- **B27 — Tách `main()` ra khỏi file chứa logic để test được.** Nếu `index.ts` tự gọi `main()` lúc import thì mọi test import file đó đều khởi động service (và cần token thật). → `index.ts` chỉ chứa logic + hàm `main()`; `main.ts` mới là điểm vào chạy thật (`node dist/main.js`).
+- **B28 — `delivery_log` có khoá chính (campaign_id, telegram_id), không có cột `id`.** Test đọc `log[0].id` ⇒ `undefined` ⇒ `NaN` ⇒ validator trả 400 thay vì 404. → Khi kiểm tra "job không tồn tại", dùng `notificationJobs.id` lớn hơn mức tối đa, đừng dựa vào `delivery_log.id`.
+- **B29 — Mini App mở 2 tab cùng lúc ⇒ chạm trần unique index.** Cả hai tab đều thấy "chưa có tài khoản" và cùng `INSERT users` ⇒ tab thứ nhất thắng, tab thứ nhất hai bị lỗi unique `users_telegram_id_uq` ⇒ 500. → Bắt lỗi unique (mã `23505` hoặc tên index trong message) rồi **đọc lại tài khoản đã có**; đừng trả 500 cho người dùng.
+- **B30 — Endpoint "ép kiểm tra bot" phải đi qua service bot, không tự làm trong web.** Web **không có token bot** nên không thể gọi `getMe`; nếu chỉ ghi `lastCheckedAt` thì nút "Kiểm tra" không bao giờ cho kết quả. → Thêm `POST /internal/check-bot` ở service bot (chỉ 127.0.0.1, có `X-Bot-Secret`); web gọi nội bộ rồi ghi `status` / `lastCheckedAt` / `lastError`. Không gọi được ⇒ `status='unknown'` + `lastError` để admin thấy còn đang chờ.
 
 ## 10. Nhật ký làm việc
 
@@ -382,3 +399,81 @@ Mẫu mỗi mục:
 - Đã kiểm tra: `npx tsc --noEmit` không lỗi; `npm test` **17/17 pass**; `smoke.mjs` **57/57 pass**; `smoke-admin.mjs` **29/29 pass**; `npm run build` (giao diện) không lỗi; **mở trình duyệt thật**: trang chủ (banner trượt 7 slide, khối Bài viết nổi bật / Xem nhiều hôm nay / Hay nhất tuần / Bài viết mới nhất / Có thể bạn chưa xem / Thẻ phổng biện / Cộng đồng), trang `/bai-viet` (chip chuyên mục + 6 tab sắp xếp), trang `/bai-viet/1` (tiêu đề + 11 ảnh + 1 video player, **0 ảnh vỡ**), trang `/quan-tri` (đủ 9 tab: Tổng quan / Báo vi phạm / Bài viết / Thể loại bài viết / Thành viên / Chuyên mục / Kênh chat / CSKH / Cài đặt trang / Tính lại bộ đếm).
   - **Chưa chạy thử:** Docker / Nginx / PostgreSQL thật trên VPS; video thật (>100 MB) phát + tua qua Nginx; ffmpeg faststart trong container (máy dev **không có ffmpeg**); `backup.sh` + khôi phục; điện thoại thật; socket realtime trên app thật.
 - File / commit: `server/src/routes/articles.ts`, `server/scripts/smoke.mjs`, `server/scripts/smoke-admin.mjs`.
+
+### 2026-11-24 — Thêm — Telegram Bridge GĐ0: lược đồ CSDL
+- Việc đã làm:
+  - Thêm 3 cột vào bảng `users`: `display_name` (varchar 80), `source` (text, mặc định `web`), `telegram_id` (bigint) + **index PARTIAL duy nhất** `users_telegram_id_uq WHERE telegram_id IS NOT NULL` (index thường chỉ cho phép 1 NULL ⇒ sẽ hỏng khi nhiều tài khoản thuần web).
+  - Thêm 9 bảng mới: `telegram_users`, `telegram_user_links`, `telegram_links`, `delivery_log`, `telegram_visits`, `notification_jobs`, `telegram_bots`, `telegram_link_codes`, `telegram_campaigns`.
+  - Migration `server/drizzle/0004_telegram.sql` + `server/drizzle/meta/0004_snapshot.json` + cập nhật `_journal.json` — **tự viết** (không chạy `drizzle-kit generate` tương tác, xem B15).
+- Lý do: GĐ0 của kế hoạch Telegram Bridge — ba bảng then chốt `telegram_links` / `delivery_log` / `telegram_visits` là nền của mọi tính năng đo lường.
+- Bài học / cách tránh: file backup để trong `drizzle/meta/` sẽ làm Drizzle báo **collision** (snapshot cha trùng) → đặt backup ở thư mục riêng ngoài `meta/`.
+- Đã kiểm tra: migration chạy được trên **PGlite** (test) — 40/40 test pass.
+- File / commit: `server/src/db/schema.ts`, `server/drizzle/0004_telegram.sql`, `server/drizzle/meta/0004_snapshot.json`.
+
+### 2026-11-24 — Thêm — Telegram Bridge GĐ1 + GĐ2: API web, luồng liên kết, giao diện
+- Việc đã làm:
+  - `server/src/routes/telegram.ts` (file mới) — nhóm công khai: `/api/telegram/entry`, `/api/telegram/miniapp/auth`, `/api/telegram/browser/register`, `/api/telegram/link-code`, `/api/telegram/track`, `/api/telegram/optout-public`; nhóm bot (`/api/bot/*`, kiểm tra `X-Bot-Secret` bằng `crypto.timingSafeEqual`): `register`, `heartbeat`, `jobs`, `result`, `start`, `link`, `optout`, `bots`, `user/:telegramId`, `stats`; nhóm admin (`/api/admin/telegram/*`): `overview`, `users`, `campaigns` (CRUD + `send` / `activate` / `pause` / `cancel`), `articles/recent`, `import-ids`, `bots`, `bots/:id/check`.
+  - `server/src/telegram.ts` — `verifyInitData` (gọi nội bộ service bot), `ensureTelegramUser`, `ensureWebAccountForTelegram`, `createLinkCode` / `consumeLinkCode` (lưu **sha256**, dùng 1 lần, hạn 15 phút), `pickBot`, `setOptOut`, `setTelegramStatus`.
+  - `server/src/auth.ts` — `publicUser` / `profileUser` / `author` / `authorColumns` trả thêm `displayName` (+ `source`, `telegramId` ở profile).
+  - `server/src/config.ts` — thêm `botApiSecret`, `botInternalUrl`, `siteUrl`.
+  - Giao diện: `frontend/src/pages/telegram/Entry.tsx` (Mini App SDK + đăng nhập + tracking), `LinkAccount.tsx` (mã liên kết 1 lần + nút deep-link), `Stop.tsx` (opt-out công khai); `frontend/src/App.tsx` thêm route `/tg/entry`, `/tg/lien-ket`, `/tg/stop`.
+  - **Hiển thị `displayName ?? username` ở MỌI nơi** — grep toàn bộ `frontend/src/` và sửa: `ui.tsx`, `ArticlePage.tsx`, `Member.tsx`, `NotificationBell.tsx`, `SupportWidget.tsx`, `AuthPages.tsx`, `admin/AdminSupport.tsx`, `Layout.tsx`; thêm `displayName` vào `actor` ở `server/src/routes/notifications.ts` và `lastUser` ở `server/src/routes/forum.ts`.
+- Lý do: GĐ1 (API lõi) + GĐ2 (bridge + tracking) của kế hoạch.
+- Bài học / cách tránh: `telegram_links.telegram_id` tham chiếu **id nội bộ** của `telegram_users`, còn `telegram_users.telegram_id` là Telegram ID thật — trộn hai loại ID làm Mini App đăng nhập lần 2 trả 500. → Luôn truyền đúng loại ID ở từng đoạn truy vấn; `users.telegram_id` lưu Telegram ID **thật**.
+- Đã kiểm tra: `npm test` server **40/40 pass** (17 cũ + 14 telegram + 9 scheduler); `npm run build` server + giao diện không lỗi.
+- File / commit: `server/src/routes/telegram.ts`, `server/src/telegram.ts`, `server/src/auth.ts`, `server/src/config.ts`, `server/src/app.ts`, `frontend/src/pages/telegram/*`, `frontend/src/types.ts`.
+
+### 2026-11-24 — Thêm — Telegram Bridge GĐ3: soạn chiến dịch + bộ đếm tần suất
+- Việc đã làm:
+  - `server/src/scheduler.ts` (file mới) — `vietnamNow` / `nextAllowedTime` (khung 08:00–22:00 giờ VN), `mayReceive` (bộ lọc cứng: 1 tin/ngày, 3 tin/tuần, ≥6 giờ, đã nhận cùng chiến dịch, đã nhận cùng nội dung trong 7 ngày, opt-out, `notify_enabled=false`, `blocked`), `resolveTargets` (5 kiểu đối tượng), `buildPayload` (escape HTML + nút + media), `queueCampaign`, `requeueStuckJobs` (job `sending` quá 10 phút → trả về `queued`), cron quét chiến dịch theo lịch.
+  - `server/src/index.ts` — khởi động / dừng scheduler cùng vòng đời server.
+  - Giao diện quản trị: `frontend/src/pages/admin/AdminTelegram.tsx` (4 tab: Tổng quan / Chiến dịch / Người Telegram / Bot + Nhập ID), thêm tab `telegram` vào `Admin.tsx`.
+  - `server/test/scheduler.test.ts` (file mới) — 9 ca: múi giờ VN, dời tin ra khung giờ, tạo job + không tạo trùng, giới hạn tần suất, opt-out, bot nhận job đúng 1 lần, ghi kết quả, job không tồn tại → 404.
+- Lý do: GĐ3 — **luật tần suất cứng phải do WEB thực thi**, bot không được tự quyết định gửi.
+- Nguyên nhân gốc (3 lỗi đã sửa): xem B22 (sai múi giờ VN), B23 (chống trùm chỉ dựa vào `delivery_log`), B24 (hash trên bản escape HTML).
+- Bài học / cách tránh: bài test gọi endpoint admin phải **đăng nhập trước** (B25); `delivery_log` không có cột `id` (B28).
+- Đã kiểm tra: `npm test` **40/40 pass**; `npm run build` không lỗi.
+- File / commit: `server/src/scheduler.ts`, `server/src/index.ts`, `server/test/scheduler.test.ts`, `frontend/src/pages/admin/AdminTelegram.tsx`.
+
+### 2026-11-24 — Thêm — Telegram Bridge GĐ4: dịch vụ bot (Node.js + grammY)
+- Việc đã làm — thư mục `bot/` mới, **package riêng** (không dùng chung `node_modules` với server):
+  - `bot/src/config.ts` — `BOT_API_URL`, `BOT_API_SECRET`, `BOT_INTERNAL_PORT` (8091), `TELEGRAM_BOT_TOKENS` (nhiều bot, dạng `<id>:<token>`), `WEB_BASE_URL`, `ADMIN_CHAT_ID`, tốc độ gửi, thời gian hồi sau 429.
+  - `bot/src/verifier.ts` — verify `initData` (HMAC-SHA256 với `secret_key = HMAC("WebAppData", token)`), thử **mọi** token, so sánh `timingSafeEqual`, từ chối `initData` quá 24 giờ (chống replay).
+  - `bot/src/internal-server.ts` — endpoint `POST /internal/verify` + `GET /internal/health`, **chỉ bind 127.0.0.1**, kiểm tra `X-Bot-Secret`.
+  - `bot/src/client.ts` — HTTP client gọi `/api/bot/*`, retry + backoff cho 5xx / lỗi mạng, không log token.
+  - `bot/src/registry.ts` — quản lý nhiều bot: `getMe` → `live` / `ban` (401) / `error`; heartbeat 5 phút; chọn bot **theo trọng số**; bot vừa gặp 429 bị bỏ qua (cooldown).
+  - `bot/src/commands.ts` — `/start [code]`, `/stop`, `/help`; **3 nút cố định** (Q10), không menu bàn phím.
+  - `bot/src/jobs.ts` — vòng lặp lấy job đến hạn, gửi, báo kết quả; `RateLimiter` (mặc định 2 tin/giờ/giây); **không gửi file** khi media > 10 MB (ảnh) / > 50 MB (video) / chỉ thành viên ⇒ gửi link kèm `media_too_large` / `media_not_public`.
+  - `bot/src/index.ts` (logic, test được) + `bot/src/main.ts` (điểm vào chạy thật).
+  - `bot/test/bot.test.ts` — **20 ca**: đọc token, verify initData (đúng token / nhiều bot / sai token / bị sửa / hết hạn / rỗng), so sánh khoá dịch vụ, phân tích lệnh, quy tắc media (10 MB / 50 MB / members-only), bàn phím, bộ giới hạn tốc độ.
+  - `.env.example` — thêm `BOT_API_SECRET`, `BOT_INTERNAL_PORT`, `TELEGRAM_BOT_TOKENS`, `SITE_URL`, `ADMIN_CHAT_ID`.
+- Lý do: GĐ4 — bot phải là **service riêng** để lỗi bot không kéo web chết, và để **token bot không nằm trong web**.
+- Bài học / cách tránh: grammY đổi chữ ký API (`chat_id` là tham số đầu tiên; không có sự kiện `bot.on("start")`) — B26; tách `main()` ra file riêng để test được — B27.
+- Đã kiểm tra: `npm run build` trong `bot/` không lỗi; `npm test` trong `bot/` **20/20 pass**; `npm test` server **40/40 pass**; `npm run build` giao diện không lỗi.
+  - **Chưa chạy thử:** bot thật với token Telegram thật (cần token của chủ dự án); Mini App thật (cần bot thật để có `initData`); chạy 24 giờ để xem rò rỉ log; nhiều bot cùng lúc.
+- File / commit: `bot/`, `.env.example`.
+
+### 2026-11-24 — Thay đổi — GĐ5: cập nhật tài liệu
+- Việc đã làm: ghi quyết định Q1–Q10 + các quyết định kiến trúc vào mục 6; bài học B22–B28 vào mục 9; nhật ký GĐ0–GĐ4 vào mục 10; cập nhật `huongdan.txt` (kiến trúc Telegram Bridge + mục triển khai bot).
+- Lý do: BƯỚC 4 của mandate — mỗi đợt thay đổi phải có nhật ký, sửa lỗi phải có nguyên nhân gốc + bài học.
+- Đã kiểm tra: đọc lại sau khi ghi; không có thay đổi code.
+- File / commit: `LUAT_VA_BOI_CANH.md`, `huongdan.txt`.
+
+### 2026-11-24 — Sửa lỗi — Bổ sung endpoint còn thiếu + sửa 4 lỗi logic phát hiện khi rà soát
+- Việc đã làm:
+  - **Thêm `POST /api/telegram/browser/register`** (còn thiếu so với mục 6.1 của kế hoạch): tạo tài khoản web từ trình duyệt (username + mật khẩu, rate-limit 5/giờ), **tự trả về mã liên kết 1 lần + deep link** để mở bot. Giao diện `AuthPages.tsx` chuyển luồng đăng ký sang endpoint này rồi tự điều hướng tới `/tg/lien-ket`.
+  - **Sửa `nextAllowedTime`** (B22): giờ tính đúng múi giờ Việt Nam (trước lệch 2 giờ ⇒ tin gửi ngoài khung 08:00–22:00).
+  - **Sửa chống gửi trùm** (B23): `queueCampaign` nay bỏ qua người đã có job `queued`/`sending`, không chỉ dựa vào `delivery_log`.
+  - **Sửa hash nội dung** (B24): lưu sẵn `contentHash` của text gốc vào payload ⇒ luật "không gửi lại cùng nội dung trong 7 ngày" thực sự chạy.
+  - **Sửa race Mini App 2 tab** (B29): bắt lỗi unique `users_telegram_id_uq` và đọc lại tài khoản đã có thay vì trả 500.
+  - **Thêm `POST /internal/check-bot`** ở service bot + web gọi nội bộ ⇒ nút "Kiểm tra" của admin thật sự ép `getMe` (B30).
+  - **Ẩn khoá trong log**: thêm `redactSecrets` — mọi dòng log của service bot được lọc token Telegram và `BOT_API_SECRET`.
+  - **Sửa hiển thị tên**: `ui.tsx` (avatar lấy chữ cái từ `displayName`), `ThreadPage.tsx` (trích dẫn dùng `displayName`).
+- Lý do: rà soát lại kế hoạch theo từng mục và đối chiếu với code đã viết, tìm ra các điểm còn thiếu và 4 lỗi logic âm thầm.
+- Nguyên nhân gốc: xem B22, B23, B24, B29, B30.
+- Bài học / cách tránh: **đối chiếu từng dòng của bản kế hoạch với code thật** — nhiều điểm "đã làm" thực ra chỉ làm được một nửa (ví dụ nút "Kiểm tra bot" không hề kiểm tra). Với luật thời gian, luật tần suất và luật chống trùng: **luôn tự kiểm bằng một ví dụ tính toán cụ thể**, đừng tin logic viết ra.
+- Đã kiểm tra: server build + `npm test` **44/44 pass**; bot build + `npm test` **31/31 pass**; giao diện build không lỗi.
+  - **Chưa chạy thử:** bot thật với token Telegram thật; Mini App thật; chiến dịch thật gửi tới người thật; `/internal/check-bot` với service bot thật đang chạy.
+- File / commit: `server/src/routes/telegram.ts`, `server/src/scheduler.ts`, `server/src/telegram.ts`, `server/test/telegram.test.ts`, `bot/src/internal-server.ts`, `bot/src/index.ts`, `bot/test/internal.test.ts`, `frontend/src/pages/AuthPages.tsx`, `frontend/src/components/ui.tsx`, `frontend/src/pages/ThreadPage.tsx`.
+
+

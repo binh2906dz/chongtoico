@@ -3,6 +3,8 @@ export type Role = "member" | "mod" | "admin";
 export interface Author {
   id: number;
   username: string;
+  /** Tên hiển thị; lấy từ Telegram first_name nếu tài khoản tạo từ Mini App. */
+  displayName: string;
   avatarUrl: string | null;
   role: Role;
   isBanned: boolean;
@@ -11,6 +13,10 @@ export interface Author {
 export interface Profile extends Author {
   createdAt: string;
   bio: string;
+  /** "web" | "miniapp" | "telegram" — nơi tài khoản được tạo. */
+  source: string;
+  /** Telegram id đã liên kết (null nếu chưa liên kết). */
+  telegramId: number | null;
   threadCount: number;
   postCount: number;
   likeCount: number;
@@ -198,4 +204,87 @@ export interface SupportMessage {
   content: string;
   createdAt: string;
   staff: Author | null;
+}
+
+/* ---------------- Telegram bridge ---------------- */
+
+export type TelegramStatus = "unknown" | "active" | "blocked" | "invalid";
+
+/** Trạng thái của bot: khác với trạng thái của người dùng. */
+export type TelegramBotStatus = "live" | "ban" | "error" | "unknown";
+
+export interface TelegramUserRow {
+  telegramId: number;
+  username: string | null;
+  firstName: string | null;
+  status: TelegramStatus;
+  optOut: boolean;
+  notifyEnabled: boolean;
+  linkedUserId: number | null;
+  linkedUsername: string | null;
+  lastSeenAt: string | null;
+  createdAt: string;
+}
+
+export interface TelegramBotRow {
+  id: string;
+  username: string | null;
+  displayName: string | null;
+  status: TelegramBotStatus;
+  autoResponder: boolean;
+  weight: number;
+  sentCount: number;
+  blockedCount: number;
+  lastCheckedAt: string | null;
+  lastError: string | null;
+  sortOrder: number;
+}
+
+export interface TelegramCampaignButton {
+  label: string;
+  url: string;
+}
+
+export interface TelegramCampaign {
+  id: string;
+  name: string;
+  text: string;
+  mediaType: "image" | "video" | "none" | null;
+  mediaKey: string | null;
+  mediaSource: string | null;
+  mediaNote: string | null;
+  buttons: TelegramCampaignButton[];
+  targetType: "all_linked" | "visited" | "stalled" | "status" | "ids";
+  targetIds: number[];
+  schedule: "now" | "at" | "daily" | "weekly";
+  scheduleStatus: "paused" | "active" | "done";
+  scheduledAt: string | null;
+  hour: number;
+  minute: number;
+  dayOfWeek: number | null;
+  status: "draft" | "queued" | "sending" | "done" | "cancelled" | "paused";
+  total: number;
+  sentCount: number;
+  failedCount: number;
+  clickCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TelegramOverview {
+  telegramUsers: number;
+  linked: number;
+  optOut: number;
+  blocked: number;
+  sent: number;
+  visits: number;
+  clicks: number;
+  ctr: number;
+}
+
+export interface LinkCodeResponse {
+  code: string;
+  botUsername: string | null;
+  deepLink: string;
+  expiresAt: string;
 }

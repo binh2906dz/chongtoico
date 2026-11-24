@@ -101,7 +101,7 @@ function UserMenu() {
     <div className="relative" ref={ref}>
       <button onClick={() => setOpen((o) => !o)} className="flex cursor-pointer items-center gap-2 rounded-full p-0.5 hover:bg-panel-2">
         <Avatar user={user} size={32} />
-        <span className="hidden max-w-28 truncate text-sm font-semibold md:inline">{user.username}</span>
+        <span className="hidden max-w-28 truncate text-sm font-semibold md:inline">{user.displayName || user.username}</span>
       </button>
       {open && (
         <div className="panel absolute right-0 z-40 mt-2 w-52 overflow-hidden py-1 shadow-xl shadow-black/40">
@@ -119,6 +119,9 @@ function UserMenu() {
           </Link>
           <Link to="/thong-bao" onClick={() => setOpen(false)} className="block px-4 py-2 text-sm hover:bg-panel-2">
             Thông báo
+          </Link>
+          <Link to="/tg/lien-ket" onClick={() => setOpen(false)} className="block px-4 py-2 text-sm hover:bg-panel-2">
+            {user.telegramId ? "✅ Đã liên kết Telegram" : "🔗 Liên kết Telegram"}
           </Link>
           {isStaff(user) && (
             <Link to="/quan-tri" onClick={() => setOpen(false)} className="block px-4 py-2 text-sm text-brand hover:bg-panel-2">

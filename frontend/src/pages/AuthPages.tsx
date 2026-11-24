@@ -20,7 +20,7 @@ function AuthForm({ mode }: { mode: "login" | "register" }) {
     return (
       <div className="panel mx-auto max-w-md p-6 text-center">
         <p className="mb-4">
-          Bạn đã đăng nhập với tên <b>{user.username}</b>.
+          Bạn đã đăng nhập với tên <b>{user.displayName || user.username}</b>.
         </p>
         <Link to="/" className="btn-primary">
           Về trang chủ
@@ -38,6 +38,17 @@ function AuthForm({ mode }: { mode: "login" | "register" }) {
     setBusy(true);
     setError(null);
     try {
+      if (isRegister) {
+        // The Telegram endpoint creates the account and hands out a one-time
+        // link code, so the person can link Telegram right away.
+        const res = await api<{ user: Profile; code: string | null; linkUrl: string | null }>(
+          "/api/telegram/browser/register",
+          { body: { username, password } },
+        );
+        setUser(res.user);
+        navigate(res.code ? "/tg/lien-ket" : "/", { replace: true });
+        return;
+      }
       const res = await api<{ user: Profile }>(`/api/auth/${mode}`, { body: { username, password } });
       setUser(res.user);
       const canGoBack = ((window.history.state as { idx?: number } | null)?.idx ?? 0) > 0;

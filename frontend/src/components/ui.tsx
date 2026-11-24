@@ -3,13 +3,14 @@ import { Link } from "react-router-dom";
 import { formatNumber, timeAgo } from "../format";
 import type { Author, ThreadItem } from "../types";
 
-export function Avatar({ user, size = 36 }: { user: Pick<Author, "username" | "avatarUrl"> | null; size?: number }) {
+export function Avatar({ user, size = 36 }: { user: Pick<Author, "username" | "displayName" | "avatarUrl"> | null; size?: number }) {
   const style = { width: size, height: size, fontSize: Math.max(11, size * 0.42) };
+  const label = user?.displayName || user?.username || "?";
   if (user?.avatarUrl) {
     return <img src={user.avatarUrl} alt={user.username} style={style} className="shrink-0 rounded-full object-cover" loading="lazy" />;
   }
-  const letter = (user?.username || "?").charAt(0).toUpperCase();
-  const hue = [...(user?.username || "?")].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 7);
+  const letter = label.charAt(0).toUpperCase();
+  const hue = [...label].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 7);
   return (
     <span
       style={{ ...style, background: `hsl(${hue} 55% 35%)` }}
@@ -31,7 +32,7 @@ export function UserLink({ user, className = "" }: { user: Author | null; classN
   if (!user) return <span className="text-muted">Ẩn danh</span>;
   return (
     <Link to={`/thanh-vien/${user.username}`} className={`font-semibold hover:underline ${roleColor(user.role, user.isBanned)} ${className}`}>
-      {user.username}
+      {user.displayName || user.username}
     </Link>
   );
 }

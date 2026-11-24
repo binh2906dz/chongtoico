@@ -107,7 +107,7 @@ export default function SupportWidget() {
                     m.fromStaff ? "bg-panel-2 text-slate-100" : "bg-brand text-white"
                   }`}
                 >
-                  {m.fromStaff && <div className="mb-0.5 text-[11px] font-bold text-brand">{m.staff?.username || "Hỗ trợ"}</div>}
+                  {m.fromStaff && <div className="mb-0.5 text-[11px] font-bold text-brand">{m.staff?.displayName || m.staff?.username || "Hỗ trợ"}</div>}
                   {m.content}
                   <div className={`mt-0.5 text-[10px] ${m.fromStaff ? "text-muted" : "text-slate-800"}`}>{timeAgo(m.createdAt)}</div>
                 </div>

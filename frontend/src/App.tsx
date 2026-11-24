@@ -42,6 +42,9 @@ const Terms = lazy(() => import("./pages/StaticPages").then((m) => ({ default: m
 const Privacy = lazy(() => import("./pages/StaticPages").then((m) => ({ default: m.Privacy })));
 const Contact = lazy(() => import("./pages/StaticPages").then((m) => ({ default: m.Contact })));
 const NotFound = lazy(() => import("./pages/StaticPages").then((m) => ({ default: m.NotFound })));
+const TgEntry = lazy(() => import("./pages/telegram/Entry"));
+const TgLinkAccount = lazy(() => import("./pages/telegram/LinkAccount"));
+const TgStop = lazy(() => import("./pages/telegram/Stop"));
 
 export default function App() {
   return (
@@ -74,6 +77,9 @@ export default function App() {
         <Route path="dieu-khoan" element={<Terms />} />
         <Route path="quyen-rieng-tu" element={<Privacy />} />
         <Route path="lien-he" element={<Contact />} />
+        <Route path="tg/entry" element={<TgEntry />} />
+        <Route path="tg/lien-ket" element={<TgLinkAccount />} />
+        <Route path="tg/stop" element={<TgStop />} />
         <Route path="*" element={<NotFound />} />
       </Route>
     </Routes>

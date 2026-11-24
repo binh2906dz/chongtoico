@@ -1,0 +1,159 @@
+/**
+ * Entry point of the Telegram bot service.
+ *
+ * The service starts three things:
+ *   1. the Telegram clients of every bot,
+ *   2. the internal verify server (127.0.0.1 only),
+ *   3. the job loop that sends the messages the web app prepared.
+ */
+
+import { Bot, GrammyError } from "grammy";
+import { config } from "./config.js";
+import { handleHelp, handleStart, handleStop, type CommandContext, type CommandReply } from "./commands.js";
+import { startVerifyServer } from "./internal-server.js";
+import { startJobLoop } from "./jobs.js";
+import { BotRegistry } from "./registry.js";
+
+/**
+ * A small logger that never prints a token.
+ *
+ * Telegram and HTTP errors can carry the bot token in their text, so every
+ * message is scrubbed before it is written.
+ */
+export function log(level: "info" | "warn" | "error", message: string): void {
+  const line = `[bot] ${redactSecrets(message)}`;
+  if (level === "error") console.error(line);
+  else if (level === "warn") console.warn(line);
+  else console.log(line);
+}
+
+/**
+ * Remove the bot tokens and the shared secret from a message.
+ *
+ * A Telegram token looks like `123456789:AA...`; the secret is a hex string
+ * that is never printed on its own.
+ */
+export function redactSecrets(message: string): string {
+  let out = message.replace(/\b\d{5,}:[A-Za-z0-9_-]{20,}/g, "[token đã ẩn]");
+  if (config.apiSecret.length >= 8) {
+    out = out.split(config.apiSecret).join("[khoá đã ẩn]");
+  }
+  return out;
+}
+
+/** Split a command into its name and its argument. */
+export function parseCommand(text: string): { name: string; argument: string } | null {
+  const trimmed = text.trim();
+  if (!trimmed.startsWith("/")) return null;
+  const [rawName, ...rest] = trimmed.split(/\s+/);
+  // The name may carry the bot name, for example `/start@my_bot`.
+  const name = (rawName ?? "").replace(/^\//, "").split("@")[0]?.toLowerCase() ?? "";
+  if (!name) return null;
+  return { name, argument: rest.join(" ") };
+}
+
+/** Build the answer of a command, without touching Telegram. */
+export async function answerCommand(
+  text: string,
+  ctx: CommandContext,
+  registry: BotRegistry,
+): Promise<CommandReply | null> {
+  const parsed = parseCommand(text);
+  if (!parsed) return null;
+  if (parsed.name === "start") return handleStart({ ...ctx, argument: parsed.argument }, registry);
+  if (parsed.name === "stop") return handleStop(ctx);
+  return handleHelp(ctx);
+}
+
+export async function main(): Promise<void> {
+  if (!config.apiSecret) {
+    log("error", "Thiếu BOT_API_SECRET — dừng lại.");
+    process.exit(1);
+  }
+  if (!config.botTokens.length) {
+    log("error", "Thiếu TELEGRAM_BOT_TOKENS — dừng lại.");
+    process.exit(1);
+  }
+
+  const registry = new BotRegistry(config.botTokens);
+
+  // 1. The Telegram clients.
+  for (const managed of registry.list()) {
+    const client = new Bot(managed.token);
+    client.catch((err) => {
+      if (err instanceof GrammyError && err.error_code === 429) {
+        registry.markRateLimited(managed.id, err.parameters?.retry_after ?? 60);
+        return;
+      }
+      log("warn", `Lỗi Telegram ở bot ${managed.id}: ${err.message}`);
+    });
+    managed.client = client;
+    client.on("message", async (ctx) => {
+      const text = ctx.message?.text ?? "";
+      const reply = await answerCommand(text, {
+        telegramId: ctx.from?.id ?? 0,
+        firstName: ctx.from?.first_name ?? null,
+        username: ctx.from?.username ?? null,
+        botId: managed.id,
+        botUsername: managed.username,
+      }, registry);
+      if (!reply) return;
+      const rows = reply.buttons.map((b) => [{ text: b.label, url: b.url }]);
+      try {
+        await ctx.reply(reply.text, {
+          parse_mode: "HTML",
+          reply_markup: rows.length ? { inline_keyboard: rows } : undefined,
+        });
+      } catch (err) {
+        log("warn", `Không gửi được câu trả lời: ${err instanceof Error ? err.message : "lỗi"}`);
+      }
+    });
+    if (config.enableTelegram) {
+      try {
+        await client.init();
+        log("info", `Bot ${managed.id} đã sẵn sàng.`);
+      } catch (err) {
+        log("warn", `Không khởi động được bot ${managed.id}: ${err instanceof Error ? err.message : "lỗi"}`);
+      }
+    }
+  }
+
+  // 2. The internal verify server.
+  const server = await startVerifyServer({
+    tokens: registry.tokens(),
+    checkBot: async (botId) => {
+      const managed = registry.get(botId);
+      if (!managed) return null;
+      const status = await registry.checkHealth(botId);
+      return { status, error: managed.lastError };
+    },
+  });
+  log("info", `Dịch vụ nội bộ đang lắng nghe trên ${config.internalHost}:${config.internalPort}.`);
+
+  // 3. Registration, heartbeat and the job loop.
+  await registry.registerAll();
+  const heartbeatTimer = setInterval(() => {
+    void registry.heartbeat();
+  }, config.heartbeatIntervalMs);
+  heartbeatTimer.unref?.();
+
+  const stopLoop = startJobLoop(registry);
+
+  const shutdown = async (signal: string) => {
+    log("info", `Nhận ${signal}, đang tắt dịch vụ.`);
+    clearInterval(heartbeatTimer);
+    stopLoop();
+    for (const managed of registry.list()) {
+      try {
+        await managed.client?.stop();
+      } catch {
+        // Ignore.
+      }
+    }
+    await server.close();
+    process.exit(0);
+  };
+
+  process.on("SIGINT", () => void shutdown("SIGINT"));
+  process.on("SIGTERM", () => void shutdown("SIGTERM"));
+}

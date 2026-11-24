@@ -20,6 +20,7 @@ import memberRoutes from "./routes/members.js";
 import notificationRoutes from "./routes/notifications.js";
 import siteRoutes from "./routes/site.js";
 import supportRoutes from "./routes/support.js";
+import telegramRoutes from "./routes/telegram.js";
 
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 export const CSRF_HEADER = "x-requested-with";
@@ -56,7 +57,9 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
       return;
     }
     if (url.startsWith("/api/") && !SAFE_METHODS.has(req.method) && req.headers[CSRF_HEADER] !== CSRF_VALUE) {
-      throw new HttpError(403, "Yêu cầu không hợp lệ.");
+      // The bot service is a server-to-server client: it authenticates with
+      // X-Bot-Secret, not with the browser CSRF header.
+      if (!url.startsWith("/api/bot/")) throw new HttpError(403, "Yêu cầu không hợp lệ.");
     }
     req.user = await userFromToken(req.cookies[SESSION_COOKIE]);
   });
@@ -86,6 +89,7 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
   await app.register(notificationRoutes);
   await app.register(siteRoutes);
   await app.register(mediaRoutes);
+  await app.register(telegramRoutes);
 
   mkdirSync(VIDEO_DIR(), { recursive: true });
   await app.register(fastifyStatic, {

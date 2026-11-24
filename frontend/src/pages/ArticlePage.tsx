@@ -336,7 +336,7 @@ function CommentItem({
             <CommentForm
               articleId={articleId}
               parentId={c.id}
-              placeholder={`Trả lời ${c.author.username}...`}
+              placeholder={`Trả lời ${c.author.displayName || c.author.username}...`}
               autoFocus
               onSent={() => {
                 setReplying(false);

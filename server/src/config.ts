@@ -31,6 +31,12 @@ export const config = {
   maxUploadMb: Number(process.env.MAX_UPLOAD_MB || 15),
   maxVideoMb: Number(process.env.MAX_VIDEO_MB || 2048),
   logLevel: process.env.LOG_LEVEL || "info",
+  /** Shared secret between the web app and the Telegram bot service (X-Bot-Secret). */
+  botApiSecret: process.env.BOT_API_SECRET || "",
+  /** Internal URL of the bot service, used only to verify Telegram initData. */
+  botInternalUrl: process.env.BOT_INTERNAL_URL || "http://127.0.0.1:8091",
+  /** Public base URL of the site, used to build links inside Telegram messages. */
+  siteUrl: (process.env.SITE_URL || "http://127.0.0.1:8090").replace(/\/+$/, ""),
 };
 
 export type Config = typeof config;
