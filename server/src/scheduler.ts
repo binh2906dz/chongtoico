@@ -10,6 +10,7 @@ import {
   notificationJobs,
   telegramCampaigns,
   telegramLinks,
+  telegramSettings,
   telegramUsers,
 } from "./db/schema.js";
 import { liveBots, pickBot } from "./telegram.js";
@@ -314,18 +315,49 @@ async function buildMessageText(
 ): Promise<string> {
   const body = campaign.text ? escapeHtml(campaign.text) : "";
   const ids = (campaign.articleIds ?? []) as number[];
-  if (!ids.length) return body;
+
+  // The slogan the admin configured is added at the top of the message.
+  const slogan = await firstSlogan();
+
+  if (!ids.length) {
+    if (slogan && body) return `${slogan}\n\n${body}`;
+    return slogan || body;
+  }
 
   const rows = await db
     .select({ id: articles.id, title: articles.title })
     .from(articles)
     .where(inArray(articles.id, ids));
-  if (!rows.length) return body;
+  if (!rows.length) {
+    if (slogan && body) return `${slogan}\n\n${body}`;
+    return slogan || body;
+  }
 
   const links = rows
     .map((a) => `👉 <a href="${base}/bai-viet/${a.id}">${escapeHtml(a.title)}</a>`)
     .join("\n");
+  if (slogan) {
+    return body ? `${slogan}\n\n${body}\n${links}` : `${slogan}\n\n${links}`;
+  }
   return body ? `${body}\n${links}` : links;
+}
+
+/**
+ * The first slogan of the slogan list, when the admin turned slogans on.
+ *
+ * The list is stored in the settings table, so the whole list is read and the
+ * first entry is used.
+ */
+async function firstSlogan(): Promise<string> {
+  const [row] = await db
+    .select({ value: telegramSettings.value })
+    .from(telegramSettings)
+    .where(eq(telegramSettings.key, "slogans"))
+    .limit(1);
+  const cfg = row?.value as { enabled?: boolean; items?: { text?: string }[] } | undefined;
+  if (!cfg?.enabled) return "";
+  const text = (cfg.items ?? []).map((item) => String(item.text ?? "").trim()).find(Boolean);
+  return text ? escapeHtml(text) : "";
 }
 
 /* ------------------------------------------------------------------ *

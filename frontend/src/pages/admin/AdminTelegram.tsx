@@ -415,6 +415,19 @@ function CampaignForm({ onCreated }: { onCreated: () => void }) {
     }[];
   }>("/api/admin/telegram/articles/recent?hours=720");
 
+  // The saved message templates, so a sentence can be inserted with one click.
+  const { data: templateData } = useFetch<{
+    templates: { id: string; title: string; text: string }[];
+    schedule: { enabled: boolean; hour: number; minute: number };
+  }>("/api/admin/telegram/settings");
+  const templates = templateData?.templates ?? [];
+
+  // The daily send hour the admin set in the settings is the default here.
+  const defaultSchedule = templateData?.schedule;
+  const [hourTouched, setHourTouched] = useState(false);
+  const effectiveHour = hourTouched ? hour : (defaultSchedule?.hour ?? hour);
+  const effectiveMinute = hourTouched ? minute : (defaultSchedule?.minute ?? minute);
+
   const preview = useMemo(() => {
     const lines = text.split("\n").filter(Boolean);
     return lines.map((line) => line.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"));
@@ -454,8 +467,8 @@ function CampaignForm({ onCreated }: { onCreated: () => void }) {
                 ? parsedTargetIds
                 : [],
           schedule,
-          hour,
-          minute,
+          hour: effectiveHour,
+          minute: effectiveMinute,
           dayOfWeek: schedule === "weekly" ? dayOfWeek : null,
           // datetime-local gives browser-local time; the campaign runs on
           // Vietnam time, so the value is converted to UTC here.
@@ -493,7 +506,27 @@ function CampaignForm({ onCreated }: { onCreated: () => void }) {
       </div>
 
       <div>
-        <label className="label">Nội dung tin nhắn</label>
+        <div className="mb-1 flex items-center justify-between gap-2">
+          <label className="label mb-0">Nội dung tin nhắn</label>
+          {templates.length > 0 && (
+            <select
+              className="input max-w-56 py-1 text-xs"
+              value=""
+              onChange={(e) => {
+                const tpl = templates.find((t) => t.id === e.target.value);
+                if (tpl) setText((prev) => (prev.trim() ? `${prev.trim()}\n${tpl.text}` : tpl.text));
+                e.target.value = "";
+              }}
+            >
+              <option value="">Chèn mẫu tin nhắn…</option>
+              {templates.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.title}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
         <textarea
           className="input min-h-28"
           value={text}
@@ -699,11 +732,31 @@ function CampaignForm({ onCreated }: { onCreated: () => void }) {
           <>
             <div>
               <label className="label">Giờ (VN)</label>
-              <input type="number" min={0} max={23} className="input" value={hour} onChange={(e) => setHour(Number(e.target.value))} />
+              <input
+                type="number"
+                min={0}
+                max={23}
+                className="input"
+                value={effectiveHour}
+                onChange={(e) => {
+                  setHourTouched(true);
+                  setHour(Number(e.target.value));
+                }}
+              />
             </div>
             <div>
               <label className="label">Phút</label>
-              <input type="number" min={0} max={59} className="input" value={minute} onChange={(e) => setMinute(Number(e.target.value))} />
+              <input
+                type="number"
+                min={0}
+                max={59}
+                className="input"
+                value={effectiveMinute}
+                onChange={(e) => {
+                  setHourTouched(true);
+                  setMinute(Number(e.target.value));
+                }}
+              />
             </div>
           </>
         )}

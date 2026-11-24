@@ -240,6 +240,78 @@ export interface TelegramBotRow {
   sortOrder: number;
 }
 
+/** A bot that can be created from the admin panel. */
+export interface TelegramManagedBot {
+  id: string;
+  name: string;
+  username: string | null;
+  displayName: string | null;
+  telegramId: string | null;
+  status: TelegramBotStatus;
+  autoResponder: boolean;
+  weight: number;
+  sentCount: number;
+  blockedCount: number;
+  lastCheckedAt: string | null;
+  lastError: string | null;
+  hasToken: boolean;
+  tokenHint: string | null;
+}
+
+/** The reply keyboard shown under the chat box of the Telegram user. */
+export interface TelegramKeyboardCell {
+  label: string;
+  type: "text" | "url" | "webapp" | "open_site" | "remove_keyboard" | "stats";
+  body?: string;
+  url?: string;
+  albumId?: string;
+}
+
+export interface TelegramKeyboard {
+  enabled: boolean;
+  prompt: string;
+  rows: TelegramKeyboardCell[][];
+}
+
+/** A ready to use text that can be picked while writing a campaign. */
+export interface TelegramTemplate {
+  id: string;
+  title: string;
+  text: string;
+}
+
+export interface TelegramSlogans {
+  enabled: boolean;
+  items: { text: string; delayAfter: number }[];
+}
+
+export interface TelegramSchedule {
+  enabled: boolean;
+  hour: number;
+  minute: number;
+}
+
+export interface TelegramSettingsBundle {
+  keyboard: TelegramKeyboard;
+  templates: TelegramTemplate[];
+  slogans: TelegramSlogans;
+  schedule: TelegramSchedule;
+}
+
+/** The delivery result of one bot. */
+export interface TelegramBotStat {
+  id: string;
+  name: string;
+  status: TelegramBotStatus;
+  weight: number;
+  sentCount: number;
+  blockedCount: number;
+  links: number;
+  sent: number;
+  failed: number;
+  successRate: number | null;
+}
+
 export interface TelegramCampaignButton {
   label: string;
   url: string;

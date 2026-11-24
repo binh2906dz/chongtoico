@@ -43,6 +43,13 @@
       "when": 1795540000000,
       "tag": "0005_telegram_campaign_articles",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1795600000000,
+      "tag": "0006_telegram_bot_tokens",
+      "breakpoints": true
     }
   ]
 }

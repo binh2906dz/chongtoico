@@ -97,6 +97,39 @@ export interface BotInfo {
   weight: number;
 }
 
+/** One button of the reply keyboard. */
+export interface KeyboardCell {
+  label: string;
+  type: "text" | "url" | "webapp" | "open_site" | "remove_keyboard" | "stats";
+  body?: string;
+  url?: string;
+  albumId?: string;
+}
+
+/** The reply keyboard the admin configured on the web. */
+export interface KeyboardConfig {
+  enabled: boolean;
+  prompt: string;
+  rows: KeyboardCell[][];
+}
+
+/** The slogans the admin configured on the web. */
+export interface SloganConfig {
+  enabled: boolean;
+  items: { text: string; delayAfter: number }[];
+}
+
+/** The settings the bot needs to build its reply keyboard. */
+export interface BotSettings {
+  keyboard: KeyboardConfig;
+  slogans: SloganConfig;
+}
+
+/** Read the reply keyboard and the slogans from the web app. */
+export function fetchSettings(): Promise<BotSettings> {
+  return callWebApi<BotSettings>("/api/bot/settings");
+}
+
 /** Fetch the jobs that are due right now. */
 export function fetchJobs(limit = 20): Promise<{ jobs: Job[] }> {
   return callWebApi<{ jobs: Job[] }>(`/api/bot/jobs?limit=${limit}`);

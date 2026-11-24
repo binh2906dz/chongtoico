@@ -21,6 +21,8 @@ import notificationRoutes from "./routes/notifications.js";
 import siteRoutes from "./routes/site.js";
 import supportRoutes from "./routes/support.js";
 import telegramRoutes from "./routes/telegram.js";
+import telegramAdminRoutes from "./routes/telegramAdmin.js";
+import systemRoutes from "./routes/system.js";
 
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 export const CSRF_HEADER = "x-requested-with";
@@ -90,6 +92,8 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
   await app.register(siteRoutes);
   await app.register(mediaRoutes);
   await app.register(telegramRoutes);
+  await app.register(telegramAdminRoutes);
+  await app.register(systemRoutes);
 
   mkdirSync(VIDEO_DIR(), { recursive: true });
   await app.register(fastifyStatic, {

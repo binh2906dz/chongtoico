@@ -57,6 +57,42 @@ export class BotRegistry {
     return this.bots.get(id);
   }
 
+  /**
+   * Add a bot at runtime.
+   *
+   * Used when an admin creates a bot in the admin panel: the service must
+   * open a new Telegram connection without a restart.
+   */
+  add(id: string, token: string): void {
+    if (!id || !token) return;
+    if (this.bots.has(id)) {
+      const existing = this.bots.get(id)!;
+      existing.token = token;
+      return;
+    }
+    this.bots.set(id, {
+      id,
+      token,
+      client: null,
+      health: "unknown" as BotHealth,
+      username: null,
+      displayName: null,
+      weight: 1,
+      sentCount: 0,
+      cooldownUntil: 0,
+      lastError: null,
+    });
+  }
+
+  /** Remove a bot at runtime. */
+  remove(id: string): void {
+    const bot = this.bots.get(id);
+    if (!bot) return;
+    // Drop the client so the Telegram connection is closed as well.
+    bot.client = null;
+    this.bots.delete(id);
+  }
+
   /** The tokens of every bot, used by the initData verifier. */
   tokens(): string[] {
     return this.list().map((b) => b.token);

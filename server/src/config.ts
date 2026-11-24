@@ -33,10 +33,22 @@ export const config = {
   logLevel: process.env.LOG_LEVEL || "info",
   /** Shared secret between the web app and the Telegram bot service (X-Bot-Secret). */
   botApiSecret: process.env.BOT_API_SECRET || "",
+  /**
+   * Key used to encrypt Telegram bot tokens stored in the database
+   * (AES-256-GCM). When it is empty the web app never stores a token.
+   */
+  tokenEncryptionKey: process.env.TOKEN_ENCRYPTION_KEY || "",
   /** Internal URL of the bot service, used only to verify Telegram initData. */
   botInternalUrl: process.env.BOT_INTERNAL_URL || "http://127.0.0.1:8091",
   /** Public base URL of the site, used to build links inside Telegram messages. */
   siteUrl: (process.env.SITE_URL || "http://127.0.0.1:8090").replace(/\/+$/, ""),
+  /**
+   * Folder where the database dumps are written. It must be writable by the
+   * app user and mounted as a volume so a dump survives a container restart.
+   */
+  backupDir: path.resolve(process.env.BACKUP_DIR || "./data/backups"),
+  /** How many dumps are kept. The oldest ones are removed when the limit is hit. */
+  backupKeep: Number(process.env.BACKUP_KEEP || 7),
 };
 
 export type Config = typeof config;

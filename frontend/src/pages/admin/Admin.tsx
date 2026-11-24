@@ -11,14 +11,20 @@ import AdminReports from "./AdminReports";
 import AdminSettings from "./AdminSettings";
 import AdminSupport from "./AdminSupport";
 import {
-  AdminTelegramBots,
   AdminTelegramCampaigns,
-  AdminTelegramImport,
   AdminTelegramOverview,
   AdminTelegramUsers,
 } from "./AdminTelegram";
+import {
+  AdminTelegramBotsManage,
+  AdminTelegramIdsManage,
+  AdminTelegramKeyboard,
+  AdminTelegramSlogans,
+  AdminTelegramTemplates,
+} from "./AdminTelegramTools";
+import { AdminSystem } from "./AdminSystem";
 
-const TABS = ["overview", "reports", "bai-viet", "the-loai", "users", "categories", "channels", "support", "telegram", "settings"] as const;
+const TABS = ["overview", "reports", "bai-viet", "the-loai", "users", "categories", "channels", "support", "telegram", "settings", "system"] as const;
 type Tab = (typeof TABS)[number];
 
 function Overview() {
@@ -369,6 +375,7 @@ export default function Admin() {
           { id: "support", label: "CSKH" },
           ...(admin ? [{ id: "telegram" as const, label: "Telegram" }] : []),
           ...(admin ? [{ id: "settings" as const, label: "Cài đặt trang" }] : []),
+          ...(admin ? [{ id: "system" as const, label: "Hệ thống" }] : []),
         ]}
         value={tab}
         onChange={setTab}
@@ -424,11 +431,21 @@ export default function Admin() {
       )}
       {tab === "support" && <AdminSupport />}
       {tab === "telegram" && admin && <AdminTelegram />}
+      {tab === "system" && admin && <AdminSystem />}
     </div>
   );
 }
 
-const TG_TABS = ["tong-quan", "chien-dich", "nguoi-dung", "bot", "nhap-id"] as const;
+const TG_TABS = [
+  "tong-quan",
+  "chien-dich",
+  "nguoi-dung",
+  "bot",
+  "ban-phim",
+  "mau-tin-nhan",
+  "cau-hinh",
+  "nhap-id",
+] as const;
 
 function AdminTelegram() {
   const [sub, setSub] = useState<(typeof TG_TABS)[number]>("tong-quan");
@@ -440,6 +457,9 @@ function AdminTelegram() {
           { id: "chien-dich", label: "Chiến dịch" },
           { id: "nguoi-dung", label: "Người Telegram" },
           { id: "bot", label: "Bot" },
+          { id: "ban-phim", label: "Bàn phím" },
+          { id: "mau-tin-nhan", label: "Mẫu tin nhắn" },
+          { id: "cau-hinh", label: "Cấu hình" },
           { id: "nhap-id", label: "Nhập ID" },
         ]}
         value={sub}
@@ -448,8 +468,11 @@ function AdminTelegram() {
       {sub === "tong-quan" && <AdminTelegramOverview />}
       {sub === "chien-dich" && <AdminTelegramCampaigns />}
       {sub === "nguoi-dung" && <AdminTelegramUsers />}
-      {sub === "bot" && <AdminTelegramBots />}
-      {sub === "nhap-id" && <AdminTelegramImport />}
+      {sub === "bot" && <AdminTelegramBotsManage />}
+      {sub === "ban-phim" && <AdminTelegramKeyboard />}
+      {sub === "mau-tin-nhan" && <AdminTelegramTemplates />}
+      {sub === "cau-hinh" && <AdminTelegramSlogans />}
+      {sub === "nhap-id" && <AdminTelegramIdsManage />}
     </div>
   );
 }

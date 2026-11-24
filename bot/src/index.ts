@@ -9,9 +9,11 @@
 
 import { Bot, GrammyError } from "grammy";
 import { config } from "./config.js";
-import { handleHelp, handleStart, handleStop, type CommandContext, type CommandReply } from "./commands.js";
+import { fetchSettings } from "./client.js";
+import { handleHelp, handleStart, handleStop, openWebUrl, type CommandContext, type CommandReply } from "./commands.js";
 import { startVerifyServer } from "./internal-server.js";
 import { startJobLoop } from "./jobs.js";
+import { answerForLabel, buildReplyKeyboard, keyboardPrompt, loadKeyboard } from "./keyboard.js";
 import { BotRegistry } from "./registry.js";
 
 /**
@@ -90,19 +92,50 @@ export async function main(): Promise<void> {
     managed.client = client;
     client.on("message", async (ctx) => {
       const text = ctx.message?.text ?? "";
-      const reply = await answerCommand(text, {
+      const commandCtx: CommandContext = {
         telegramId: ctx.from?.id ?? 0,
         firstName: ctx.from?.first_name ?? null,
         username: ctx.from?.username ?? null,
         botId: managed.id,
         botUsername: managed.username,
-      }, registry);
+      };
+
+      // A button of the reply keyboard is not a command, so it is answered
+      // with the text the admin prepared for it.
+      if (!text.trim().startsWith("/")) {
+        const cfg = await loadKeyboard(fetchSettings);
+        const answer = answerForLabel(cfg, text, openWebUrl(commandCtx, "keyboard"));
+        if (answer !== null) {
+          try {
+            await ctx.reply(answer.text, {
+              parse_mode: "HTML",
+              // The admin can add a button that hides the custom keyboard.
+              reply_markup: answer.removeKeyboard ? { remove_keyboard: true } : undefined,
+            });
+          } catch (err) {
+            log("warn", `Không gửi được câu trả lời: ${err instanceof Error ? err.message : "lỗi"}`);
+          }
+          return;
+        }
+      }
+
+      const reply = await answerCommand(text, commandCtx, registry);
       if (!reply) return;
+
       const rows = reply.buttons.map((b) => [{ text: b.label, url: b.url }]);
+      // The reply keyboard is shown under the chat box when the admin turned
+      // it on; the inline buttons stay as they are.
+      const keyboardCfg = await loadKeyboard(fetchSettings);
+      const replyKeyboard = buildReplyKeyboard(keyboardCfg);
+      const prompt = keyboardCfg?.enabled ? `\n\n${keyboardPrompt(keyboardCfg)}` : "";
       try {
-        await ctx.reply(reply.text, {
+        await ctx.reply(`${reply.text}${prompt}`, {
           parse_mode: "HTML",
-          reply_markup: rows.length ? { inline_keyboard: rows } : undefined,
+          reply_markup: replyKeyboard
+            ? replyKeyboard
+            : rows.length
+              ? { inline_keyboard: rows }
+              : undefined,
         });
       } catch (err) {
         log("warn", `Không gửi được câu trả lời: ${err instanceof Error ? err.message : "lỗi"}`);
@@ -120,12 +153,25 @@ export async function main(): Promise<void> {
 
   // 2. The internal verify server.
   const server = await startVerifyServer({
-    tokens: registry.tokens(),
+    tokens: () => registry.tokens(),
     checkBot: async (botId) => {
       const managed = registry.get(botId);
       if (!managed) return null;
       const status = await registry.checkHealth(botId);
       return { status, error: managed.lastError };
+    },
+    applyBot: async (action, botId, token) => {
+      if (action === "remove") {
+        registry.remove(botId);
+        log("info", `Đã gỡ bot ${botId} theo yêu cầu từ web.`);
+        return true;
+      }
+      if (!token) return false;
+      registry.add(botId, token);
+      log("info", `Đã thêm bot ${botId} theo yêu cầu từ web.`);
+      // Open the Telegram connection right away so the bot can work at once.
+      await registry.checkHealth(botId).catch(() => undefined);
+      return true;
     },
   });
   log("info", `Dịch vụ nội bộ đang lắng nghe trên ${config.internalHost}:${config.internalPort}.`);

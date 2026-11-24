@@ -318,6 +318,11 @@ Cài dịch vụ bot Telegram (ngoài Docker — cần token + kết nối Teleg
   chỉ bind 127.0.0.1).
 - TELEGRAM_BOT_TOKENS : "<id>:<token>,<id>:<token>" — token bot. CHỈ đặt cho
   service bot, KHÔNG đặt trong container web.
+- TOKEN_ENCRYPTION_KEY : khoá mã hoá token bot lưu trong CSDL (AES-256-GCM).
+  Bắt buộc khi muốn THÊM BOT TỪ TRANG QUẢN TRỊ; không có nó thì nút "Thêm bot"
+  báo lỗi. Sinh bằng `openssl rand -hex 32`. KHÔNG commit.
+- ALLOW_RESTORE       : đặt "1" để cho phép khôi phục CSDL từ trang quản trị.
+  Mặc định "0" (chặn) để tránh hỏng dữ liệu. Bật khi thao tác, tắt lại sau.
 - SITE_URL          : URL công khai của website (dựng link trong tin nhắn Telegram).
 - ADMIN_CHAT_ID     : chat id Telegram nhận cảnh báo vận hành (tuỳ chọn).
 
@@ -604,6 +609,47 @@ b22c5f7 feat: scaffold new platform (đã thay thế — xoá ở bản Node.js)
     articles.visibility (B34).
   Đã kiểm tra: server build + npm test 44/44, giao diện build không lỗi.
   CHƯA chạy thử giao diện mới trên trình duyệt / chiến dịch có media thật.
+
+[2026-11-24] PORT TÍNH NĂNG QUẢN LÝ TỪ REPO CŨ telegram-bot-dashboard (Python/Flask).
+  Chủ dự án chốt 6 nhóm: Quản lý Bot / Bàn phím Telegram / Mẫu tin nhắn (gọi là
+  "Kịch bản") / Quản lý ID đầy đủ / Cấu hình Bot (giờ gửi + slogan) / Backup &
+  Hệ thống. Hướng bot giữ nguyên: bot chỉ dẫn người dùng về web.
+  - MÃ HOÁ TOKEN BOT trong CSDL (chủ dự án chọn, đảo quyết định cũ "web KHÔNG
+    giữ token"): server/src/crypto.ts — AES-256-GCM, scrypt + salt ngẫu nhiên,
+    format v1.salt.iv.tag.cipher. Khoá lấy từ TOKEN_ENCRYPTION_KEY (không có
+    thì không thêm bot từ web). Token KHÔNG BAO GIỜ hiện lại trên trình duyệt,
+    chỉ hiện dạng đã che.
+  - Thêm bot ngay trên web: dán token → getMe kiểm tra → mã hoá → lưu. Thêm/xoá
+    bot lúc chạy qua POST /internal/bot-token của service bot (bot mở/đóng
+    kết nối Telegram không cần restart). LƯU Ý: tokens của internal server phải
+    là HÀM () => string[] để bot mới dùng được ngay cho verify initData (B35).
+  - Bàn phím Telegram: cấu hình lưới nút dưới ô chat (6 loại: text / url /
+    webapp / open_site / remove_keyboard / stats). Service bot đọc qua
+    GET /api/bot/settings (cache 60s), dựng ReplyKeyboardMarkup. Nút
+    remove_keyboard gửi ReplyKeyboardRemove để ẩn bàn phím.
+  - Mẫu tin nhắn: thư viện câu dựng sẵn, có dropdown "Chèn mẫu tin nhắn…" ngay
+    trong form soạn chiến dịch (KHÔNG phải flow node như repo cũ).
+  - Quản lý ID: upload .txt/.csv (ID ở cột bất kỳ), thống kê theo trạng thái,
+    xoá từng ID hoặc xoá hàng loạt ID chưa liên kết.
+  - Cấu hình Bot: giờ gửi tự động (giờ VN) là giờ MẶC ĐỊNH của chiến dịch
+    daily/weekly; slogan server tự chèn lên đầu tin nhắn.
+  - Backup & Hệ thống: pg_dump/psql (thêm postgresql-client vào Dockerfile),
+    tạo/tải/xoá bản sao lưu ở volume "backups", xem dung lượng ổ đĩa. KHÔI PHỤC
+    bị chặn trừ khi ALLOW_RESTORE=1. Trên PGlite (máy dev) không có pg_dump =>
+    API trả lời rõ là không hỗ trợ.
+  - File mới: server/src/crypto.ts, server/src/routes/telegramAdmin.ts,
+    server/src/routes/system.ts, bot/src/keyboard.ts,
+    frontend/src/pages/admin/AdminTelegramTools.tsx,
+    frontend/src/pages/admin/AdminSystem.tsx. Migration 0006 (token_encrypted,
+    telegram_id, bảng telegram_settings). Tab Telegram nay 8 tab con; thêm tab
+    "Hệ thống" ở Admin.tsx.
+  Đã kiểm tra: server build + npm test 54/54, bot build + npm test 45/45, giao
+  diện build không lỗi. ĐÃ chạy thử thật trên 127.0.0.1:8090 (PGlite): đăng
+  nhập admin, gọi hết endpoint mới (server/scripts/check-admin-api.mjs), xem trên
+  trình duyệt (8 tab + tab Hệ thống, bàn phím 2 nút, thống kê 3 ID, dropdown mẫu
+  tin nhắn, giờ mặc định 9:30).
+  CHƯA chạy thử: pg_dump thật, bot thật với token Telegram thật, thêm bot từ web
+  với token thật (trên VPS cần đặt TOKEN_ENCRYPTION_KEY).
 
 ================================================================================
 Hết — lưu ý: không lưu mật khẩu / token thật trong file này.

@@ -17,7 +17,8 @@ RUN npm run build
 FROM node:24-bookworm-slim
 ENV NODE_ENV=production
 # ffmpeg: remux uploaded mp4/mov for instant playback (faststart) and grab thumbnails. No re-encoding.
-RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg && rm -rf /var/lib/apt/lists/*
+# postgresql-client: pg_dump / psql for the backup screen of the admin panel.
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg postgresql-client && rm -rf /var/lib/apt/lists/*
 WORKDIR /app/server
 COPY server/package.json server/package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force

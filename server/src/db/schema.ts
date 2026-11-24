@@ -668,9 +668,23 @@ export const telegramBots = pgTable(
     lastCheckedAt: timestamp("last_checked_at", { withTimezone: true }),
     lastError: text("last_error"),
     sortOrder: integer("sort_order").notNull().default(0),
+    /** Encrypted token (AES-256-GCM). Null when the token lives in the bot service only. */
+    tokenEncrypted: text("token_encrypted"),
+    /** The numeric Telegram id of the bot, used for deep links. */
+    telegramId: varchar("telegram_id", { length: 32 }),
   },
   (t) => [index("telegram_bots_status_idx").on(t.status)],
 );
+
+/**
+ * Global settings of the Telegram side: the reply keyboard, the scheduled
+ * send hour, the slogans and the message templates.
+ */
+export const telegramSettings = pgTable("telegram_settings", {
+  key: varchar("key", { length: 64 }).primaryKey(),
+  value: jsonb("value").notNull().default([]),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
 
 /** One-time link code — only the SHA-256 hash is stored, never the code itself. */
 export const telegramLinkCodes = pgTable(
