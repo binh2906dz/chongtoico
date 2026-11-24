@@ -248,6 +248,31 @@ Chạy service bot (ngoài Docker, vì cần token + kết nối Telegram):
        (xem tên đúng bằng `docker volume ls`); docker compose up -d db; chạy lệnh trên; docker compose up -d)
     docker compose exec -T app tar -C /data/uploads -xzf - < /opt/chongtoico-backups/files-<ngày>.tar.gz
 
+Cài dịch vụ bot Telegram (ngoài Docker — cần token + kết nối Telegram):
+  1. Tạo bot ở @BotFather → lấy token → đặt BOT_API_SECRET (openssl rand -hex 32)
+     + TELEGRAM_BOT_TOKENS="<id>:<token>" + SITE_URL vào .env của web.
+  2. Trên VPS:
+       cd /opt/chongtoico/bot && npm ci && npm run build
+  3. Tạo service systemd /etc/systemd/system/chongtoico-bot.service:
+       [Unit]
+       Description=Chong Toi Co - Telegram bot
+       After=network.target docker.service
+       [Service]
+       Type=simple
+       WorkingDirectory=/opt/chongtoico/bot
+       EnvironmentFile=/opt/chongtoico/.env
+       ExecStart=/usr/bin/node dist/main.js
+       Restart=always
+       RestartSec=10
+       [Install]
+       WantedBy=multi-user.target
+     rồi: systemctl daemon-reload && systemctl enable --now chongtoico-bot
+  4. Kiểm tra: systemctl status chongtoico-bot
+     curl -s http://127.0.0.1:8091/internal/health   (mong đợi {"ok":true,...})
+  5. Trong @BotFather: BotFather > Menu Button > set Mini App URL = <SITE_URL>/tg/entry
+  QUAN TRỌNG: BOT_API_SECRET phải GIỐNG NHAU ở web và bot. Token bot KHÔNG
+  đặt trong container web. Không bao giờ commit file .env.
+
 --------------------------------------------------------------------------------
 3) BIẾN MÔI TRƯỜNG (.env — xem .env.example)
 --------------------------------------------------------------------------------
@@ -269,6 +294,14 @@ Chạy service bot (ngoài Docker, vì cần token + kết nối Telegram):
   container qua Docker bridge 172.x). "false" = không tin proxy nào. TUYỆT ĐỐI
   không đặt tin mọi IP (trước 2026-11-08 là "true" => giả mạo IP được, vượt
   giới hạn đăng nhập).
+- BOT_API_SECRET    : khoá dịch vụ chung giữa web và bot (X-Bot-Secret). Bắt
+  buộc có khi dùng Telegram Bridge; sinh bằng `openssl rand -hex 32`.
+- BOT_INTERNAL_PORT : cổng endpoint nội bộ xác minh initData (mặc định 8091,
+  chỉ bind 127.0.0.1).
+- TELEGRAM_BOT_TOKENS : "<id>:<token>,<id>:<token>" — token bot. CHỈ đặt cho
+  service bot, KHÔNG đặt trong container web.
+- SITE_URL          : URL công khai của website (dựng link trong tin nhắn Telegram).
+- ADMIN_CHAT_ID     : chat id Telegram nhận cảnh báo vận hành (tuỳ chọn).
 
 --------------------------------------------------------------------------------
 4) BẢO MẬT ĐÃ CÓ
@@ -407,6 +440,7 @@ Chạy service bot (ngoài Docker, vì cần token + kết nối Telegram):
 7) LỊCH SỬ GIT (oneline — cập nhật sau mỗi lần push)
 --------------------------------------------------------------------------------
 (xem `git log --oneline`; các commit chính)
+eb48ff8 feat(telegram): Telegram Bridge GĐ0-GĐ5 - web giữ nội dung, bot chỉ nhắc người dùng quay lại web; sửa 4 lỗi logic (múi giờ VN, chống gửi trùm, hash nội dung, race Mini App); dịch vụ bot Node.js + grammY trong bot/
 6c6ea4e fix(articles): giu anh bia luon tro toi file that (resolveCover sau khi xoa media, bao loi khi video chua co khung hinh); them script kiem chung chuc nang smoke.mjs (57) + smoke-admin.mjs (29); docs
 2713232 fix(security): chan doc kenh chat chi BQT (danh sach + tin nhan + realtime); sua bo dem tin nhan, tinh lai image/video count; giao dien: bo du lieu cu, loi 403, banner du phong; docs
 fb15e94 fix(security): chan khach doc binh luan va media cua bai chi thanh vien; responsive cover variants; docs
