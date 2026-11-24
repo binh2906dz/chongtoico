@@ -316,6 +316,7 @@ Hàng chờ: Quản trị > Báo vi phạm (mod + admin).
 7) LỊCH SỬ GIT (oneline — cập nhật sau mỗi lần push)
 --------------------------------------------------------------------------------
 (xem `git log --oneline`; các commit chính)
+6c6ea4e fix(articles): giu anh bia luon tro toi file that (resolveCover sau khi xoa media, bao loi khi video chua co khung hinh); them script kiem chung chuc nang smoke.mjs (57) + smoke-admin.mjs (29); docs
 2713232 fix(security): chan doc kenh chat chi BQT (danh sach + tin nhan + realtime); sua bo dem tin nhan, tinh lai image/video count; giao dien: bo du lieu cu, loi 403, banner du phong; docs
 fb15e94 fix(security): chan khach doc binh luan va media cua bai chi thanh vien; responsive cover variants; docs
 a4952df feat: hop nhat video va album thanh bai viet da phuong tien
