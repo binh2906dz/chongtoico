@@ -653,6 +653,33 @@ b22c5f7 feat: scaffold new platform (đã thay thế — xoá ở bản Node.js)
   CHƯA chạy thử: pg_dump thật, bot thật với token Telegram thật, thêm bot từ web
   với token thật (trên VPS cần đặt TOKEN_ENCRYPTION_KEY).
 
+[2026-11-24] CHUYỂN 1 BÀI VIẾT TỪ WEB CŨ (telegram-bot-dashboard) SANG WEB MỚI.
+  Web cũ: https://ngeyhsvge683874.online (Flask + SQLite "albums" + media tĩnh
+  /static/uploads/{images,videos}). Dữ liệu thật nằm trên VPS, máy local không
+  có Python/data.db — phải đăng nhập web cũ để lấy.
+  - Cấu trúc web cũ: album = {id,title,description,category_id,posts[]}; post =
+    {id,caption,photos:[{url,type}],created_at}. Route đọc nội dung:
+    GET /albums/<id>/posts/edit (cần đăng nhập + csrf_token), danh sách album nằm
+    trong <script id="rmAlbumsJson"> của trang /.
+  - Script MỚI trong repo này: server/scripts/import-from-old-web.mjs — đăng nhập
+    web cũ, tải album + media về --src, đăng nhập web mới, tạo 1 bài viết và
+    upload toàn bộ ảnh/video. Dùng:
+      OLD_BASE=... OLD_USER=... OLD_PASS=... NEW_BASE=... NEW_USER=... NEW_PASS=...
+      node server/scripts/import-from-old-web.mjs --album album_xxx --src ./tmp --replace
+    (--replace xoá bản cũ trùng tiêu đề trước khi tạo).
+  - Ánh xạ: mỗi post cũ -> 1 media; caption các post gộp vào description bài viết
+    (đánh số 【1】【2】...); tiêu đề "<tên album> (chuyển từ web cũ)".
+  - GIAO DIỆN MỚI yêu cầu header CSRF "x-requested-with: ctc" cho mọi method
+    khác GET/HEAD/OPTIONS (xem server/src/app.ts) — thiếu là 403 "Yêu cầu không
+    hợp lệ". Danh sách bài dùng GET /api/articles (không có /api/admin/articles
+    dạng collection).
+  - MÁY DEV ĐÃ CÀI ffmpeg (winget Gyan.FFmpeg) — server cache hasFfmpeg() nên
+    phải KHỞI ĐỘNG LẠI server sau khi cài, video mới có khung hình poster +
+    duration/width/height. Trên VPS đã có ffmpeg trong Dockerfile.
+  - ĐÃ LÀM: album album_a827174a "Libk ngày 30/9" -> bài viết id=2 trên web mới,
+    5 ảnh + 5 video, poster + duration đầy đủ, hiển thị đúng ở trang chủ
+    (badge 🖼️5 🎬5) và trang bài viết.
+
 ================================================================================
 Hết — lưu ý: không lưu mật khẩu / token thật trong file này.
 ================================================================================

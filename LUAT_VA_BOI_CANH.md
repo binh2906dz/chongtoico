@@ -194,6 +194,9 @@ Mỗi dòng: **lỗi / tình huống** → **cách tránh**.
 - **B39 — `telegram_links` KHÔNG có cột `bot_id`** (chỉ `telegram_user_links` mới có). Đếm người theo dõi theo bot phải query `telegram_user_links`. → Đọc `server/src/db/schema.ts` trước khi viết query theo cột; cột "giống tên" ở bảng khác dễ gây sai âm thầm.
 - **B40 — `initDb()` cần tham số `databaseUrl`.** Gọi `initDb()` ⇒ `TypeError: Cannot read properties of undefined (reading 'startsWith')`. → Test luôn gọi `await initDb("pglite:memory")`.
 - **B41 — `config` được đọc lúc import nên biến môi trường phải set TRƯỚC khi import.** → Trong test: đặt `process.env.*` ở đầu file, rồi mới `await import(...)`.
+- **B42 — Mọi request khác GET/HEAD/OPTIONS tới `/api/` đều cần header CSRF `x-requested-with: ctc`.** Thiếu ⇒ `403 {"error":"Yêu cầu không hợp lệ"}` (không phải lỗi đăng nhập!). → Script gọi API phải luôn gửi header này (xem `server/src/app.ts`).
+- **B43 — `hasFfmpeg()` CACHE kết quả trong module.** Cài ffmpeg sau khi server đã chạy ⇒ server vẫn tưởng là không có ⇒ video không có poster/duration. → **Cài ffmpeg phải KHỞI ĐỘNG LẠI server**; nếu không thì gửi kèm `thumb` + `duration`/`width`/`height` khi upload.
+- **B44 — Web cũ (Flask) giữ dữ liệu trên VPS, không có trong repo.** Repo chỉ có mã nguồn + `data.db` không tồn tại + máy dev không có Python ⇒ phải **đăng nhập web cũ qua HTTP** để lấy dữ liệu: `POST /login` (cần `csrf_token` trong HTML) → cookie phiên → `GET /albums/<id>/posts/edit`. Cấu trúc album nằm trong `<script id="rmAlbumsJson">` của trang `/`. Tài khoản mặc định trong `.env.example` cũ (`admin/admin123`) **không** còn dùng ⇒ phải thử/suy đoán hoặc hỏi chủ dự án.
 
 ## 10. Nhật ký làm việc
 
@@ -528,5 +531,22 @@ Mẫu mỗi mục:
   - **Đã chạy thử thật**: server chạy ở `127.0.0.1:8090` (PGlite), đăng nhập admin, gọi hết endpoint mới bằng `server/scripts/check-admin-api.mjs` (tất cả trả đúng mã), xem trên trình duyệt: 8 tab Telegram + tab Hệ thống, bàn phím hiện 2 nút đã lưu, thống kê ID hiện 3 ID, dropdown "Chèn mẫu tin nhắn" có mẫu "Bài mới", giờ mặc định của chiến dịch = 9:30 đúng bằng cấu hình.
   - **Chưa chạy thử**: `pg_dump` thật (máy dùng PGlite ⇒ API báo đúng "không có pg_dump"); bot thật với token Telegram thật; thêm bot thật từ web (cần token thật + `TOKEN_ENCRYPTION_KEY` trên VPS).
 - File / commit: `server/src/crypto.ts`, `server/src/routes/telegramAdmin.ts`, `server/src/routes/system.ts`, `server/src/routes/telegram.ts`, `server/src/scheduler.ts`, `server/src/config.ts`, `server/src/db/schema.ts`, `server/drizzle/0006_telegram_bot_tokens.sql`, `server/drizzle/meta/_journal.json`, `server/test/telegramAdmin.test.ts`, `server/scripts/check-admin-api.mjs`, `bot/src/keyboard.ts`, `bot/src/index.ts`, `bot/src/internal-server.ts`, `bot/src/registry.ts`, `bot/src/client.ts`, `bot/src/commands.ts`, `bot/test/keyboard.test.ts`, `bot/test/internal.test.ts`, `frontend/src/pages/admin/AdminTelegramTools.tsx`, `frontend/src/pages/admin/AdminSystem.tsx`, `frontend/src/pages/admin/AdminTelegram.tsx`, `frontend/src/pages/admin/Admin.tsx`, `frontend/src/types.ts`, `Dockerfile`, `docker-compose.yml`, `.env.example`, `server/.env.local`.
+
+### 2026-11-24 — Thêm — Công cụ chuyển bài viết từ web cũ (telegram-bot-dashboard) sang web mới
+- Việc đã làm — chủ dự án yêu cầu "thử lấy 1 bài viết ở web cũ và thêm vào web mới, copy toàn bộ nội dung, hình ảnh, video".
+  - Tìm web cũ qua **lịch sử trình duyệt** (Chrome/Edge `History` là SQLite; copy file ra `%TEMP%` rồi đọc bằng `node:sqlite` vì file bị lock) ⇒ `https://ngeyhsvge683874.online`. Repo cũ chỉ có mã nguồn: không có `data.db`, không có `static/uploads/`, máy dev không có Python/WSL ⇒ **phải lấy dữ liệu qua HTTP**.
+  - Đăng nhập web cũ: `POST /login` với `csrf_token` trích từ HTML; tài khoản trong `.env.example` cũ (`admin/admin123`, `quanly/changme`) đã đổi ⇒ tìm được `quanly/quanly123` (chủ dự án chọn đăng nhập bằng tài khoản owner; mật khẩu mặc định trong code là `quanly123`).
+  - Đọc album: `GET /albums/<id>/posts/edit` — mỗi `<div class="post-card">` chứa `caption_<post_id>` + link media ⇒ ghép đúng post → media. Danh sách album nằm trong `<script id="rmAlbumsJson">` của trang `/` (170 album).
+  - **Script mới**: `server/scripts/import-from-old-web.mjs` — đăng nhập web cũ → tải album + media → đăng nhập web mới → tạo 1 bài viết → upload toàn bộ ảnh/video. Có cờ `--replace` (xoá bản cũ trùng tiêu đề) và `--src` (dùng lại media đã tải).
+  - Ánh xạ nội dung: caption của 10 post cũ gộp vào `description` bài viết (đánh số `【1】【2】…`); tiêu đề `<tên album> (chuyển từ web cũ)`; category lấy category đầu tiên.
+  - Cài **ffmpeg** trên máy dev (`winget install Gyan.FFmpeg`) + **khởi động lại server** (vì `hasFfmpeg()` cache) ⇒ video có poster + duration/width/height đầy đủ; script tự đo bằng `ffprobe` và gửi kèm 3 field đó khi upload.
+- Nguyên nhân gốc (lỗi đã sửa trong lúc làm): B42–B44 — xem mục 9.
+- Bài học / cách tránh:
+  - **403 "Yêu cầu không hợp lệ" không phải lỗi đăng nhập** — đó là CSRF header `x-requested-with: ctc` thiếu (B42).
+  - **Dữ liệu hệ thống cũ nằm trên server, không nằm trong repo.** Trước khi hỏi chủ dự án, kiểm tra: file DB trong repo, lịch sử trình duyệt, `known_hosts`, `.env`, script deploy. Ở đây lịch sử trình duyệt là nguồn duy nhất có domain.
+  - **Video không có poster không phải lỗi import** — máy thiếu ffmpeg và server cache kết quả (B43). Luôn kiểm tra "công cụ phụ (ffmpeg) đã có trong PATH của tiến trình server chưa" trước khi kết luận.
+- Đã kiểm tra: album `album_a827174a` ("Libk ngày 30/9", 170 album trên web cũ) → bài viết id=2 trên web mới: **5 ảnh + 5 video**, tất cả video có `thumbKey` + `duration` (15s/13s/20s/14s/13s), ảnh bìa = ảnh đầu, media phục vụ đúng (`/media/a/*.webp`, `/media/v/*.mp4` trả 200), hiển thị đúng trên trang bài viết và trang chủ (badge `🖼️ 5 🎬 5`, nằm trong "Hot hôm nay").
+  - **Chưa chạy thử**: import tự động hàng loạt (nhiều album), chuyển danh mục 1-1 từ web cũ (hiện gán category đầu tiên), giữ nguyên ngày đăng cũ (hiện dùng ngày import), chạy trên VPS với CSDL thật.
+- File / commit: `server/scripts/import-from-old-web.mjs` (mới), `huongdan.txt` (mục 3 không đổi, mục 8 thêm mục), `LUAT_VA_BOI_CANH.md` (mục 9: B42–B44; mục 10: mục này).
 
 
