@@ -704,6 +704,8 @@ export const telegramCampaigns = pgTable(
     mediaNote: text("media_note"),
     /** [{ label, url }] */
     buttons: jsonb("buttons").notNull().default([]),
+    /** Article ids linked inside the message body. */
+    articleIds: jsonb("article_ids").notNull().default([]),
     /** "all_linked" | "visited" | "stalled" | "status" | "ids" */
     targetType: varchar("target_type", { length: 16 }).notNull(),
     targetIds: jsonb("target_ids").notNull().default([]),

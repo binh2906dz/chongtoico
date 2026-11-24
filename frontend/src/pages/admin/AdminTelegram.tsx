@@ -391,25 +391,48 @@ function CampaignForm({ onCreated }: { onCreated: () => void }) {
   const [name, setName] = useState("");
   const [text, setText] = useState("");
   const [targetType, setTargetType] = useState("all_linked");
+  const [targetStatuses, setTargetStatuses] = useState<string[]>(["active"]);
+  const [targetIds, setTargetIds] = useState("");
   const [schedule, setSchedule] = useState("now");
+  const [scheduledAtLocal, setScheduledAtLocal] = useState("");
   const [hour, setHour] = useState(8);
   const [minute, setMinute] = useState(0);
   const [dayOfWeek, setDayOfWeek] = useState(1);
   const [mediaType, setMediaType] = useState("none");
-  const [articleId, setArticleId] = useState("");
-  const [buttons, setButtons] = useState<{ label: string; url: string }[]>([]);
+  const [mediaKey, setMediaKey] = useState("");
+  const [articleIds, setArticleIds] = useState<number[]>([]);  const [buttons, setButtons] = useState<{ label: string; url: string }[]>([]);
   const [msg, setMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const { data: recent } = useFetch<{ rows: { id: number; title: string; visibility: string; createdAt: string }[] }>(
-    "/api/admin/telegram/articles/recent?hours=720",
-  );
+  const { data: recent } = useFetch<{
+    rows: {
+      id: number;
+      title: string;
+      visibility: string;
+      createdAt: string;
+      media: { kind: "image" | "video"; key: string; ext?: string }[];
+    }[];
+  }>("/api/admin/telegram/articles/recent?hours=720");
 
   const preview = useMemo(() => {
     const lines = text.split("\n").filter(Boolean);
     return lines.map((line) => line.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"));
   }, [text]);
+
+  const parsedTargetIds = useMemo(
+    () =>
+      targetIds
+        .split(/[\r\n,;\s]+/)
+        .map((x) => Number(x.trim()))
+        .filter((x) => Number.isInteger(x) && x > 0),
+    [targetIds],
+  );
+
+  const linkedArticles = useMemo(
+    () => (recent?.rows ?? []).filter((a) => articleIds.includes(a.id)),
+    [recent, articleIds],
+  );
 
   async function submit() {
     setBusy(true);
@@ -422,20 +445,34 @@ function CampaignForm({ onCreated }: { onCreated: () => void }) {
           text,
           mediaType,
           mediaSource: mediaType === "none" ? null : "article",
-          mediaKey: mediaType === "none" ? null : articleId || null,
+          mediaKey: mediaType === "none" ? null : mediaKey || null,
           targetType,
-          targetIds: [],
+          targetIds:
+            targetType === "status"
+              ? targetStatuses
+              : targetType === "ids"
+                ? parsedTargetIds
+                : [],
           schedule,
           hour,
           minute,
           dayOfWeek: schedule === "weekly" ? dayOfWeek : null,
+          // datetime-local gives browser-local time; the campaign runs on
+          // Vietnam time, so the value is converted to UTC here.
+          scheduledAt:
+            schedule === "at" && scheduledAtLocal
+              ? new Date(`${scheduledAtLocal}:00+07:00`).toISOString()
+              : undefined,
           buttons,
+          articleIds,
         },
       });
       setMsg(`Đã tạo chiến dịch "${res.campaign.name}". Bấm "Gửi ngay" hoặc "Kích hoạt lịch" để chạy.`);
       setName("");
       setText("");
       setButtons([]);
+      setArticleIds([]);
+      setMediaKey("");
       onCreated();
     } catch (e) {
       setError(errorMessage(e));
@@ -478,8 +515,53 @@ function CampaignForm({ onCreated }: { onCreated: () => void }) {
                 </span>
               ))}
             </div>
+            {linkedArticles.length > 0 && (
+              <div className="mt-2 border-t border-line pt-2 text-xs">
+                {linkedArticles.map((a) => (
+                  <div key={a.id} className="text-brand-2">
+                    👉 {a.title}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
+      </div>
+
+      <div>
+        <label className="label">Gắn bài viết (tự thêm link vào nội dung)</label>
+        <div className="max-h-32 space-y-1 overflow-y-auto rounded-lg border border-line bg-panel-2 p-2">
+          {(recent?.rows ?? []).length === 0 && (
+            <div className="px-1 py-2 text-xs text-muted">Chưa có bài viết nào trong 30 ngày gần đây.</div>
+          )}
+          {(recent?.rows ?? []).map((a) => {
+            const on = articleIds.includes(a.id);
+            return (
+              <label
+                key={a.id}
+                className={`flex cursor-pointer items-start gap-2 rounded-md px-2 py-1.5 text-xs ${
+                  on ? "bg-brand/20 text-brand-2" : "hover:bg-panel"
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={on}
+                  onChange={() => setArticleIds((prev) => (on ? prev.filter((x) => x !== a.id) : [...prev, a.id]))}
+                />
+                <span className="min-w-0">
+                  <span className="block truncate font-semibold">{a.title}</span>
+                  {a.visibility === "members" && (
+                    <span className="text-amber-300/80">Chỉ thành viên — người chưa đăng nhập sẽ không xem được</span>
+                  )}
+                </span>
+              </label>
+            );
+          })}
+        </div>
+        <p className="mt-1 text-xs text-muted">
+          Link bài được thêm vào cuối nội dung. Bài "chỉ thành viên" vẫn hiện link nhưng cần đăng nhập mới xem được.
+        </p>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
@@ -492,17 +574,54 @@ function CampaignForm({ onCreated }: { onCreated: () => void }) {
           </select>
           {mediaType !== "none" && (
             <>
-              <select className="input mt-2" value={articleId} onChange={(e) => setArticleId(e.target.value)}>
-                <option value="">— Chọn bài viết —</option>
-                {(recent?.rows ?? []).map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.title}
-                    {a.visibility === "members" ? " (chỉ thành viên — sẽ gửi kèm link)" : ""}
-                  </option>
-                ))}
-              </select>
+              <div className="mt-2 max-h-56 space-y-2 overflow-y-auto rounded-lg border border-line bg-panel-2 p-2">
+                {(recent?.rows ?? []).length === 0 && (
+                  <div className="px-1 py-2 text-xs text-muted">Chưa có bài viết nào trong 30 ngày gần đây.</div>
+                )}
+                {(recent?.rows ?? []).map((a) => {
+                  const files = a.media.filter((m) => m.kind === mediaType);
+                  if (!files.length) return null;
+                  return (
+                    <div key={a.id}>
+                      <div className="px-2 pt-1 text-[11px] font-semibold uppercase text-muted">
+                        {a.title}
+                        {a.visibility === "members" && (
+                          <span className="ml-2 normal-case text-amber-300/80">chỉ thành viên</span>
+                        )}
+                      </div>
+                      {files.map((m, i) => {
+                        const value = m.kind === "video" ? `video:${m.key}.${m.ext ?? "mp4"}` : `image:${m.key}`;
+                        const on = mediaKey === value;
+                        return (
+                          <label
+                            key={`${m.key}-${i}`}
+                            className={`flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-xs ${
+                              on ? "bg-brand/20 text-brand-2" : "hover:bg-panel"
+                            }`}
+                          >
+                            <input
+                              type="radio"
+                              name="media"
+                              className="mt-0.5"
+                              checked={on}
+                              onChange={() => setMediaKey(value)}
+                            />
+                            <span className="font-mono">{m.key}</span>
+                            <span className="text-muted">({m.kind === "video" ? m.ext ?? "mp4" : "webp"})</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  );
+                })}
+              </div>
+              {mediaKey && (
+                <p className="mt-1 text-xs text-muted">
+                  Đã chọn file <b className="font-mono">{mediaKey}</b>.
+                </p>
+              )}
               <p className="mt-1 text-xs text-muted">
-                Ảnh &gt; 10MB hoặc video &gt; 50MB sẽ không gửi được file — hãy dùng ảnh bìa kèm link.
+                File "chỉ thành viên" sẽ bị Telegram chặn — hãy dùng ảnh/video công khai kèm link bài.
               </p>
             </>
           )}
@@ -514,7 +633,45 @@ function CampaignForm({ onCreated }: { onCreated: () => void }) {
             <option value="all_linked">Tất cả người đã liên kết</option>
             <option value="visited">Người đã từng vào web</option>
             <option value="stalled">Hồi sinh (≥14 ngày không vào)</option>
+            <option value="status">Theo trạng thái</option>
+            <option value="ids">Danh sách ID cụ thể</option>
           </select>
+
+          {targetType === "status" && (
+            <div className="mt-2 flex flex-wrap gap-2">
+              {["active", "blocked", "invalid", "unknown"].map((s) => {
+                const on = targetStatuses.includes(s);
+                return (
+                  <button
+                    type="button"
+                    key={s}
+                    className={`rounded-lg border px-3 py-1 text-xs font-semibold ${
+                      on ? "border-brand bg-brand/20 text-brand-2" : "border-line bg-panel text-muted"
+                    }`}
+                    onClick={() =>
+                      setTargetStatuses((prev) => (on ? prev.filter((x) => x !== s) : [...prev, s]))
+                    }
+                  >
+                    {s === "active" ? "Hoạt động" : s === "blocked" ? "Bị chặn" : s === "invalid" ? "Không hợp lệ" : "Chưa rõ"}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {targetType === "ids" && (
+            <div className="mt-2">
+              <textarea
+                className="input min-h-24 font-mono text-xs"
+                value={targetIds}
+                onChange={(e) => setTargetIds(e.target.value)}
+                placeholder={"123456789\n987654321"}
+              />
+              <p className="mt-1 text-xs text-muted">
+                Đã nhập <b>{parsedTargetIds.length}</b> id hợp lệ. Có thể nhập trước ở tab <b>Nhập ID</b>.
+              </p>
+            </div>
+          )}
         </div>
       </div>
 
@@ -523,18 +680,33 @@ function CampaignForm({ onCreated }: { onCreated: () => void }) {
           <label className="label">Lịch gửi</label>
           <select className="input" value={schedule} onChange={(e) => setSchedule(e.target.value)}>
             <option value="now">Gửi ngay</option>
+            <option value="at">Hẹn giờ cụ thể</option>
             <option value="daily">Hằng ngày</option>
             <option value="weekly">Hằng tuần</option>
           </select>
         </div>
-        <div>
-          <label className="label">Giờ (VN)</label>
-          <input type="number" min={0} max={23} className="input" value={hour} onChange={(e) => setHour(Number(e.target.value))} />
-        </div>
-        <div>
-          <label className="label">Phút</label>
-          <input type="number" min={0} max={59} className="input" value={minute} onChange={(e) => setMinute(Number(e.target.value))} />
-        </div>
+        {schedule === "at" ? (
+          <div>
+            <label className="label">Thời điểm gửi (VN)</label>
+            <input
+              type="datetime-local"
+              className="input"
+              value={scheduledAtLocal}
+              onChange={(e) => setScheduledAtLocal(e.target.value)}
+            />
+          </div>
+        ) : (
+          <>
+            <div>
+              <label className="label">Giờ (VN)</label>
+              <input type="number" min={0} max={23} className="input" value={hour} onChange={(e) => setHour(Number(e.target.value))} />
+            </div>
+            <div>
+              <label className="label">Phút</label>
+              <input type="number" min={0} max={59} className="input" value={minute} onChange={(e) => setMinute(Number(e.target.value))} />
+            </div>
+          </>
+        )}
         {schedule === "weekly" && (
           <div>
             <label className="label">Thứ</label>
@@ -598,6 +770,15 @@ export function AdminTelegramImport() {
   const [msg, setMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const { data, error: listError, reload } = useFetch<{
+    rows: {
+      telegramId: number;
+      username: string | null;
+      firstName: string | null;
+      status: string;
+      linkedUserId: number | null;
+    }[];
+  }>("/api/admin/telegram/imported-ids");
 
   async function submit() {
     setBusy(true);
@@ -607,6 +788,7 @@ export function AdminTelegramImport() {
       const res = await api<{ imported: number }>("/api/admin/telegram/import-ids", { body: { content } });
       setMsg(`Đã nhập ${res.imported} Telegram id.`);
       setContent("");
+      reload();
     } catch (e) {
       setError(errorMessage(e));
     } finally {
@@ -614,23 +796,84 @@ export function AdminTelegramImport() {
     }
   }
 
+  const rows = data?.rows ?? [];
+
   return (
-    <div className="panel space-y-3 p-4">
-      <h2 className="font-black">Nhập danh sách Telegram id</h2>
-      {error && <ErrorBox message={error} />}
-      {msg && <div className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-300">{msg}</div>}
-      <p className="text-sm text-muted">
-        Mỗi dòng một id (hoặc cột CSV). Id sẽ được lưu và có thể chọn làm đối tượng nhận của chiến dịch.
-      </p>
-      <textarea
-        className="input min-h-40 font-mono text-xs"
-        value={content}
-        onChange={(e) => setContent(e.target.value)}
-        placeholder={"123456789\n987654321"}
-      />
-      <button className="btn-primary" disabled={busy} onClick={() => void submit()}>
-        {busy ? "Đang nhập..." : "Nhập danh sách"}
-      </button>
+    <div className="space-y-4">
+      <div className="panel space-y-3 p-4">
+        <h2 className="font-black">Nhập danh sách Telegram id</h2>
+        {error && <ErrorBox message={error} />}
+        {msg && <div className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-300">{msg}</div>}
+        <p className="text-sm text-muted">
+          Mỗi dòng một id (hoặc cột CSV). Id sẽ được lưu và có thể chọn làm đối tượng nhận của chiến dịch.
+        </p>
+        <textarea
+          className="input min-h-40 font-mono text-xs"
+          value={content}
+          onChange={(e) => setContent(e.target.value)}
+          placeholder={"123456789\n987654321"}
+        />
+        <button className="btn-primary" disabled={busy} onClick={() => void submit()}>
+          {busy ? "Đang nhập..." : "Nhập danh sách"}
+        </button>
+      </div>
+
+      <div className="panel p-4">
+        <div className="mb-2 flex items-center justify-between">
+          <h2 className="font-black">Telegram đã biết ({rows.length})</h2>
+          <button
+            className="btn-ghost px-3 py-1 text-xs"
+            onClick={() => {
+              const text = rows.map((r) => r.telegramId).join("\n");
+              void navigator.clipboard?.writeText(text);
+            }}
+          >
+            Copy tất cả id
+          </button>
+        </div>
+        {listError && <ErrorBox message={listError} />}
+        {rows.length === 0 ? (
+          <div className="py-4 text-center text-sm text-muted">Chưa có Telegram id nào.</div>
+        ) : (
+          <div className="max-h-96 overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="border-b border-line text-left text-xs text-muted uppercase">
+                <tr>
+                  <th className="px-3 py-2">Telegram</th>
+                  <th className="px-3 py-2">Telegram ID</th>
+                  <th className="px-3 py-2">Trạng thái</th>
+                  <th className="px-3 py-2">Đã liên kết</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r) => (
+                  <tr key={r.telegramId} className="border-b border-line/60">
+                    <td className="px-3 py-2 font-semibold">
+                      {r.firstName || r.username || `#${r.telegramId}`}
+                      {r.username && <div className="text-xs text-muted">@{r.username}</div>}
+                    </td>
+                    <td className="px-3 py-2 font-mono text-xs">{r.telegramId}</td>
+                    <td className="px-3 py-2">
+                      <span
+                        className={`badge ${
+                          r.status === "active"
+                            ? "bg-emerald-500/20 text-emerald-300"
+                            : r.status === "blocked"
+                              ? "bg-red-500/20 text-red-300"
+                              : "bg-slate-500/20 text-slate-300"
+                        }`}
+                      >
+                        {botStatusLabel[r.status] ?? r.status}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 text-xs text-muted">{r.linkedUserId ? "Có" : "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

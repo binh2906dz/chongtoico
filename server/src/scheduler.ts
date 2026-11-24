@@ -3,6 +3,9 @@ import { and, count, eq, gte, inArray, isNotNull, isNull, lt, lte, or, sql } fro
 import { config } from "./config.js";
 import { db } from "./db/index.js";
 import {
+  articles,
+  articleImages,
+  articleVideos,
   deliveryLog,
   notificationJobs,
   telegramCampaigns,
@@ -80,25 +83,29 @@ export interface TargetUser {
 /** The Telegram people a campaign should be sent to. */
 export async function resolveTargets(
   targetType: string,
-  targetIds: number[],
+  targetIds: Array<number | string>,
 ): Promise<TargetUser[]> {
   switch (targetType) {
     case "ids": {
-      if (!targetIds.length) return [];
+      const ids = targetIds
+        .map((x) => Number(x))
+        .filter((x) => Number.isInteger(x) && x > 0);
+      if (!ids.length) return [];
       const rows = await db
         .select({ telegramId: telegramUsers.telegramId, userId: telegramLinks.userId })
         .from(telegramUsers)
         .leftJoin(telegramLinks, eq(telegramLinks.telegramId, telegramUsers.id))
-        .where(inArray(telegramUsers.telegramId, targetIds));
+        .where(inArray(telegramUsers.telegramId, ids));
       return rows;
     }
     case "status": {
-      if (!targetIds.length) return [];
+      const statuses = targetIds.map((x) => String(x)).filter(Boolean);
+      if (!statuses.length) return [];
       const rows = await db
         .select({ telegramId: telegramUsers.telegramId, userId: telegramLinks.userId })
         .from(telegramUsers)
         .leftJoin(telegramLinks, eq(telegramLinks.telegramId, telegramUsers.id))
-        .where(inArray(telegramUsers.status, targetIds.map(String)));
+        .where(inArray(telegramUsers.status, statuses));
       return rows;
     }
     case "visited": {
@@ -239,24 +246,86 @@ export async function buildPayload(
 
   let media: CampaignPayload["media"] = null;
   if (campaign.mediaType && campaign.mediaKey) {
-    const isVideo = campaign.mediaType === "video";
-    const ext = isVideo ? "mp4" : "webp";
+    // mediaKey format: "<kind>:<fileKey>" or "<kind>:<fileKey>.<ext>" for videos.
+    const raw = campaign.mediaKey;
+    const sep = raw.indexOf(":");
+    const kind = sep === -1 ? campaign.mediaType : raw.slice(0, sep);
+    const file = sep === -1 ? raw : raw.slice(sep + 1);
+    const isVideo = kind === "video" || campaign.mediaType === "video";
+    const ext = file.includes(".") ? file.split(".").pop()! : isVideo ? "mp4" : "webp";
+    const key = file.replace(/\.[a-z0-9]+$/i, "");
+
+    // The real file size decides whether Telegram accepts the upload,
+    // and members-only files must never leave the server.
+    let sizeBytes = 0;
+    let isPublic = true;
+    if (isVideo) {
+      const [row] = await db
+        .select({ sizeBytes: articleVideos.sizeBytes, articleId: articleVideos.articleId })
+        .from(articleVideos)
+        .where(eq(articleVideos.fileKey, key))
+        .limit(1);
+      sizeBytes = row?.sizeBytes ?? 0;
+      if (row) isPublic = !(await isMembersOnlyArticle(row.articleId));
+    } else {
+      const [row] = await db
+        .select({ articleId: articleImages.articleId })
+        .from(articleImages)
+        .where(eq(articleImages.fileKey, key))
+        .limit(1);
+      if (row) isPublic = !(await isMembersOnlyArticle(row.articleId));
+    }
+
     media = {
-      kind: campaign.mediaType,
-      url: `${base}/media/${isVideo ? "v" : "a"}/${campaign.mediaKey}.${ext}`,
-      sizeBytes: 0,
-      isPublic: true,
+      kind: isVideo ? "video" : "image",
+      url: `${base}/media/${isVideo ? "v" : "a"}/${key}.${ext}`,
+      sizeBytes,
+      isPublic,
     };
   }
 
   return {
-    text: campaign.text ? escapeHtml(campaign.text) : "",
+    text: await buildMessageText(campaign, base),
     parseMode: "HTML",
     buttons: allButtons,
     webUrl: `${base}/?ref=bot&cid=${campaign.id}&tid=${telegramId}&src=push`,
     media,
     contentHash: contentHashOf(campaign.text ?? ""),
   };
+}
+
+/** Whether an article is only visible to signed-in members. */
+async function isMembersOnlyArticle(articleId: number): Promise<boolean> {
+  const [row] = await db
+    .select({ visibility: articles.visibility })
+    .from(articles)
+    .where(eq(articles.id, articleId))
+    .limit(1);
+  return row?.visibility === "members";
+}
+
+/**
+ * Build the message body: the admin text (escaped) plus the linked articles.
+ * Links are produced by the server so no raw HTML from the admin can leak.
+ */
+async function buildMessageText(
+  campaign: typeof telegramCampaigns.$inferSelect,
+  base: string,
+): Promise<string> {
+  const body = campaign.text ? escapeHtml(campaign.text) : "";
+  const ids = (campaign.articleIds ?? []) as number[];
+  if (!ids.length) return body;
+
+  const rows = await db
+    .select({ id: articles.id, title: articles.title })
+    .from(articles)
+    .where(inArray(articles.id, ids));
+  if (!rows.length) return body;
+
+  const links = rows
+    .map((a) => `👉 <a href="${base}/bai-viet/${a.id}">${escapeHtml(a.title)}</a>`)
+    .join("\n");
+  return body ? `${body}\n${links}` : links;
 }
 
 /* ------------------------------------------------------------------ *
@@ -287,7 +356,7 @@ export async function queueCampaign(campaignId: string, scheduledAt: Date): Prom
     return { queued: 0, skipped: 0, skippedReasons: { no_live_bot: 1 } };
   }
 
-  const targets = await resolveTargets(campaign.targetType, (campaign.targetIds ?? []) as number[]);
+  const targets = await resolveTargets(campaign.targetType, (campaign.targetIds ?? []) as Array<number | string>);
   const hash = contentHashOf(campaign.text ?? "");
   const skippedReasons: Record<string, number> = {};
   let skipped = 0;

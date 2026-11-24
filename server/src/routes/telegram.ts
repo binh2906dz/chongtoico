@@ -1,10 +1,12 @@
 import { createHash, randomUUID } from "node:crypto";
-import { and, count, desc, eq, gte, isNotNull, lte, sql } from "drizzle-orm";
+import { and, count, desc, eq, gte, inArray, isNotNull, lte, sql } from "drizzle-orm";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { createSession, hashPassword, profileUser, requireAdmin, requireUser } from "../auth.js";
 import { db } from "../db/index.js";
 import {
+  articleImages,
+  articleVideos,
   articles,
   deliveryLog,
   notificationJobs,
@@ -110,8 +112,12 @@ const campaignBody = z.object({
   mediaSource: z.enum(["article", "upload"]).nullish(),
   mediaNote: z.string().max(500).nullish(),
   buttons: z.array(z.object({ label: z.string().trim().min(1).max(40), url: z.string().trim().url().max(500) })).max(10).default([]),
+  articleIds: z.array(z.number().int().positive()).max(20).default([]),
   targetType: z.enum(["all_linked", "visited", "stalled", "status", "ids"]).default("all_linked"),
-  targetIds: z.array(z.number().int().positive()).max(100000).default([]),
+  targetIds: z
+    .array(z.union([z.number().int().positive(), z.string().trim().min(1).max(32)]))
+    .max(100000)
+    .default([]),
   schedule: z.enum(["now", "at", "daily", "weekly"]).default("now"),
   hour: z.number().int().min(0).max(23).default(8),
   minute: z.number().int().min(0).max(59).default(0),
@@ -125,8 +131,12 @@ const campaignPatchBody = z.object({
   mediaType: z.enum(["image", "video", "none"]).optional(),
   mediaKey: z.string().trim().max(64).nullish(),
   buttons: z.array(z.object({ label: z.string().trim().min(1).max(40), url: z.string().trim().url().max(500) })).max(10).optional(),
+  articleIds: z.array(z.number().int().positive()).max(20).optional(),
   targetType: z.enum(["all_linked", "visited", "stalled", "status", "ids"]).optional(),
-  targetIds: z.array(z.number().int().positive()).max(100000).optional(),
+  targetIds: z
+    .array(z.union([z.number().int().positive(), z.string().trim().min(1).max(32)]))
+    .max(100000)
+    .optional(),
   schedule: z.enum(["now", "at", "daily", "weekly"]).optional(),
   hour: z.number().int().min(0).max(23).optional(),
   minute: z.number().int().min(0).max(59).optional(),
@@ -638,6 +648,7 @@ export default async function telegramRoutes(app: FastifyInstance) {
         mediaSource: body.mediaSource ?? null,
         mediaNote: body.mediaNote ?? null,
         buttons: body.buttons,
+        articleIds: body.articleIds,
         targetType: body.targetType,
         targetIds: body.targetIds,
         schedule: body.schedule,
@@ -743,7 +754,43 @@ export default async function telegramRoutes(app: FastifyInstance) {
       .where(gte(articles.createdAt, since))
       .orderBy(desc(articles.createdAt))
       .limit(50);
-    return { rows };
+
+    // Media files of every article, so the admin can pick a real file to send.
+    const ids = rows.map((r) => r.id);
+    const images = ids.length
+      ? await db
+          .select({ articleId: articleImages.articleId, fileKey: articleImages.fileKey })
+          .from(articleImages)
+          .where(inArray(articleImages.articleId, ids))
+      : [];
+    const videos = ids.length
+      ? await db
+          .select({ articleId: articleVideos.articleId, fileKey: articleVideos.fileKey, ext: articleVideos.ext })
+          .from(articleVideos)
+          .where(inArray(articleVideos.articleId, ids))
+      : [];
+
+    const mediaByArticle = new Map<
+      number,
+      { kind: "image" | "video"; key: string; ext?: string }[]
+    >();
+    for (const img of images) {
+      const list = mediaByArticle.get(img.articleId) ?? [];
+      list.push({ kind: "image", key: img.fileKey });
+      mediaByArticle.set(img.articleId, list);
+    }
+    for (const vid of videos) {
+      const list = mediaByArticle.get(vid.articleId) ?? [];
+      list.push({ kind: "video", key: vid.fileKey, ext: vid.ext });
+      mediaByArticle.set(vid.articleId, list);
+    }
+
+    return {
+      rows: rows.map((r) => ({
+        ...r,
+        media: mediaByArticle.get(r.id) ?? [],
+      })),
+    };
   });
 
   /** Import a list of Telegram ids (one per line, or a CSV column). */
@@ -762,6 +809,24 @@ export default async function telegramRoutes(app: FastifyInstance) {
       await ensureTelegramUser(telegramId);
     }
     return { imported: list.length, ids: list.slice(0, 1000) };
+  });
+
+  /** The Telegram people known to the site, so the admin can pick ids again. */
+  app.get("/api/admin/telegram/imported-ids", async (req) => {
+    requireAdmin(req);
+    const rows = await db
+      .select({
+        telegramId: telegramUsers.telegramId,
+        username: telegramUsers.username,
+        firstName: telegramUsers.firstName,
+        status: telegramUsers.status,
+        linkedUserId: telegramLinks.userId,
+      })
+      .from(telegramUsers)
+      .leftJoin(telegramLinks, eq(telegramLinks.telegramId, telegramUsers.id))
+      .orderBy(desc(telegramUsers.updatedAt))
+      .limit(500);
+    return { rows };
   });
 
   app.get("/api/admin/telegram/bots", async (req) => {

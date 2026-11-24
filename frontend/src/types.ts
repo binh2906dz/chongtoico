@@ -254,8 +254,9 @@ export interface TelegramCampaign {
   mediaSource: string | null;
   mediaNote: string | null;
   buttons: TelegramCampaignButton[];
+  articleIds: number[];
   targetType: "all_linked" | "visited" | "stalled" | "status" | "ids";
-  targetIds: number[];
+  targetIds: Array<number | string>;
   schedule: "now" | "at" | "daily" | "weekly";
   scheduleStatus: "paused" | "active" | "done";
   scheduledAt: string | null;
