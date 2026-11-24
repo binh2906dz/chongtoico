@@ -3,7 +3,7 @@ import { createWriteStream } from "node:fs";
 import { mkdir, open, rename, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import { pipeline } from "node:stream/promises";
-import { and, asc, count, desc, eq, gte, ilike, inArray, isNull, notInArray, sql, type SQL } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, ilike, inArray, isNotNull, isNull, notInArray, sql, type SQL } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { author, authorColumns, isStaff, requireActive, requireAdmin, requireStaff, requireUser, type User } from "../auth.js";
@@ -1102,7 +1102,8 @@ export default async function articleRoutes(app: FastifyInstance) {
       .returning();
     if (!img) throw notFound("Ảnh không tồn tại.");
     await db.update(articles).set({ imageCount: sql`greatest(${articles.imageCount} - 1, 0)` }).where(eq(articles.id, id));
-    if (article.coverImageKey === img.fileKey) await setCover(id, "none", null, 0);
+    // Ảnh bìa vừa bị xoá => chọn lại media còn lại, nếu không bài mất ảnh bìa (B21).
+    if (article.coverImageKey === img.fileKey) await resolveCover(id);
     await removeImage("albums", img.fileKey);
     return ok(reply);
   });
@@ -1217,7 +1218,8 @@ export default async function articleRoutes(app: FastifyInstance) {
       .returning();
     if (!video) throw notFound("Video không tồn tại.");
     await db.update(articles).set({ videoCount: sql`greatest(${articles.videoCount} - 1, 0)` }).where(eq(articles.id, id));
-    if (article.coverType === "video" && article.coverImageKey === video.thumbKey) await setCover(id, "none", null, 0);
+    // Khung hình đang làm bìa vừa bị xoá => chọn lại media còn lại (B21).
+    if (article.coverType === "video" && article.coverImageKey === video.thumbKey) await resolveCover(id);
     membersOnlyKeys.delete(video.fileKey);
     await removeVideoFile(video.fileKey, video.ext);
     if (video.thumbKey) await removeImage("thumbs", video.thumbKey);
@@ -1256,6 +1258,11 @@ export default async function articleRoutes(app: FastifyInstance) {
         .where(and(eq(articleVideos.id, body.videoId), eq(articleVideos.articleId, id)))
         .limit(1);
       if (!v) throw badRequest("Video không thuộc bài viết này.");
+      // Video chưa có khung hình thì không làm bìa được — bìa sẽ trỏ tới file không
+      // tồn tại và bài mất ảnh bìa (B21). Trả lỗi rõ ràng cho admin.
+      if (!v.thumbKey) {
+        throw badRequest("Video này chưa có khung hình. Hãy tải video kèm khung hình, hoặc dùng ffmpeg để lấy khung hình trên máy chủ.");
+      }
       await setCover(id, "video", v.thumbKey, v.duration);
       return { ok: true };
     }
@@ -1270,6 +1277,38 @@ async function setCover(articleId: number, type: "none" | "image" | "video", key
     .update(articles)
     .set({ coverType: type, coverImageKey: key, coverDuration: type === "video" ? duration : 0 })
     .where(eq(articles.id, articleId));
+}
+
+/**
+ * Chọn lại ảnh bìa từ media còn tồn tại (B21).
+ *
+ * Bìa phải luôn trỏ tới một file thật, nếu không bài viết mất ảnh bìa trên thẻ và
+ * banner trượt. Dùng sau khi xoá ảnh / video đang làm bìa, và khi admin chọn một
+ * video chưa có khung hình làm bìa.
+ */
+async function resolveCover(articleId: number): Promise<"image" | "video" | "none"> {
+  const [img] = await db
+    .select({ fileKey: articleImages.fileKey })
+    .from(articleImages)
+    .where(eq(articleImages.articleId, articleId))
+    .orderBy(asc(articleImages.sortOrder), asc(articleImages.id))
+    .limit(1);
+  if (img) {
+    await setCover(articleId, "image", img.fileKey, 0);
+    return "image";
+  }
+  const [vid] = await db
+    .select({ thumbKey: articleVideos.thumbKey, duration: articleVideos.duration })
+    .from(articleVideos)
+    .where(and(eq(articleVideos.articleId, articleId), isNotNull(articleVideos.thumbKey)))
+    .orderBy(asc(articleVideos.sortOrder), asc(articleVideos.id))
+    .limit(1);
+  if (vid?.thumbKey) {
+    await setCover(articleId, "video", vid.thumbKey, vid.duration);
+    return "video";
+  }
+  await setCover(articleId, "none", null, 0);
+  return "none";
 }
 
 /** Marks every video of an article as members-only (or public) in the in-memory key set. */

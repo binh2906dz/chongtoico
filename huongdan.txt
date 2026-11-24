@@ -262,6 +262,11 @@ Hàng chờ: Quản trị > Báo vi phạm (mod + admin).
   (GET /api/articles/:id/comments), media /media/a/ (ảnh) và /media/t/ (thumbnail
   video). Khách nhận coverUrl = null, membersOnly = true; chi tiết locked = true,
   images = []. Thêm endpoint mới trả nội dung bài => kiểm tra lại quyền ở đó.
+- ẢNH BÌA BÀI VIẾT (2026-11-24): articles.coverImageKey phải luôn trỏ tới một
+  file THẬT còn tồn tại. Dùng resolveCover(articleId) trong routes/articles.ts sau
+  khi xoá ảnh / video đang làm bìa (chọn lại ảnh đầu tiên → video có khung hình →
+  none). Chọn video chưa có khung hình làm bìa thì API trả 400, không được đặt
+  coverImageKey = null. Xem bài học B21.
 - CÁCH KIỂM TRA QUYỀN (2026-11-14): cache trình duyệt có thể trả 200 cho ảnh
   đã cache khi còn đăng nhập => kiểm tra bằng request bypass cache; nếu server
   trả 403 thì không phải lỗi code.
@@ -280,6 +285,10 @@ Hàng chờ: Quản trị > Báo vi phạm (mod + admin).
 --------------------------------------------------------------------------------
 6) VIỆC CÒN LẠI / KẾ HOẠCH
 --------------------------------------------------------------------------------
+- [2026-11-24] Đã kiểm chứng toàn bộ chức năng bằng script gọi API thật:
+  server/scripts/smoke.mjs (57 kiểm tra) + server/scripts/smoke-admin.mjs (29
+  kiểm tra) — chạy `node scripts/smoke.mjs` khi server đang chạy ở cổng 8090.
+  Tìm + sửa lỗi ảnh bìa bài viết (B21). Đã commit + push lên main.
 - [2026-11-17] Rà soát toàn bộ máy chủ + giao diện: đã vá lỗ hổng kênh chat
   "chỉ BQT" (3 đường đọc + realtime), sửa bộ đếm tin nhắn khi xoá, tính lại
   image_count / video_count trong "Tính lại bộ đếm", sửa useFetch loại bỏ dữ
@@ -400,6 +409,17 @@ b22c5f7 feat: scaffold new platform (đã thay thế — xoá ở bản Node.js)
     kênh staffOnly.
   Không đổi DB. Đã kiểm tra: tsc không lỗi, npm test 17/17 pass, build giao
   diện không lỗi. Chưa chạy thử trên trình duyệt / điện thoại / VPS.
+[2026-11-24] Kiểm chứng toàn bộ chức năng bằng script gọi API thật, tìm và sửa
+  lỗi ảnh bìa bài viết (B21):
+  - Thêm server/scripts/smoke.mjs (57 kiểm tra) và server/scripts/smoke-admin.mjs
+    (29 kiểm tra) — chạy `node scripts/smoke.mjs` khi server đang chạy ở 8090.
+  - Sửa routes/articles.ts: thêm resolveCover(articleId) chọn lại media còn tồn
+    tại sau khi xoá ảnh / video đang làm bìa; chọn video chưa có khung hình làm
+    bìa thì trả 400 thay vì đặt coverImageKey = null (bài mất ảnh bìa).
+  Không đổi DB. Đã kiểm tra: tsc không lỗi, npm test 17/17, smoke 57/57,
+  smoke-admin 29/29, build giao diện không lỗi, mở trình duyệt thật: trang chủ,
+  /bai-viet, /bai-viet/1, /quan-tri đều hiển thị đúng. Chưa chạy thử trên VPS /
+  Docker / Nginx / video thật (máy dev không có ffmpeg).
 
 ================================================================================
 Hết — lưu ý: không lưu mật khẩu / token thật trong file này.
