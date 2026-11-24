@@ -213,9 +213,27 @@ API phía web (server/src/routes/telegram.ts):
   bot      : /api/bot/register · /heartbeat · /jobs · /result · /start ·
               /link · /optout · /bots · /user/:telegramId · /stats
   admin    : /api/admin/telegram/overview · /users · /campaigns (+ send /
-              activate / pause / cancel) · /articles/recent · /import-ids ·
-              /bots · /bots/:id/check
+              activate / pause / cancel) · /articles/recent (kèm media[] thật) ·
+              /import-ids · /imported-ids · /bots · /bots/:id/check
   Tất cả /api/bot/* kiểm tra header X-Bot-Secret (timingSafeEqual) → sai = 401.
+
+GIAO DIỆN QUẢN TRỊ TELEGRAM (frontend/src/pages/admin/AdminTelegram.tsx,
+tab "Telegram" trong admin/Admin.tsx — URL /quan-tri, chỉ admin):
+  1. Tổng quan   — số người Telegram, đã liên kết, opt-out, bị chặn, tin đã
+                   gửi, lượt truy cập, lượt theo chiến dịch, CTR.
+  2. Chiến dịch — soạn tin (nội dung + xem trước + nút), chọn media thật
+                   (ảnh/video trong bài viết gần đây), gắn bài viết (server tự
+                   sinh link), chọn đối tượng (all_linked / visited / stalled /
+                   status / ids), chọn lịch (now / at / daily / weekly — lịch mặc
+                   định TẠM DỪNG, phải bấm "Kích hoạt lịch"), nút Gửi ngay /
+                   Tạm dừng lịch / Kích hoạt lịch / Huỷ.
+  3. Người Telegram — lọc theo trạng thái, Chặn / Mở lại, Bật / Tắt thông báo.
+  4. Bot         — trạng thái live/ban/error, đổi trọng số, bật/tắt auto-responder,
+                   nút "Kiểm tra" (gọi POST /internal/check-bot của service bot).
+  5. Nhập ID     — nhập hàng loạt id (txt/csv) + bảng Telegram đã biết + Copy id.
+
+Giao diện người dùng: /tg/entry (Mini App), /tg/lien-ket (mã 1 lần + deep link),
+/tg/stop (từ chối nhận). Menu tài khoản hiện trạng thái đã liên kết Telegram.
 
 Chạy service bot (ngoài Docker, vì cần token + kết nối Telegram):
   cd /opt/chongtoico/bot && npm ci && npm run build
@@ -440,6 +458,8 @@ Cài dịch vụ bot Telegram (ngoài Docker — cần token + kết nối Teleg
 7) LỊCH SỬ GIT (oneline — cập nhật sau mỗi lần push)
 --------------------------------------------------------------------------------
 (xem `git log --oneline`; các commit chính)
+ddb3677 feat(telegram): bo sung giao dien quan tri Telegram - chon media that, gan bai viet, dieu huong theo trang thai/id, hen gio, danh sach id da nhap
+0434540 docs: them huong dan trien khai dich vu bot, bien moi, lich su git
 eb48ff8 feat(telegram): Telegram Bridge GĐ0-GĐ5 - web giữ nội dung, bot chỉ nhắc người dùng quay lại web; sửa 4 lỗi logic (múi giờ VN, chống gửi trùm, hash nội dung, race Mini App); dịch vụ bot Node.js + grammY trong bot/
 6c6ea4e fix(articles): giu anh bia luon tro toi file that (resolveCover sau khi xoa media, bao loi khi video chua co khung hinh); them script kiem chung chuc nang smoke.mjs (57) + smoke-admin.mjs (29); docs
 2713232 fix(security): chan doc kenh chat chi BQT (danh sach + tin nhan + realtime); sua bo dem tin nhan, tinh lai image/video count; giao dien: bo du lieu cu, loi 403, banner du phong; docs
@@ -564,6 +584,26 @@ b22c5f7 feat: scaffold new platform (đã thay thế — xoá ở bản Node.js)
   - GĐ5: LUAT_VA_BOI_CANH.md mục 6 / 9 / 10 + file này mục 1B.
   Đã kiểm tra: server build + npm test 40/40, giao diện build, bot build +
   npm test 20/20. CHƯA chạy thử với bot Telegram thật (cần token thật).
+[2026-11-24] HOÀN THIỆN GIAO DIỆN QUẢN TRỊ TELEGRAM (xem mục 1B).
+  - Quản trị > Telegram: 5 tab con (Tổng quan / Chiến dịch / Người Telegram /
+    Bot / Nhập ID) — trước đó mới chỉ làm được một nửa so với bản kế hoạch.
+  - Chọn MEDIA THẬT (trước đây form gửi mediaKey = articleId ⇒ file luôn 404):
+    GET /api/admin/telegram/articles/recent trả kèm media[] lấy từ
+    article_images.file_key + article_videos.file_key/ext; mediaKey lưu dạng
+    "kind:key.ext" (B31).
+  - Gắn bài viết vào tin nhắn: cột MỚI telegram_campaigns.article_ids (jsonb) +
+    migration 0005_telegram_campaign_articles.sql (+ entry trong
+    drizzle/meta/_journal.json — thiếu là migration không chạy, B33). Server tự
+    sinh link <a href=".../bai-viet/{id}"> (B32).
+  - Đủ 5 kiểu đối tượng: all_linked / visited / stalled / status (nhiều trạng
+    thái) / ids (dán danh sách id); targetIds nhận number hoặc string.
+  - Thêm lịch "Hẹn giờ cụ thể" (schedule = "at").
+  - Tab "Nhập ID": bảng danh sách Telegram đã biết + Copy tất cả id; endpoint
+    mới GET /api/admin/telegram/imported-ids.
+  - Sửa buildPayload: sizeBytes thật (article_videos.size_bytes) + isPublic theo
+    articles.visibility (B34).
+  Đã kiểm tra: server build + npm test 44/44, giao diện build không lỗi.
+  CHƯA chạy thử giao diện mới trên trình duyệt / chiến dịch có media thật.
 
 ================================================================================
 Hết — lưu ý: không lưu mật khẩu / token thật trong file này.
