@@ -142,12 +142,25 @@ export async function main(): Promise<void> {
       }
     });
     if (config.enableTelegram) {
-      try {
-        await client.init();
-        log("info", `Bot ${managed.id} đã sẵn sàng.`);
-      } catch (err) {
-        log("warn", `Không khởi động được bot ${managed.id}: ${err instanceof Error ? err.message : "lỗi"}`);
-      }
+      // `bot.start()` bắt đầu long polling: đây là cách DUY NHẤT bot nhận
+      // được message (kể cả /start). `bot.init()` chỉ gọi getMe để kiểm tra
+      // token, KHÔNG mở kết nối nhận update — thiếu nó thì bot im lặng.
+      // `start()` tự gọi `init()` bên trong nên không cần gọi thêm.
+      //
+      // KHÔNG được `await`: promise của start() chỉ resolve khi polling dừng,
+      // nên await sẽ chặn cả vòng lặp và các bot sau đó không bao giờ chạy.
+      // Vì vậy khởi động không chặn, lỗi bắt bằng `.catch`.
+      void client
+        .start({
+          // `onStart` chỉ chạy sau khi long polling đã bắt đầu thật sự.
+          onStart: (info) => {
+            log("info", `Bot ${managed.id} đã sẵn sàng (@${info.username}).`);
+          },
+          drop_pending_updates: false,
+        })
+        .catch((err) => {
+          log("warn", `Long polling của bot ${managed.id} dừng: ${err instanceof Error ? err.message : "lỗi"}`);
+        });
     }
   }
 
