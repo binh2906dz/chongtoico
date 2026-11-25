@@ -723,3 +723,21 @@ Máº«u má»—i má»¥c:
 - **File**: `server/drizzle/0012_drop_articles_priority.sql`, `server/drizzle/meta/_journal.json`, `server/src/db/schema.ts`, `server/src/routes/articles.ts`, `server/src/routes/members.ts`, `server/test/api.test.ts`, `frontend/src/pages/Home.tsx`, `frontend/src/pages/admin/AdminArticles.tsx`, `frontend/src/components/ArticleCard.tsx`, `frontend/src/types.ts`, `LUAT_VA_BOI_CANH.md`, `huongdan.txt`.
 
 
+
+## 2026-11-26 — CHU?N B? DEPLOY LÊN VPS (xu?t toàn b? CSDL + media) + script n?p d? li?u
+
+- **Yêu c?u**: "gi? tôi mu?n up t?t c? lên vps, thay th? cho h? th?ng cu, luu ý khi tôi up lên vps thì up toàn b? d? li?u + các bài vi?t luôn".
+- **Vi?c dã làm**:
+  - `server/scripts/export-db-to-sql.mjs`: script xu?t toàn b? d? li?u t? PGlite (máy dev) ra file SQL chu?n PostgreSQL (`INSERT ... ON CONFLICT DO NOTHING`, `session_replication_role = replica`) — ch?y du?c trên VPS PostgreSQL th?t mà không c?n d?i tên b?ng/c?t.
+  - K?t qu? xu?t: `server/data/export/chongtoico-2026-11-25.sql` (~9,1 MB, 64.785 dòng) — 1.553 bài vi?t, 1.048 ?nh, 584 video, 57 bot, 61.092 `telegram_users`.
+  - Nén media: `server/data/export/uploads.tar.gz` (1,60 GB) t? `server/data/uploads`.
+  - `scripts/deploy-with-data.sh`: script 1 l?nh, ch?y trên máy dev: `bash scripts/deploy-with-data.sh <user@host> [domain]` ? ki?m tra SSH/Docker ? pull code ? t?o `.env` (h?i m?t kh?u admin, có `TOKEN_ENCRYPTION_KEY` gi?ng máy dev) ? `docker compose up -d --build` (migrations ch?y) ? **backup d? li?u VPS hi?n có** ? n?p SQL vào `db` container ? gi?i nén media vào volume `/data/uploads` ? health check.
+- **Ði?m quan tr?ng — khoá mã hoá token bot**: token trong DB du?c mã hoá AES-256-GCM b?ng `TOKEN_ENCRYPTION_KEY`. Máy dev dùng `local-dev-token-encryption-key-000000`. **VPS ph?i dùng ÐÚNG khoá này**, n?u không bot s? báo token sai. Script t?o `.env` m?i dã d?t s?n khoá dó.
+- **Bài h?c / cách tránh**:
+  - **D?NG server s?ch TRU?C khi xu?t PGlite** (dóng file DB gi?a lúc ghi ? file dump h?ng). Ðã d?ng server, xu?t, r?i kh?i d?ng l?i — xác nh?n `/api/home` tr? d? 1.553 bài.
+  - **N?p d? li?u ph?i theo th? t?: code + migrations ? SQL dump ? media**. N?p SQL tru?c khi container `db` có schema s? l?i `relation does not exist`.
+  - **Luôn backup tru?c khi ghi dè** (`scripts/backup.sh --with-videos`) vì bu?c này XOÁ d? li?u dang có trên VPS.
+  - `server/data/` dã `.gitignore` ? file SQL/tar.gz **không** du?c push lên Git (ph?i scp tr?c ti?p).
+- **Ðã ki?m tra**: server local kh?i d?ng l?i OK (`Server listening at http://127.0.0.1:8090`), `/api/home` tr? d? li?u d?y d? (bài id 1553 trong `articles.today`); `git commit --trailer "Co-authored-by: Cursor <cursoragent@cursor.com>"` 2 file m?i (`32ebe1d`).
+- **CHUA ch?y**: chua ch?y `deploy-with-data.sh` — c?n thông tin VPS (IP/host, user SSH, key ho?c m?t kh?u, domain) và c?u hình Nginx trên VPS.
+- **File**: `server/scripts/export-db-to-sql.mjs`, `scripts/deploy-with-data.sh`, `LUAT_VA_BOI_CANH.md`, `huongdan.txt`.

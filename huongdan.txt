@@ -485,6 +485,8 @@ Cài dịch vụ bot Telegram (ngoài Docker — cần token + kết nối Teleg
 7) LỊCH SỬ GIT (oneline — cập nhật sau mỗi lần push)
 --------------------------------------------------------------------------------
 (xem `git log --oneline`; các commit chính)
+32ebe1d feat(deploy): script nap toan bo du lieu (CSDL + media) len VPS thay the he thong cu
+bb7972d docs: cap nhat huongdan muc 7 (git log)
 7c4b399 feat(articles): xoa hoan toan tinh nang 'uu tien' (ghim bai)
 b22a390 feat(articles): nut 'uu tien' (ghim bai len dau trang chu) + cache bo bai ngau nhien 5 phut
 26032d8 docs: cap nhat huongdan muc 7 (git log)
@@ -959,6 +961,23 @@ b22c5f7 feat: scaffold new platform (đã thay thế — xoá ở bản Node.js)
   - LƯU Ý: server/data/pglite-corrupt + pglite-backup-* giữ lại làm dự phòng;
     xoá sau khi chủ dự án xác nhận. KHÔNG commit server/data (đã .gitignore).
   - CHƯA chạy: trên VPS với PostgreSQL thật; chưa deploy.
+
+[2026-11-26] CHUẨN BỊ DEPLOY LÊN VPS (thay thế hệ thống cũ):
+  - server/scripts/export-db-to-sql.mjs — xuất PGlite (máy dev) ra SQL chuẩn
+    PostgreSQL (INSERT ... ON CONFLICT DO NOTHING, session_replication_role=replica).
+    Kết quả: server/data/export/chongtoico-2026-11-25.sql (~9,1 MB, 64.785 dòng).
+  - server/data/export/uploads.tar.gz (1,60 GB) — toàn bộ ảnh + video.
+  - scripts/deploy-with-data.sh — 1 lệnh: bash scripts/deploy-with-data.sh <user@host> [domain]
+    (SSH check -> pull code -> tạo .env -> docker compose up --build -> backup dữ liệu
+    VPS cũ -> nạp SQL -> giải nén media vào /data/uploads -> health check).
+  - QUAN TRỌNG: .env trên VPS phải có
+    TOKEN_ENCRYPTION_KEY=local-dev-token-encryption-key-000000 (giống máy dev),
+    nếu không các bot sẽ báo token sai.
+  - THỨ TỰ BẮT BUỘC: code+migrations -> SQL dump -> media. Nạp SQL trước khi
+    container db có schema sẽ lỗi "relation does not exist".
+  - server/data/ đã .gitignore => file SQL/tar.gz KHÔNG push lên Git, phải scp.
+  - Đã kiểm tra: server local chạy lại OK, /api/home trả đủ dữ liệu (1.553 bài).
+  - CHƯA chạy: cần thông tin VPS (host, user SSH, key/mật khẩu, domain) + Nginx.
 
 ================================================================================
 Hết — lưu ý: không lưu mật khẩu / token thật trong file này.
