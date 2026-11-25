@@ -55,12 +55,14 @@ echo "    SSH + Docker OK"
 echo "==> 2/7. Code trên VPS (git clone / pull — repo đã CÔNG KHAI)"
 ssh "$TARGET" "
   if [ -d '$APP_DIR/.git' ]; then
+    git -C '$APP_DIR' config core.autocrlf input
     git -C '$APP_DIR' pull --ff-only
   else
     git clone '$REPO_URL' '$APP_DIR'
+    git -C '$APP_DIR' config core.autocrlf input
   fi
-  # Script .sh phải là LF (B69) và phải chạy được.
-  find '$APP_DIR' -name '*.sh' -type f -exec sed -i 's/\r\$//' {} +
+  # KHÔNG dùng sed -i trên file trong repo: git sẽ báo local changes ở lần pull
+  # sau (B74). File .sh đã LF nhờ .gitattributes + core.autocrlf=input.
   chmod +x '$APP_DIR'/scripts/*.sh
   git -C '$APP_DIR' log --oneline -1"
 echo "    code đã lên VPS"

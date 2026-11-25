@@ -7,12 +7,13 @@ APP_DIR="${APP_DIR:-/opt/chongtoico}"
 cd "$APP_DIR"
 
 echo "==> Kéo code mới"
+# KHÔNG sửa file trong repo bằng sed — git sẽ báo "local changes would be
+# overwritten by merge" ở lần pull sau (B74). Chuẩn hoá LF bằng git:
+#   core.autocrlf=input  => checkout giữ nguyên LF từ repo, không tạo CRLF.
+git config core.autocrlf input
 git pull --ff-only
 
-# Script .sh phải là LF: nếu không, bash báo "invalid option name" (B69).
-# .gitattributes đã đặt eol=lf, nhưng chuẩn hoá lại cho chắc (B69/B74).
-find "$APP_DIR" -name '*.sh' -type f -exec sed -i 's/\r$//' {} +
-chmod +x "$APP_DIR"/scripts/*.sh
+chmod +x "$APP_DIR"/scripts/*.sh 2>/dev/null || true
 
 echo "==> Build lại và khởi động (migration DB chạy tự động khi app khởi động)"
 docker compose up -d --build

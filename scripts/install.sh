@@ -25,15 +25,16 @@ fi
 
 if [ -d "$APP_DIR/.git" ]; then
   echo "==> Cập nhật mã nguồn tại $APP_DIR"
+  # core.autocrlf=input: checkout giữ LF, không tạo CRLF trên Linux (B74).
+  git -C "$APP_DIR" config core.autocrlf input
   git -C "$APP_DIR" pull --ff-only
 else
   echo "==> Tải mã nguồn về $APP_DIR"
   git clone "$REPO_URL" "$APP_DIR"
+  git -C "$APP_DIR" config core.autocrlf input
 fi
 cd "$APP_DIR"
 
-# Script .sh phải là LF, nếu không bash báo "invalid option name" (B69).
-find "$APP_DIR" -name '*.sh' -type f -exec sed -i 's/\r$//' {} +
 chmod +x "$APP_DIR"/scripts/*.sh
 
 if [ ! -f .env ]; then
