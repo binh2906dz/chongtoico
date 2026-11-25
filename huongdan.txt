@@ -277,11 +277,13 @@ Chạy service bot (ngoài Docker, vì cần token + kết nối Telegram):
   - Admin: admin / $qCWF5T0rT06. Mật khẩu admin được đặt lại trực tiếp trong DB.
   - .env TRÊN VPS phải có TOKEN_ENCRYPTION_KEY=local-dev-token-encryption-key-000000
     (giống máy dev) — nếu khác thì 57 bot không giải mã được token.
+  - LƯU Ý: repo đã chuyển sang CÔNG KHAI (2026-11-26) => VPS git clone/pull
+    được không cần khoá. scripts/update.sh (git pull --ff-only + docker compose
+    up -d --build) là cách cập nhật code thường xuyên.
   - Deploy lần sau (đã đầy đủ dữ liệu): chạy trên máy dev
     bash scripts/deploy-with-data.sh root@103.63.30.108 ngeyhsvge683874.online
-    (script tự: nén+scp code -> tao .env -> build -> backup -> nap SQL -> nap media ->
+    (script tự: git clone/pull -> tao .env -> build -> backup -> nap SQL -> nap media ->
      giai ma token bot -> cai bot service -> health check).
-  - LƯU Ý: repo la PRIVATE => VPS khong git clone duoc (403) => script dung scp.
 
 - DNS: bản ghi A cho tên miền phụ (vd beta.tenmiencu.com) trỏ về IP VPS.
   - Cài lần đầu (root):

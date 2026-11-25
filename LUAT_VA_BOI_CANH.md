@@ -763,3 +763,16 @@ Máº«u má»—i má»¥c:
 - **B? SUNG VÀO `scripts/deploy-with-data.sh`**: vì repo là **private** nên `git clone` trên VPS th?t b?i (403) ? bu?c 2 gi? **nén thu m?c hi?n t?i r?i `scp`** (b? `.git`, `node_modules`, `server/data`, `dist`, `import-tmp`). Thêm `scripts/export-bot-tokens.sh` (gi?i mã token ? ghi `TELEGRAM_BOT_TOKENS` vào `.env`) và `scripts/install-bot-service.sh` (t?o systemd unit cho bot). Ðã ch?y th? c? hai script ngay trên VPS ? OK.
 - **Ðã ki?m tra**: xem trình duy?t — trang ch? hi?n d? bài vi?t + ?nh bìa + video; dang nh?p admin thành công; tab "Telegram ? Ngu?i Telegram" hi?n 61.092; tab "Bot" hi?n danh sách bot + 30 bot b? ban; `/api/home`, `/healthz`, `/media/...` d?u HTTP 200; `curl` v?i cookie jar th?t xác nh?n `/api/auth/me` tr? user admin.
 - **File**: `server/scripts/export-db-to-sql.mjs`, `scripts/deploy-with-data.sh`, `scripts/export-bot-tokens.sh`, `scripts/install-bot-service.sh`, `LUAT_VA_BOI_CANH.md`, `huongdan.txt`.
+## 2026-11-26 — REPO CHUY?N SANG CÔNG KHAI: VPS DÙNG GIT THAY VÌ SCP
+
+- **Yêu c?u**: "repo github tôi dã chuy?n ch? d? công khai, sau này làm vi?c trên repo sau dó kéo code sang vps s? d? hon".
+- **Vi?c dã làm**:
+  - `scripts/deploy-with-data.sh`: bu?c 2 d?i t? "nén thu m?c r?i scp" sang **`git clone` / `git pull --ff-only`** (repo gi? công khai, VPS không c?n khoá). V?n gi? bu?c chu?n hoá LF cho file `.sh` và `chmod +x`.
+  - VPS dã chuy?n sang ch? d? git: clone l?i repo (gi? nguyên `.env` — 17 bi?n, `TOKEN_ENCRYPTION_KEY` dúng, `TELEGRAM_BOT_TOKENS` d?y d?), `git remote set-url` v? URL công khai.
+  - Vì clone l?i nên `bot/node_modules` và `bot/dist` m?t ? dã `npm ci && npm run build` l?i và restart `chongtoico-bot` (27 bot k?t n?i l?i OK).
+  - Ðã ch?y th? `bash scripts/update.sh` trên VPS: `git pull --ff-only` ? `docker compose up -d --build` ? container recreate ? health OK. **Ðây là workflow c?p nh?t code h?ng ngày t? gi?.**
+- **Bài h?c**:
+  - **B72 — Khi clone l?i repo trên VPS, PH?I gi? l?i `.env` và các thu m?c build ngoài git** (`.env` b? `.gitignore` ? m?t m?t kh?u admin + khoá mã hoá token + token bot; `node_modules`/`dist` b? lo?i ? bot service không kh?i d?ng du?c). Quy trình an toàn: `cp .env /tmp/`, clone vào thu m?c t?m, copy `.env` l?i, r?i m?i thay th? thu m?c cu.
+  - **B73 — `docker compose up -d --build` KHÔNG c?n `server/node_modules` trên host** (Dockerfile t? cài trong image), nhung **bot service ch?y NGOÀI Docker thì C?N** `bot/node_modules` + `bot/dist` trên host ? sau m?i l?n clone l?i ph?i build bot.
+- **Ðã ki?m tra**: `/` và `/api/home` HTTP 200; 1.553 bài vi?t trong CSDL; `chongtoico-bot` active v?i 27 bot; `TOKEN_ENCRYPTION_KEY` v?n dúng; `git log` trên VPS kh?p `main`.
+- **File**: `scripts/deploy-with-data.sh`, `huongdan.txt`, `LUAT_VA_BOI_CANH.md`.

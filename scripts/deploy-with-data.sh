@@ -9,8 +9,8 @@
 #
 # Script làm (theo đúng thứ tự, dừng ngay nếu bước nào lỗi):
 #   1. Kiểm tra kết nối SSH + Docker trên VPS.
-#   2. Đóng gói và tải code lên VPS (repo là PRIVATE nên không git clone được;
-#      script nén thư mục hiện tại, bỏ .git/node_modules/data, rồi scp).
+#   2. Lấy code trên VPS: git clone nếu chưa có, git pull --ff-only nếu đã có.
+#      (Repo đã chuyển sang CÔNG KHAI nên VPS clone/pull không cần khoá.)
 #   3. Tạo .env nếu chưa có (hỏi mật khẩu admin) — KHÔNG ghi đè .env cũ.
 #   4. Build + khởi động (migrations tự chạy) -> DB rỗng.
 #   5. Nạp file SQL (dữ liệu bài viết, bot, người dùng Telegram) vào PostgreSQL.
@@ -52,19 +52,17 @@ echo "==> 1/7. Kiểm tra kết nối"
 ssh -o BatchMode=yes "$TARGET" 'echo "SSH OK"; docker --version; docker compose version' >/dev/null
 echo "    SSH + Docker OK"
 
-echo "==> 2/7. Code trên VPS (nén + scp — repo private nên không git clone được)"
-SRC_TGZ="$(mktemp -t chongtoico-src-XXXXXX.tar.gz)"
-tar -czf "$SRC_TGZ" \
-  --exclude=.git --exclude=node_modules --exclude=server/data \
-  --exclude=server/dist --exclude=frontend/dist --exclude=import-tmp --exclude=.cursor \
-  -C "$SRC_DIR" .
-echo "    ($(du -h "$SRC_TGZ" | cut -f1))"
-scp "$SRC_TGZ" "$TARGET:/tmp/chongtoico-src.tar.gz"
-ssh "$TARGET" "mkdir -p '$APP_DIR' && tar -xzf /tmp/chongtoico-src.tar.gz -C '$APP_DIR' && rm -f /tmp/chongtoico-src.tar.gz"
-rm -f "$SRC_TGZ"
-# Script .sh phải là LF: file đóng gói trên Windows có CRLF => bash báo
-# "invalid option name" (B69). Chuyển ngay sau khi giải nén.
-ssh "$TARGET" "find '$APP_DIR' -name '*.sh' -type f -exec sed -i 's/\r\$//' {} + ; chmod +x '$APP_DIR'/scripts/*.sh"
+echo "==> 2/7. Code trên VPS (git clone / pull — repo đã CÔNG KHAI)"
+ssh "$TARGET" "
+  if [ -d '$APP_DIR/.git' ]; then
+    git -C '$APP_DIR' pull --ff-only
+  else
+    git clone '$REPO_URL' '$APP_DIR'
+  fi
+  # Script .sh phải là LF (B69) và phải chạy được.
+  find '$APP_DIR' -name '*.sh' -type f -exec sed -i 's/\r\$//' {} +
+  chmod +x '$APP_DIR'/scripts/*.sh
+  git -C '$APP_DIR' log --oneline -1"
 echo "    code đã lên VPS"
 
 echo "==> 3/7. File .env"
