@@ -1,3 +1,5 @@
+import zlib from "node:zlib";
+
 // Chuyển dữ liệu bot từ hệ thống cũ (telegram-bot-dashboard, Flask/SQLite) sang web mới.
 //
 // Dùng:
@@ -76,21 +78,30 @@ class OldClient {
   }
 
   async login() {
-    const html = await (await fetch(`${OLD_BASE}/login`)).text();
-    this.absorb({ headers: { getSetCookie: () => [] } });
+    // The login page hands out a session cookie and the CSRF token. Both are
+    // needed for the POST, otherwise Flask answers 400.
+    const res = await fetch(`${OLD_BASE}/login`, { redirect: "manual" });
+    this.absorb(res);
+    const html = await res.text();
     const csrf = /name="csrf_token" value="([^"]+)"/.exec(html)?.[1] ?? "";
-    const res = await fetch(`${OLD_BASE}/login`, {
+    if (!csrf) throw new Error("Không tìm thấy csrf_token trong trang đăng nhập của web cũ.");
+    const post = await fetch(`${OLD_BASE}/login`, {
       method: "POST",
       redirect: "manual",
       headers: {
         "content-type": "application/x-www-form-urlencoded",
         cookie: this.cookie(),
         referer: `${OLD_BASE}/login`,
+        origin: OLD_BASE,
+        "x-requested-with": "XMLHttpRequest",
       },
       body: new URLSearchParams({ username: OLD_USER, password: OLD_PASS, csrf_token: csrf }),
     });
-    this.absorb(res);
-    if (res.status >= 400 && res.status !== 302) throw new Error(`Đăng nhập web cũ thất bại (HTTP ${res.status}).`);
+    this.absorb(post);
+    if (post.status >= 400) {
+      const text = await post.text();
+      throw new Error(`Đăng nhập web cũ thất bại (HTTP ${post.status}): ${text.slice(0, 200)}`);
+    }
     console.log("đã đăng nhập web cũ");
   }
 }
@@ -143,81 +154,202 @@ async function loginNew() {
 const old = new OldClient();
 await old.login();
 
-// 1a. The bots with their health and the counters.
-const health = await old.request("GET", "/bots/health");
-if (!Array.isArray(health)) throw new Error("/bots/health trả về dữ liệu lạ.");
-console.log(`web cũ: ${health.length} bot`);
-
-// 1b. The token of every bot (owner only).
-const bots = [];
-for (const bot of health) {
-  let token = "";
-  try {
-    const r = await old.request("GET", `/bots/${encodeURIComponent(bot.id)}/token`);
-    token = (r?.token ?? "").trim();
-  } catch {
-    console.log(`  ! không lấy được token của bot ${bot.id}`);
+/**
+ * The backup zip of the old web app.
+ *
+ * It holds `bots.json` (the tokens), `subs_<bot>.json` (the people who
+ * pressed /start) and `banned.json`. One download instead of hundreds of
+ * requests — the old web app answers 200 ids per page, and there are 61092
+ * of them.
+ */
+async function readBackup() {
+  const res = await fetch(`${OLD_BASE}/backup/download`, { headers: { cookie: old.cookie() }, redirect: "manual" });
+  if (!res.ok) throw new Error(`Tải backup thất bại (HTTP ${res.status}).`);
+  const buffer = Buffer.from(await res.arrayBuffer());
+  // Node has no built-in zip reader, so the entries are pulled out by hand:
+  // every local file header carries the name, the method and the size.
+  const files = new Map();
+  let offset = 0;
+  while (offset < buffer.length - 4) {
+    const sig = buffer.readUInt32LE(offset);
+    if (sig !== 0x04034b50) break;
+    const method = buffer.readUInt16LE(offset + 8);
+    const compressedSize = buffer.readUInt32LE(offset + 18);
+    const nameLen = buffer.readUInt16LE(offset + 26);
+    const extraLen = buffer.readUInt16LE(offset + 28);
+    const name = buffer.toString("utf8", offset + 30, offset + 30 + nameLen);
+    const start = offset + 30 + nameLen + extraLen;
+    const raw = buffer.subarray(start, start + compressedSize);
+    if (method === 0) {
+      files.set(name, raw);
+    } else if (method === 8) {
+      // The zip was written with deflate — Node can inflate it.
+      try {
+        files.set(name, zlib.inflateRawSync(raw));
+      } catch {
+        console.log(`  ! không giải nén được ${name}`);
+      }
+    }
+    offset = start + compressedSize;
   }
-  bots.push({
-    oldId: String(bot.id),
-    name: bot.id,
-    username: bot.username ?? null,
-    token,
-    status: bot.status === "LIVE" ? "live" : bot.status === "BAN" ? "ban" : bot.status === "ERROR" ? "error" : "unknown",
-    autoResponder: bot.auto_responder !== false,
-    weight: 1,
-    startsCount: bot.starts_count ?? 0,
-    messagesSent: bot.messages_sent ?? 0,
-    interactionsCount: bot.interactions_count ?? 0,
-    repliesCount: bot.replies_count ?? 0,
-  });
-  console.log(`  - ${bot.id}: ${bot.status}${token ? "" : " (KHÔNG có token)"}`);
+  console.log(`backup: ${files.size} file`);
+  return files;
 }
 
-// 1c. The people who pressed /start on a bot.
+const backup = await readBackup();
+
+/** Read one json file out of the backup. */
+function backupJson(name, fallback = null) {
+  const raw = backup.get(name);
+  if (!raw) return fallback;
+  try {
+    // The zip stores the entries without compression, so the bytes are json.
+    return JSON.parse(raw.toString("utf8"));
+  } catch {
+    return fallback;
+  }
+}
+
+/* ---- 1a. the bots: token, name, health and the counters ---- */
+const health = await old.request("GET", "/bots/health");
+if (!Array.isArray(health)) throw new Error("/bots/health trả về dữ liệu lạ.");
+const botConfigs = backupJson("bots.json", []);
+const configById = new Map(botConfigs.map((b) => [String(b.id), b]));
+const healthById = new Map(health.map((h) => [String(h.id), h]));
+// The backup holds every bot, the health endpoint only the ones it could
+// answer for. The backup is the master list.
+const allBotIds = [...new Set([...configById.keys(), ...healthById.keys()])];
+console.log(`web cũ: ${allBotIds.length} bot (${botConfigs.length} trong backup, ${health.length} trong health)`);
+
+const bots = [];
+for (const oldId of allBotIds) {
+  const cfg = configById.get(oldId);
+  const bot = healthById.get(oldId);
+  // The token comes from the backup; the API is the fallback.
+  let token = String(cfg?.token ?? "").trim();
+  if (!token && bot) {
+    try {
+      const r = await old.request("GET", `/bots/${encodeURIComponent(oldId)}/token`);
+      token = String(r?.token ?? "").trim();
+    } catch {
+      console.log(`  ! không lấy được token của bot ${oldId}`);
+    }
+  }
+  bots.push({
+    oldId,
+    name: cfg?.name || oldId,
+    // The username is not in the backup, but the old system stored it in the
+    // bot list of the admin panel.
+    username: cfg?.username ?? null,
+    token,
+    // A bot the health endpoint does not know about is treated as banned —
+    // Telegram refuses its token, so it cannot be used any more.
+    status: !bot
+      ? "ban"
+      : bot.status === "LIVE"
+        ? "live"
+        : bot.status === "BAN"
+          ? "ban"
+          : bot.status === "ERROR"
+            ? "error"
+            : "unknown",
+    autoResponder: cfg?.auto_responder ?? bot?.auto_responder ?? true,
+    weight: 1,
+    startsCount: bot?.starts_count ?? 0,
+    messagesSent: bot?.messages_sent ?? 0,
+    interactionsCount: bot?.interactions_count ?? 0,
+    repliesCount: bot?.replies_count ?? 0,
+  });
+}
+const alive = bots.filter((b) => b.status === "live").length;
+const banned = bots.filter((b) => b.status === "ban").length;
+console.log(`  - ${alive} còn sống, ${banned} bị ban, ${bots.filter((b) => !b.token).length} không có token`);
+
+/* ---- 1b. the people who pressed /start on a bot ---- */
 const startedBy = {};
 for (const bot of bots) {
-  const ids = [];
-  let page = 1;
-  for (;;) {
-    const r = await old.request("GET", `/bots/${encodeURIComponent(bot.oldId)}/subscribers?page=${page}&per_page=5000`);
-    const list = (r?.ids ?? []).map((x) => Number(x)).filter((x) => Number.isFinite(x) && x > 0);
-    ids.push(...list);
-    if (!r?.has_more) break;
-    page++;
-    if (page > 500) break;
+  const fromBackup = backupJson(`subs_${bot.oldId}.json`, null);
+  let ids;
+  if (Array.isArray(fromBackup)) {
+    ids = fromBackup.map((x) => Number(x)).filter((x) => Number.isFinite(x) && x > 0);
+  } else {
+    // No file for this bot: ask the API (paginated).
+    ids = [];
+    let page = 1;
+    for (;;) {
+      const r = await old.request("GET", `/bots/${encodeURIComponent(bot.oldId)}/subscribers?page=${page}&per_page=5000`);
+      const list = (r?.ids ?? []).map((x) => Number(x)).filter((x) => Number.isFinite(x) && x > 0);
+      ids.push(...list);
+      if (!r?.has_more) break;
+      page++;
+      if (page > 500) break;
+    }
   }
   if (ids.length) {
     startedBy[bot.oldId] = ids;
-    console.log(`  - ${bot.oldId}: ${ids.length} người đã /start`);
   }
 }
+console.log(`  - ${Object.keys(startedBy).length} bot có người đã /start (${Object.values(startedBy).reduce((s, l) => s + l.length, 0)} lượt)`);
 
-// 1d. The imported id list with its status.
+/* ---- 1c. the banned list of the old web app ---- */
+const bannedList = (backupJson("banned.json", []) ?? []).map((x) => Number(x)).filter((x) => Number.isFinite(x) && x > 0);
+console.log(`  - danh sách bị cấm: ${bannedList.length}`);
+
+/* ---- 1d. the imported id list with its status ---- */
+// The old web app hard-limits the page to 200 ids, so 61092 ids need 306
+// requests. They are fetched in batches of 8 pages at a time.
 const ids = [];
 {
-  let page = 1;
-  for (;;) {
-    const r = await old.request("GET", `/ids?page=${page}&per_page=200`);
-    for (const row of r?.items ?? []) {
-      const telegramId = Number(row.user_id);
-      if (!Number.isFinite(telegramId) || telegramId <= 0) continue;
-      ids.push({
-        telegramId,
-        status: ["unknown", "active", "blocked", "invalid"].includes(row.status) ? row.status : "unknown",
-        username: null,
-        firstName: null,
-        ageVerified: false,
-        captchaOk: false,
-        bots: [],
-      });
-    }
-    if (!r?.items?.length || page >= (r?.total ?? 0) / (r?.per_page ?? 200) + 1) break;
-    page++;
-    if (page > 5000) break;
+  const bannedSet = new Set(bannedList);
+  const first = await old.request("GET", "/ids?page=1&per_page=200");
+  const total = Number(first?.total ?? 0);
+  const pages = Math.max(1, Math.ceil(total / 200));
+
+  const toRow = (row) => {
+    const telegramId = Number(row.user_id);
+    if (!Number.isFinite(telegramId) || telegramId <= 0) return null;
+    // The banned list wins over the status of the id list.
+    const status = bannedSet.has(telegramId)
+      ? "blocked"
+      : ["unknown", "active", "blocked", "invalid"].includes(row.status)
+        ? row.status
+        : "unknown";
+    return {
+      telegramId,
+      status,
+      username: null,
+      firstName: null,
+      ageVerified: false,
+      captchaOk: false,
+      bots: [],
+    };
+  };
+
+  for (const row of first?.items ?? []) {
+    const entry = toRow(row);
+    if (entry) ids.push(entry);
   }
+
+  const CONCURRENCY = 8;
+  let next = 2;
+  const workers = Array.from({ length: CONCURRENCY }, async () => {
+    for (;;) {
+      const page = next++;
+      if (page > pages) return;
+      try {
+        const r = await old.request("GET", `/ids?page=${page}&per_page=200`);
+        for (const row of r?.items ?? []) {
+          const entry = toRow(row);
+          if (entry) ids.push(entry);
+        }
+      } catch (err) {
+        console.log(`  ! trang ${page} lỗi: ${err.message}`);
+      }
+    }
+  });
+  await Promise.all(workers);
+  console.log(`  - danh sách id: ${ids.length} / ${total}`);
 }
-console.log(`  - danh sách id: ${ids.length}`);
 
 // 1e. Mark who pressed /start on which bot.
 for (const [botId, list] of Object.entries(startedBy)) {
@@ -252,24 +384,45 @@ if (DRY_RUN) {
 
 await loginNew();
 
-const payload = {
+/* ---- the bots: one call, they are small ---- */
+const botResult = await newRequest("POST", "/api/admin/telegram/bots/import", {
   bots: bots.map((b) => ({ ...b, weight: 1 })),
-  startedBy,
-  ids,
-};
-
-const result = await newRequest("POST", "/api/admin/telegram/bots/import", payload);
-console.log("\n=== kết quả ===");
-console.log(`nhập bot thành công: ${result.imported.length}`);
-for (const id of result.imported) console.log(`  + ${id}`);
-if (result.failed.length) {
-  console.log(`không nhập được (token chết): ${result.failed.length}`);
-  for (const f of result.failed) console.log(`  - ${f.oldId}: ${f.reason}`);
+});
+console.log("\n=== kết quả: bot ===");
+console.log(`nhập bot thành công: ${botResult.imported.length}`);
+for (const id of botResult.imported) console.log(`  + ${id}`);
+if (botResult.failed.length) {
+  console.log(`không nhập được (token chết): ${botResult.failed.length}`);
+  for (const f of botResult.failed) console.log(`  - ${f.oldId}: ${f.reason}`);
 }
-if (result.skipped.length) console.log(`bỏ qua (đã có): ${result.skipped.join(", ")}`);
-console.log(`id: ${result.idsImported}, liên kết đã /start: ${result.linksImported}`);
-console.log(`đồng bộ sang dịch vụ bot: ${result.synced}/${result.imported.length}`);
+if (botResult.skipped.length) console.log(`bỏ qua (đã có): ${botResult.skipped.join(", ")}`);
+console.log(`đồng bộ sang dịch vụ bot: ${botResult.synced}/${botResult.imported.length}`);
 if (NO_SYNC) console.log("(--no-sync: bỏ qua bước đồng bộ)");
+
+/* ---- the id list: split into batches, the body limit is 15 MB ---- */
+const ID_BATCH = 3000;
+let idsImported = 0;
+let linksImported = 0;
+for (let i = 0; i < ids.length; i += ID_BATCH) {
+  const batch = ids.slice(i, i + ID_BATCH);
+  // The people who pressed /start belong to this batch of ids.
+  const batchIds = new Set(batch.map((r) => r.telegramId));
+  const batchStartedBy = {};
+  for (const [botId, list] of Object.entries(startedBy)) {
+    const inBatch = list.filter((tid) => batchIds.has(tid));
+    if (inBatch.length) batchStartedBy[botId] = inBatch;
+  }
+  const res = await newRequest("POST", "/api/admin/telegram/bots/import", {
+    bots: [],
+    ids: batch,
+    startedBy: batchStartedBy,
+  });
+  idsImported += res.idsImported;
+  linksImported += res.linksImported;
+  console.log(`  lô ${Math.floor(i / ID_BATCH) + 1}: id ${res.idsImported}, liên kết ${res.linksImported}`);
+}
+console.log(`\n=== kết quả: id ===`);
+console.log(`id: ${idsImported}, liên kết đã /start: ${linksImported}`);
 
 // The reply keyboard of the old system.
 if (keyboard && typeof keyboard === "object") {

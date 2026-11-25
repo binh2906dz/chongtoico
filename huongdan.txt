@@ -775,6 +775,39 @@ b22c5f7 feat: scaffold new platform (đã thay thế — xoá ở bản Node.js)
     CACHE danh sách file lúc khởi động => build giao diện xong PHẢI khởi động
     lại server, nếu không server trả HTML fallback và trang trắng).
 
+[2026-11-25] CHẠY THẬT script chuyển dữ liệu bot (web cũ -> web mới) + sửa lỗi.
+  - ĐÃ CHẠY THẬT với web cũ https://ngeyhsvge683874.online (tk admin_admin_8).
+    Kết quả: 57 bot trong CSDL (27 live + 30 ban), 61.092 telegram_users
+    (active 10.454 / blocked 21.755 / invalid 28.883 — khớp /ids/stats của web
+    cũ), 404 telegram_user_links (người đã /start), 30 telegram_bot_incidents,
+    bàn phím trả lời đã chuyển. Lịch sử gửi KHÔNG chuyển (đã quyết định).
+  - LƯU Ý: 58 dòng trong backup nhưng chỉ 57 bot — bot e56c295b5… và
+    c988c64a… DÙNG CHUNG 1 token (7285827750) nên Telegram chỉ cho 1 bot;
+    dùng hết thì cần token mới cho bot còn lại.
+  - Bài học MỚI:
+    B53 (đăng nhập web cũ Flask: phải GIỮ cookie phiên từ GET /login, không
+      parse cookie từ HTML; thiếu cookie -> HTTP 400. Cần cả csrf_token +
+      cookie + referer).
+    B54 (web cũ giới hạn cứng per_page=200 cho /ids dù gửi 50000; 61092 id =
+      306 trang => phải tải SONG SONG 8 trang/lần).
+    B55 (backup/download của web cũ chứa data.db + bots.json + subs_<id>.json +
+      banned.json — dùng 1 lần tải zip, NHANH HƠN gọi hàng trăm API; zip dùng
+      deflate nên phải zlib.inflateRawSync, không phải stored).
+    B56 (payload 61092 id vượt bodyLimit 15MB -> HTTP 413; chia lô 3000 id/lần
+      + bodyLimit riêng 8MB cho route import).
+    B57 (zod: .optional() KHÔNG cho null — phải .nullish(); username/firstName
+      gửi null sẽ bị 400 "expected string, received null").
+    B58 (telegram_user_links.telegram_id tham chiếu telegram_users.ID (khoá
+      chính bigserial), KHÔNG phải telegram_id — phải tra id nội bộ; sai thì lỗi
+      foreign key constraint).
+    B59 (bot bị ban ở web cũ vẫn NHẬP vào danh sách (status=ban, đỏ, có
+      incident) nhưng KHÔNG giữ token chết; bot trùng id KHÔNG được tạo bản
+      thứ hai với hậu tố _xxxxxx).
+  - Script MỚI: server/scripts/check-bots.mjs (xem nhanh CSDL),
+    server/scripts/cleanup-bots.mjs (xoá incident mồ côi + incident của bot
+    trùng). Cả hai cần DỪNG server trước khi chạy (PGlite không cho 2 tiến
+    trình mở cùng DB).
+
 ================================================================================
 Hết — lưu ý: không lưu mật khẩu / token thật trong file này.
 ================================================================================

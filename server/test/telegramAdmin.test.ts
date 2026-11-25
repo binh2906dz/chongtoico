@@ -246,6 +246,65 @@ describe("Telegram management panel", () => {
     assert.equal(res.statusCode, 401);
   });
 
+  it("imports a bot that was already banned in the old system", async () => {
+    // The token of a banned bot is dead, but the admin wants to see the bot in
+    // the list — marked as banned. It must not be reported as a failure.
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/admin/telegram/bots/import",
+      headers: { ...H, cookie: admin },
+      payload: {
+        bots: [
+          {
+            oldId: "old-banned-bot",
+            name: "Bot cũ đã ban",
+            token: "123456789:AAdeadtokenvalue1234567890",
+            status: "ban",
+            autoResponder: true,
+            weight: 1,
+          },
+        ],
+      },
+    });
+    assert.equal(res.statusCode, 200, res.body);
+    const body = res.json();
+    // The banned bot is stored, so the admin can see it.
+    assert.equal(body.imported.length, 1);
+    assert.equal(body.failed.length, 0, "A banned bot of the old system is not a failure.");
+
+    const list = await app.inject({ method: "GET", url: "/api/admin/telegram/bots/list", headers: { ...H, cookie: admin } });
+    const bot = list.json().bots.find((b: { id: string }) => b.id === "old-banned-bot");
+    assert.ok(bot, "The banned bot must be in the list.");
+    assert.equal(bot.status, "ban");
+    assert.ok(bot.bannedAt);
+    // A dead token is never kept.
+    assert.equal(bot.hasToken, false);
+  });
+
+  it("never writes the same bot twice", async () => {
+    const payload = {
+      bots: [
+        {
+          oldId: "dup-bot",
+          name: "Bot trùng",
+          token: "123456789:AAdeadtokenvalue1234567890",
+          status: "ban" as const,
+          autoResponder: true,
+          weight: 1,
+        },
+      ],
+    };
+    await app.inject({ method: "POST", url: "/api/admin/telegram/bots/import", headers: { ...H, cookie: admin }, payload });
+    const second = await app.inject({ method: "POST", url: "/api/admin/telegram/bots/import", headers: { ...H, cookie: admin }, payload });
+    assert.equal(second.statusCode, 200, second.body);
+    assert.equal(second.json().imported.length, 0);
+    assert.deepEqual(second.json().skipped, ["dup-bot"]);
+
+    const list = await app.inject({ method: "GET", url: "/api/admin/telegram/bots/list", headers: { ...H, cookie: admin } });
+    const count = list.json().bots.filter((b: { id: string }) => b.id === "dup-bot").length;
+    assert.equal(count, 1, "The bot must appear only once.");
+  });
+
   it("records a ban in the incident list", async () => {
     const { db } = await import("../src/db/index.js");
     const { telegramBots, telegramBotIncidents } = await import("../src/db/schema.js");

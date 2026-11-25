@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, count, desc, eq, sql } from "drizzle-orm";
+import { and, count, desc, eq, inArray, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { requireAdmin } from "../auth.js";
@@ -138,8 +138,8 @@ const importIdsBody = z.object({
 const importBotBody = z.object({
   /** The id the old system used — kept so the links of the past stay readable. */
   oldId: z.string().trim().min(1).max(64),
-  name: z.string().trim().max(80).optional(),
-  username: z.string().trim().max(64).optional(),
+  name: z.string().trim().max(80).nullish(),
+  username: z.string().trim().max(64).nullish(),
   token: z.string().trim().min(20, "Token quá ngắn.").max(200),
   /** "live" | "ban" | "error" | "unknown" */
   status: z.enum(["live", "ban", "error", "unknown"]).default("unknown"),
@@ -161,8 +161,8 @@ const importBotsBody = z.object({
       z.object({
         telegramId: z.coerce.number().int().positive(),
         status: z.enum(["unknown", "active", "blocked", "invalid"]).default("unknown"),
-        username: z.string().trim().max(64).optional(),
-        firstName: z.string().trim().max(80).optional(),
+        username: z.string().trim().max(64).nullish(),
+        firstName: z.string().trim().max(80).nullish(),
         ageVerified: z.boolean().default(false),
         captchaOk: z.boolean().default(false),
         /** The bots this person pressed /start on. */
@@ -278,7 +278,7 @@ export default async function telegramAdminRoutes(app: FastifyInstance) {
    * a bot added by hand. Every bot is checked against Telegram first, so a
    * dead token is reported instead of being stored silently.
    */
-  app.post("/api/admin/telegram/bots/import", async (req) => {
+  app.post("/api/admin/telegram/bots/import", { config: { bodyLimit: 8 * 1024 * 1024 } }, async (req) => {
     requireAdmin(req);
     if (!tokenStorageEnabled()) {
       throw badRequest("Máy chủ chưa cấu hình TOKEN_ENCRYPTION_KEY nên chưa thể nhập bot.");
@@ -295,26 +295,44 @@ export default async function telegramAdminRoutes(app: FastifyInstance) {
     for (const entry of body.bots) {
       // The same Telegram bot must not be registered twice.
       const check = await verifyToken(entry.token);
-      if (!check.ok) {
+      // A bot the old system already reported as banned stays in the list —
+      // the admin wants to see it, marked as banned. Every other dead token
+      // is reported instead of being stored.
+      if (!check.ok && entry.status !== "ban") {
         result.failed.push({ oldId: entry.oldId, reason: check.error ?? "Token không hợp lệ." });
         continue;
       }
-      const existing = await db.select().from(telegramBots).where(eq(telegramBots.telegramId, check.telegramId!)).limit(1);
-      if (existing.length) {
+      // A banned bot has no username any more, so the old name is used.
+      const username = check.username ?? entry.username ?? null;
+      const telegramId = check.telegramId ?? null;
+      const displayName = entry.name || check.displayName || entry.username || entry.oldId;
+      // A banned token is dead — there is no point in keeping it.
+      const tokenUsable = check.ok;
+
+      // A live bot must not be registered twice.
+      if (telegramId) {
+        const existing = await db.select().from(telegramBots).where(eq(telegramBots.telegramId, telegramId)).limit(1);
+        if (existing.length) {
+          result.skipped.push(entry.oldId);
+          continue;
+        }
+      }
+
+      // The old id is kept so the links and the counters of the past still
+      // match. A bot that is already there is never written twice.
+      const wantedId = entry.oldId.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 64) || randomUUID().replace(/-/g, "").slice(0, 16);
+      const [sameId] = await db.select({ id: telegramBots.id }).from(telegramBots).where(eq(telegramBots.id, wantedId)).limit(1);
+      if (sameId) {
         result.skipped.push(entry.oldId);
         continue;
       }
-
-      // Keep the old id when it is free, so old links and analytics still match.
-      let id = entry.oldId.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 64) || randomUUID().replace(/-/g, "").slice(0, 16);
-      const [sameId] = await db.select({ id: telegramBots.id }).from(telegramBots).where(eq(telegramBots.id, id)).limit(1);
-      if (sameId) id = `${id}_${randomUUID().replace(/-/g, "").slice(0, 6)}`;
+      const id = wantedId;
 
       await db.insert(telegramBots).values({
         id,
-        username: check.username ?? entry.username ?? null,
-        displayName: entry.name || check.displayName || entry.username || id,
-        telegramId: check.telegramId ?? null,
+        username,
+        displayName,
+        telegramId,
         // A bot the old system already reported as banned stays banned.
         status: entry.status === "ban" ? "ban" : "live",
         autoResponder: entry.autoResponder,
@@ -325,7 +343,8 @@ export default async function telegramAdminRoutes(app: FastifyInstance) {
         repliesCount: entry.repliesCount,
         bannedAt: entry.status === "ban" ? now : null,
         lastBanReason: entry.status === "ban" ? "Bị ban ở hệ thống cũ." : null,
-        tokenEncrypted: encryptToken(entry.token),
+        // A banned token is dead — there is no point in keeping it.
+        tokenEncrypted: tokenUsable ? encryptToken(entry.token) : null,
         lastCheckedAt: now,
         lastError: entry.status === "ban" ? "Bot bị Telegram cấm (401)." : null,
       });
@@ -333,7 +352,7 @@ export default async function telegramAdminRoutes(app: FastifyInstance) {
       if (entry.status === "ban") {
         await db.insert(telegramBotIncidents).values({
           botId: id,
-          botUsername: check.username ?? entry.username ?? null,
+          botUsername: username,
           kind: "ban",
           message: "Bot đã bị Telegram ban trước khi chuyển sang hệ thống mới.",
           detectedAt: now,
@@ -379,12 +398,37 @@ export default async function telegramAdminRoutes(app: FastifyInstance) {
       for (const [botId, telegramIds] of Object.entries(body.startedBy)) {
         if (!knownIds.has(botId)) continue;
         for (let i = 0; i < telegramIds.length; i += chunkSize) {
-          const chunk = telegramIds.slice(i, i + chunkSize).map((tid) => ({
-            telegramId: tid,
-            botId,
-            startedAt: now,
-          }));
-          const inserted = await db.insert(telegramUserLinks).values(chunk).onConflictDoNothing().returning({ telegramId: telegramUserLinks.telegramId });
+          const chunk = telegramIds.slice(i, i + chunkSize);
+          // The link points at the primary key of the person, not at the
+          // Telegram id — the foreign key would refuse the row otherwise.
+          const people = await db
+            .select({ id: telegramUsers.id, telegramId: telegramUsers.telegramId })
+            .from(telegramUsers)
+            .where(inArray(telegramUsers.telegramId, chunk));
+          const byTelegramId = new Map(people.map((p) => [p.telegramId, p.id]));
+          // The people who are not in the id list are created now.
+          const missing = chunk.filter((tid) => !byTelegramId.has(tid));
+          if (missing.length) {
+            const created = await db
+              .insert(telegramUsers)
+              .values(missing.map((telegramId) => ({ telegramId, status: "unknown" as const, notifyEnabled: true, createdAt: now, updatedAt: now })))
+              .onConflictDoNothing()
+              .returning({ id: telegramUsers.id, telegramId: telegramUsers.telegramId });
+            for (const person of created) byTelegramId.set(person.telegramId, person.id);
+            idsImported += created.length;
+          }
+          const rows = chunk
+            .map((telegramId) => {
+              const id = byTelegramId.get(telegramId);
+              return id ? { telegramId: id, botId, startedAt: now } : null;
+            })
+            .filter((row): row is { telegramId: number; botId: string; startedAt: Date } => row !== null);
+          if (!rows.length) continue;
+          const inserted = await db
+            .insert(telegramUserLinks)
+            .values(rows)
+            .onConflictDoNothing()
+            .returning({ telegramId: telegramUserLinks.telegramId });
           linksImported += inserted.length;
         }
       }
