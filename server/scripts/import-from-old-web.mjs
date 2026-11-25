@@ -1,9 +1,15 @@
 // Import bài viết từ web cũ (telegram-bot-dashboard, Flask/SQLite) sang web mới.
 //
+// Mỗi POST của album cũ là MỘT bài viết độc lập trên web mới:
+//   tiêu đề = dòng đầu caption, nội dung = caption đầy đủ, media = ảnh/video của post.
+//
 // Dùng:
 //   OLD_BASE=https://web-cu.domain  NEW_BASE=http://127.0.0.1:8090 \
 //   OLD_USER=... OLD_PASS=... NEW_USER=admin NEW_PASS=... \
-//   node server/scripts/import-from-old-web.mjs --album album_xxxx --src duong/dan/album.json
+//   node server/scripts/import-from-old-web.mjs --album album_xxxx --src ./tmp \
+//     [--limit 5] [--replace]
+//
+// --limit N : chỉ tạo N bài viết đầu tiên. --replace: xoá bài cũ trùng tiêu đề.
 //
 // Nguồn: web cũ lưu mỗi album trong bảng SQLite "albums" (data_json) và media ở
 // static/uploads/{images,videos}. Cấu trúc album:
@@ -13,7 +19,7 @@
 //
 // Script đăng nhập web cũ (POST /login với csrf_token), đọc album qua
 // GET /albums/<id>/posts/edit, tải media về thư mục --src, rồi đăng nhập web mới
-// và tạo bài viết + upload toàn bộ ảnh/video.
+// và tạo bài viết + upload ảnh/video.
 import fs from "node:fs";
 import path from "node:path";
 import { execFile } from "node:child_process";
@@ -37,6 +43,8 @@ const NEW_PASS = process.env.NEW_PASS ?? "";
 
 const ALBUM_ID = arg("album");
 const SRC = path.resolve(arg("src", "./import-tmp"));
+/** Số bài viết tối đa cần tạo (mỗi post cũ = 1 bài viết). */
+const LIMIT = Number(arg("limit", "0")) || 0;
 
 // ── Tiện ích HTTP ────────────────────────────────────────────────────────────
 function makeClient(base) {
@@ -152,7 +160,19 @@ if (!ALBUM_ID) {
 const album = has("src") && fs.existsSync(path.join(SRC, "album.json"))
   ? JSON.parse(fs.readFileSync(path.join(SRC, "album.json"), "utf8"))
   : await fetchAlbum(await loginOld(), ALBUM_ID);
-console.log(`album "${album.title}" | posts=${album.posts.length}`);
+const posts = LIMIT > 0 ? album.posts.slice(0, LIMIT) : album.posts;
+console.log(`album "${album.title}" | posts=${album.posts.length}${LIMIT ? ` (lấy ${posts.length})` : ""}`);
+
+/**
+ * Mỗi POST của album cũ là MỘT bài viết độc lập trên web mới:
+ *   tiêu đề = dòng đầu của caption (bỏ ký tự xuống dòng, tối đa 200 ký tự)
+ *   nội dung = caption đầy đủ
+ *   media = ảnh/video của post đó
+ */
+function titleFromCaption(caption) {
+  const first = (caption ?? "").split(/\r?\n/).map((s) => s.trim()).find((s) => s.length > 0) ?? "";
+  return first.slice(0, 200) || "Bài viết";
+}
 
 // Đăng nhập web mới (CSRF header "x-requested-with: ctc" — xem server/src/app.ts).
 const nc = makeClient(NEW);
@@ -163,13 +183,14 @@ await nc.request("POST", "/api/auth/login", JSON.stringify({ username: NEW_USER,
 const api = (method, url, body, headers = {}) =>
   nc.request(method, url, body, { "x-requested-with": "ctc", ...headers }).then((r) => r.json);
 
-// Xoá bản cũ trùng tiêu đề nếu được yêu cầu.
+// Xoá bài cũ trùng tiêu đề (tiêu đề lấy từ dòng đầu caption) nếu được yêu cầu.
 if (has("replace")) {
-  const list = await api("GET", "/api/articles?limit=50");
+  const wanted = new Set(posts.map((p) => titleFromCaption(p.caption)));
+  const list = await api("GET", "/api/articles?limit=100");
   for (const a of list?.articles ?? []) {
-    if (String(a.title ?? "").startsWith(album.title)) {
+    if (wanted.has(String(a.title ?? ""))) {
       await api("DELETE", `/api/admin/articles/${a.id}`);
-      console.log("đã xoá bài cũ id =", a.id);
+      console.log("đã xoá bài cũ id =", a.id, `"${a.title}"`);
     }
   }
 }
@@ -177,21 +198,23 @@ if (has("replace")) {
 const cats = await api("GET", "/api/admin/categories");
 const categoryId = (cats?.categories ?? [])[0]?.id ?? null;
 
-const body = album.posts.map((p, i) => `【${i + 1}】${p.caption}`).join("\n\n");
-const created = await api("POST", "/api/admin/articles", JSON.stringify({
-  title: `${album.title} (chuyển từ web cũ)`.slice(0, 200),
-  description: album.description || body.slice(0, 4000),
-  categoryId,
-  tags: "",
-  visibility: "public",
-  isHot: false,
-}), { "content-type": "application/json" });
-const articleId = created.article.id;
-console.log("đã tạo bài viết id =", articleId);
-
 let imgOk = 0;
 let vidOk = 0;
-for (const p of album.posts) {
+const created = [];
+
+for (const [index, p] of posts.entries()) {
+  const title = titleFromCaption(p.caption);
+  const res = await api("POST", "/api/admin/articles", JSON.stringify({
+    title,
+    description: p.caption ?? "",
+    categoryId,
+    tags: "",
+    visibility: "public",
+    isHot: false,
+  }), { "content-type": "application/json" });
+  const articleId = res.article.id;
+  created.push({ articleId, title });
+
   for (const m of p.media) {
     const file = path.join(SRC, "media", m.name);
     if (!fs.existsSync(file)) {
@@ -216,8 +239,9 @@ for (const p of album.posts) {
       await nc.request("POST", `/api/admin/articles/${articleId}/videos`, form, { "x-requested-with": "ctc" });
       vidOk++;
     }
-    console.log("uploaded", m.type, m.name);
   }
+  console.log(`[${index + 1}/${posts.length}] bài #${articleId} "${title.slice(0, 70)}" media=${p.media.length}`);
 }
-console.log(`xong: ảnh=${imgOk} video=${vidOk} -> bài viết ${articleId}`);
-console.log(`${NEW}/bai-viet/${articleId}`);
+
+console.log(`xong: ${created.length} bài viết, ảnh=${imgOk} video=${vidOk}`);
+for (const c of created) console.log(`  ${NEW}/bai-viet/${c.articleId}`);

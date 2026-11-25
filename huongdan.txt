@@ -670,22 +670,24 @@ b22c5f7 feat: scaffold new platform (đã thay thế — xoá ở bản Node.js)
       OLD_BASE=... OLD_USER=... OLD_PASS=... NEW_BASE=... NEW_USER=... NEW_PASS=...
       node server/scripts/import-from-old-web.mjs --album album_xxx --src ./tmp --replace
     (--replace xoá bản cũ trùng tiêu đề trước khi tạo).
-  - Ánh xạ: mỗi post cũ -> 1 media; caption các post gộp vào description bài viết
-    (đánh số 【1】【2】...); tiêu đề "<tên album> (chuyển từ web cũ)".
+  - Ánh xạ: **MỖI POST của album cũ = 1 bài viết riêng** trên web mới (tiêu đề =
+    dòng đầu caption, nội dung = caption đầy đủ, media = media của post đó).
+    Album cũ gom nhiều bài lại, KHÔNG gộp thành 1 bài. Cờ --limit N để lấy N
+    bài đầu; --replace xoá bài cũ theo tiêu đề từng post.
   - GIAO DIỆN MỚI yêu cầu header CSRF "x-requested-with: ctc" cho mọi method
     khác GET/HEAD/OPTIONS (xem server/src/app.ts) — thiếu là 403 "Yêu cầu không
     hợp lệ". Danh sách bài dùng GET /api/articles (không có /api/admin/articles
-    dạng collection).
+    dạng collection). Đăng nhập web cũ trả 302 (Flask) => script cho phép 3xx.
   - MÁY DEV ĐÃ CÀI ffmpeg (winget Gyan.FFmpeg) — server cache hasFfmpeg() nên
     phải KHỞI ĐỘNG LẠI server sau khi cài, video mới có khung hình poster +
     duration/width/height. Trên VPS đã có ffmpeg trong Dockerfile.
-  - ĐÃ LÀM: album album_a827174a "Libk ngày 30/9" -> bài viết id=100 trên web mới,
-    5 ảnh + 5 video, poster + duration đầy đủ, hiển thị đúng ở trang chủ
-    (badge 🖼️5 🎬5) và trang bài viết.
+  - ĐÃ LÀM: album album_2ed16cc1 "Link ngày 6/11" -> 5 bài viết riêng (id 101-105),
+    mỗi bài 1 media (2 video + 3 ảnh), poster + duration đầy đủ, hiển thị đúng ở
+    trang chủ (badge 🖼️1 / ▶🎬1) và trang bài viết. Bản gộp-album sai đã xoá.
   - LƯU Ý: CSDL PGlite ở máy dev bị SEED LẠI khi tạo mới ⇒ bài viết đã import có
     thể mất bản ghi (file media vẫn còn trong server/data/uploads). Sau mỗi lần
     restart server hãy kiểm tra lại dữ liệu; nếu mất thì chạy lại script import
-    với --replace. Đăng nhập web cũ trả 302 (Flask) nên script đã cho phép 3xx.
+    với --replace.
 
 ================================================================================
 Hết — lưu ý: không lưu mật khẩu / token thật trong file này.
