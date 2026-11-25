@@ -485,6 +485,7 @@ Cài dịch vụ bot Telegram (ngoài Docker — cần token + kết nối Teleg
 7) LỊCH SỬ GIT (oneline — cập nhật sau mỗi lần push)
 --------------------------------------------------------------------------------
 (xem `git log --oneline`; các commit chính)
+b731f01 feat(telegram): kiem tra bot bi ban + chuyen du lieu bot tu he thong cu
 d38392f feat(articles): nut 'Xem ngay' + 'Kenh VIP' cho bai viet
 dec8677 fix(scripts): moi post cu = 1 bai viet rieng (truoc day gop ca album), them --limit
 2ccba8d docs: ghi bai hoc B45-B46 (302 khi dang nhap web cu, PGlite bi seed lai)
