@@ -215,6 +215,8 @@ Mỗi dòng: **lỗi / tình huống** → **cách tránh**.
 - **B78 — `await bot.start()` trong vòng lặp sẽ chặn cả vòng lặp.** Promise của `start()` chỉ resolve khi polling dừng ⇒ `await` sẽ khiến các bot sau **không bao giờ khởi động**. → Gọi không chặn: `void bot.start({ onStart }).catch(...)`.
 - **B79 — Khi chuyển hệ thống, PHẢI xoá webhook cũ của mọi bot.** Hệ thống cũ (FastAPI) đã đăng ký webhook `/webhook/<token>`; Telegram cứ gửi update về đó ⇒ hệ thống mới trả 404, long polling không bao giờ có update. → `POST https://api.telegram.org/bot<token>/deleteWebhook` cho từng bot (`bot.start()` cũng tự làm việc này, nhưng phải xoá TRƯỚC khi khởi động nếu còn nhiều bot).
 - **B80 — Token bot trong `.env` có dạng `id:token` (id = uuid trong DB), KHÔNG phải token Telegram thô.** Token Telegram thô = `<bot_id>:<hash>`. Khi kiểm tra bằng `curl https://api.telegram.org/bot<token>/getMe` phải **cắt bỏ phần `id:` đầu tiên**, nếu không sẽ luôn trả 404 và tưởng token hỏng.
+- **B81 — Khi tài liệu và CSDL mâu thuẫn về mật khẩu, hãy kiểm tra bcrypt trực tiếp thay vì đoán.** Chạy `bcrypt.compare(ứng viên, password_hash)` trong container `app` với vài ứng viên → xác nhận chính xác mật khẩu nào khớp, đừng kết luận "chắc là đã đổi".
+- **B82 — Shell script truyền mật khẩu có ký tự `$` (ví dụ `$qCWF5T0rT06`) phải escape hoặc truyền qua file JSON tạm**, nếu không shell sẽ nội suy biến thành chuỗi rỗng và luôn báo "sai mật khẩu" — dễ tưởng tài khoản hỏng.
 
 ## 10. Nhật ký làm việc
 
@@ -831,3 +833,17 @@ Mẫu mỗi mục:
   - `npm test` bot: 45/45 pass; `tsc -p . --noEmit`: sạch.
 - **Bài học**: xem mục 9 — B77 (init ≠ start), B78 (đừng await start), B79 (xoá webhook khi chuyển hệ thống), B80 (token trong `.env` có tiền tố `id:`).
 - **File**: `bot/src/index.ts`, `LUAT_VA_BOI_CANH.md`, `huongdan.txt`.
+
+## 2026-11-26 — ĐẶT LẠI MẬT KHẨU ADMIN (mật khẩu trong tài liệu không còn đúng)
+
+- **Hiện tượng**: đăng nhập admin trả `{"error":"Sai tên đăng nhập hoặc mật khẩu."}`, dù tài khoản `admin` tồn tại với `role=admin` và `password_hash` hợp lệ (bcrypt, len 60).
+- **Nguyên nhân**: mật khẩu đã lưu trong tài liệu **không khớp** với hash trong CSDL. Đã kiểm tra bcrypt trực tiếp trên VPS với 7 mật khẩu phổ biến (kể cả mật khẩu đã ghi trong tài liệu) → **không mật khẩu nào khớp**.
+- **Đã làm**:
+  - Sinh hash bcrypt mới (cost 10) cho `admin`, cập nhật `users.password_hash`.
+  - Xoá toàn bộ 11 phiên đăng nhập cũ (`sessions`) cho sạch.
+- **Đã kiểm tra**: `POST /api/auth/login` → **200**, trả `user id=1 role=admin`; `GET /api/auth/me` → 200; `/api/admin/telegram/bots`, `/api/admin/telegram/users`, `/api/admin/settings`, `/api/admin/overview` → đều **200**. (`/api/admin/articles` trả 404 vì route thật tên khác, không phải lỗi đăng nhập.)
+- **Tài khoản hiện có** trong `users`: `admin` (admin), `test` (member), `giahung` (member, source=telegram, telegram_id 5914285286 — đã liên kết thành công).
+- **Bài học**:
+  - **B81 — Khi tài liệu và CSDL mâu thuẫn về mật khẩu, hãy kiểm tra bcrypt trực tiếp thay vì đoán.** Lệnh: `bcrypt.compare(ungvien, password_hash)` trong container `app`. Đừng đoán mật khẩu "có thể đã đổi" — hãy thử và xác nhận.
+  - **B82 — Shell script truyền mật khẩu có ký tự `$` (ví dụ `$qCWF5T0rT06`) phải escape hoặc truyền qua file JSON tạm**, nếu không shell sẽ nội suy biến thành chuỗi rỗng và luôn báo "sai mật khẩu" — dễ tưởng là tài khoản hỏng.
+- **File**: `huongdan.txt`, `LUAT_VA_BOI_CANH.md`.

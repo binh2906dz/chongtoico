@@ -1085,6 +1085,22 @@ b22c5f7 feat: scaffold new platform (đã thay thế — xoá ở bản Node.js)
     B79 xoa webhook cu khi chuyen he thong; B80 token trong .env co tien to
     "id:" nen can cat moi kiem tra bang getMe.
 
+[2026-11-26] DAT LAI MAT KHAU ADMIN (mat khau cu khong con dung).
+  - Hien tuong: dang nhap admin that bai ("Sai tên dang nhap hoac mat khau") du
+    tai khoan "admin" ton tai va role=admin, password_hash hop le (bcrypt len 60).
+  - Kiem tra bcrypt truc tiep tren VPS voi 7 mat khau phong bien
+    (ke ca $qCWF5T0rT06) => KHONG cai nao khop. Mat khau trong tai lieu da
+    khac voi thu muc trong DB (nham conf).
+  - Da dat lai mat khau "admin" = $qCWF5T0rT06 (bcrypt cost 10, hash moi) va
+    xoa het 11 phien dang nhap cu (sessions) cho sach.
+  - KIEM TRA THAT: POST /api/auth/login -> 200, tra user id=1 role=admin;
+    GET /api/auth/me -> 200; /api/admin/telegram/bots, /api/admin/telegram/users,
+    /api/admin/settings, /api/admin/overview -> deu 200.
+  - Luu y: /api/admin/articles tra 404 vi route that co ten khac — khong phai
+    loi dang nhap.
+  - TAI KHOAN HIEN CO (users): admin (admin), test (member), giahung (member,
+    source=telegram, telegram_id=5914285286, da lien ket).
+
 ================================================================================
 Hết — lưu ý: không lưu mật khẩu / token thật trong file này.
 ================================================================================
