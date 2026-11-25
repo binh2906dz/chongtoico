@@ -485,6 +485,7 @@ Cài dịch vụ bot Telegram (ngoài Docker — cần token + kết nối Teleg
 7) LỊCH SỬ GIT (oneline — cập nhật sau mỗi lần push)
 --------------------------------------------------------------------------------
 (xem `git log --oneline`; các commit chính)
+26032d8 docs: cap nhat huongdan muc 7 (git log)
 0da0dbe feat(articles): xoa hoan toan tinh nang the bai viet (tags)
 725846f chore(articles): xoa 9 bai viet test seed + don file media rac
 b3ac387 feat(articles): xoa hoan toan phan loai bai viet (the loai)
@@ -893,6 +894,30 @@ b22c5f7 feat: scaffold new platform (đã thay thế — xoá ở bản Node.js)
   - Script dọn rác media: server/scripts/purge-orphan-media.mjs (có --dry).
   - Kết quả: 1.553 -> 1.544 bài (1.537 Xem ngay, 1.542 Kênh VIP, 1.043 ảnh,
     580 video). /api/articles/1 và /9 -> 404; /api/articles/166 -> 200.
+
+[2026-11-26] NÚT "⭐ ƯU TIÊN" (ghim bài lên đầu trang chủ) + CACHE BỘ NGẪU NHIÊN 5 PHÚT.
+  - Quyết định: ưu tiên = ghim lên đầu trang chủ + badge nổi bật; chỉ trang chủ;
+    random dùng cache server 5 phút + nút "Đổi bài khác" gọi fresh=1.
+  - TRẢ LỜI CÂU HỎI TẢI HỆ THỐNG: "order by random()" quét + sắp xếp TOÀN BỘ
+    bảng articles (1.544 dòng) mỗi lần gọi. Gọi mỗi lượt truy cập => 100
+    khách/s = 100 lượt quét/giây => NẶNG cho VPS. Cache 5 phút => 1 truy vấn /
+    5 phút = 12 truy vấn/giờ dù có bao nhiêu người truy cập. Đo thực tế:
+    /api/home 37 ms, /api/articles/random 6,6 ms; có cache nhanh hơn 19%.
+  - Migration 0011_articles_priority.sql: cột articles.is_priority + index.
+    ĐÃ đăng ký trong drizzle/meta/_journal.json (idx 11) — bắt buộc (B64).
+  - Mọi orderBy của listArticles xếp desc(isPriority) lên đầu.
+  - /api/home dùng CHUNG cache random với endpoint -> cùng một bộ bài.
+  - Module MỚI server/src/routeCache.ts: gom cache trang chủ (30s) + cache
+    random (5 phút), có invalidateArticleCaches() tránh phụ thuộc vòng.
+  - BUG ĐÃ SỬA (quan trọng): cache làm bài admin vừa đăng KHÔNG hiện ngay
+    (test thấy bộ random rỗng vì /api/home đã gọi lúc DB còn trống).
+    Sửa: gọi invalidateArticleCaches() khi tạo bài, xoá bài, PATCH
+    isPriority/isHot. BÀI HỌC: cache phải tự vô hiệu hoá khi dữ liệu đổi.
+  - Thứ tự khối trang chủ mới: ⭐ Ưu tiên -> 🎲 Có thể bạn chưa xem ->
+    Đang được xem -> 🔥 Xem nhiều hôm nay -> 🆕 Mới nhất -> 🏆 Hay nhất tuần.
+  - Kiểm tra: npm test 63/63 (thêm 2 test mới), tsc server + frontend OK,
+    vite build OK, xem trình duyệt đúng thứ tự + badge + nút đổi bài + nút admin.
+  - CHƯA chạy: trên VPS với PostgreSQL thật; chưa deploy.
 
 ================================================================================
 Hết — lưu ý: không lưu mật khẩu / token thật trong file này.

@@ -26,6 +26,7 @@ interface AdminArticle {
   categoryId: number | null;
   visibility: "public" | "members";
   isHot: boolean;
+  isPriority: boolean;
   coverType: string;
   coverImageKey: string | null;
   coverDuration: number;
@@ -52,6 +53,7 @@ function UploadForm({ onDone, onCreated }: { onDone: () => void; onCreated: (id:
   const [vipLink, setVipLink] = useState("");
   const [membersOnly, setMembersOnly] = useState(false);
   const [isHot, setIsHot] = useState(false);
+  const [isPriority, setIsPriority] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<number | null>(null);
@@ -69,6 +71,7 @@ function UploadForm({ onDone, onCreated }: { onDone: () => void; onCreated: (id:
           vipLink: vipLink.trim(),
           visibility: membersOnly ? "members" : "public",
           isHot,
+          isPriority,
         },
       });
       setDone(res.article.id);
@@ -143,6 +146,10 @@ function UploadForm({ onDone, onCreated }: { onDone: () => void; onCreated: (id:
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" checked={isHot} onChange={(e) => setIsHot(e.target.checked)} disabled={busy} />
           🔥 Đánh dấu HOT
+        </label>
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={isPriority} onChange={(e) => setIsPriority(e.target.checked)} disabled={busy} />
+          ⭐ Ghim lên đầu trang chủ (ưu tiên)
         </label>
       </div>
       <ErrorBox message={error} />
@@ -265,6 +272,13 @@ function ArticleMediaEditor({ articleId, onChanged, onBack }: { articleId: numbe
           <button
             className="btn-ghost"
             disabled={busy}
+            onClick={() => act(() => api(`/api/admin/articles/${articleId}`, { method: "PATCH", body: { isPriority: !article.isPriority } }))}
+          >
+            {article.isPriority ? "⭐ Bỏ ưu tiên" : "⭐ Đánh dấu ưu tiên"}
+          </button>
+          <button
+            className="btn-ghost"
+            disabled={busy}
             onClick={() => act(() => api(`/api/admin/articles/${articleId}`, { method: "PATCH", body: { visibility: article.visibility === "public" ? "members" : "public" } }))}
           >
             {article.visibility === "public" ? "Chuyển: chỉ thành viên" : "Chuyển: công khai"}
@@ -285,6 +299,7 @@ function ArticleMediaEditor({ articleId, onChanged, onBack }: { articleId: numbe
         </div>
         <div className="text-sm text-muted">
           {article.images.length} ảnh · {article.videos.length} video · {article.visibility === "public" ? "Công khai" : "Chỉ thành viên"} {article.isHot && "· HOT"}
+          {article.isPriority && "· ⭐ ƯU TIÊN"}
         </div>
         {/* Nút "Xem ngay" + "Kênh VIP" hiển thị dưới nội dung bài viết. */}
         <div className="grid gap-3 md:grid-cols-2">

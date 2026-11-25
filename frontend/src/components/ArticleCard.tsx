@@ -64,6 +64,7 @@ export function ArticleCard({
             </span>
           )}
           <span className="absolute top-2 left-2 flex flex-wrap gap-1">
+            {article.priority && <span className="badge bg-gradient-to-r from-amber-400 to-yellow-500 text-black">⭐ Ưu tiên</span>}
             {article.hot && <span className="badge bg-gradient-to-r from-brand to-brand-2 text-white">🔥 Hot</span>}
             {fresh && <span className="badge bg-emerald-500 text-white">Mới</span>}
             {article.membersOnly && <span className="badge bg-black/75 text-sky-300">🔒 TV</span>}

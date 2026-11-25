@@ -12,7 +12,15 @@ import { useFetch } from "../useFetch";
 import type { ArticleItem, Channel, Stats, ThreadItem } from "../types";
 
 interface HomeData {
-  articles: { today: ArticleItem[]; week: ArticleItem[]; newest: ArticleItem[]; random: ArticleItem[]; watching: ArticleItem[] };
+  articles: {
+    today: ArticleItem[];
+    week: ArticleItem[];
+    newest: ArticleItem[];
+    random: ArticleItem[];
+    watching: ArticleItem[];
+    /** Bài được admin ghim "ưu tiên" — luôn đứng đầu trang chủ. */
+    priority: ArticleItem[];
+  };
   feeds: { latest: ThreadItem[]; hot: ThreadItem[]; trending: ThreadItem[] };
   stats: Stats;
 }
@@ -31,10 +39,18 @@ function Section({ title, more, action, children }: { title: ReactNode; more?: s
 function RandomSection({ initial }: { initial: ArticleItem[] }) {
   const [articles, setArticles] = useState(initial);
   const [loading, setLoading] = useState(false);
+  // Khi trang chủ tải lại và nhận bộ bài mới (cache server 5 phút), cập nhật
+  // bộ hiển thị — nhưng không ghi đè bộ mà người dùng đã bấm "Đổi bài khác".
+  const [touched, setTouched] = useState(false);
+  useEffect(() => {
+    if (!touched) setArticles(initial);
+  }, [initial, touched]);
   async function shuffle() {
     setLoading(true);
+    setTouched(true);
     try {
-      setArticles((await api<{ articles: ArticleItem[] }>("/api/articles/random?limit=8")).articles);
+      // fresh=1: bỏ qua cache 5 phút của server để lấy bộ bài mới ngay.
+      setArticles((await api<{ articles: ArticleItem[] }>("/api/articles/random?limit=8&fresh=1")).articles);
     } finally {
       setLoading(false);
     }
@@ -164,24 +180,17 @@ export default function Home() {
         </div>
       )}
 
-      {noArticles ? (
-        <div className="panel p-10 text-center">
-          <div className="text-4xl">📝</div>
-          <p className="mt-2 text-muted">Chưa có bài viết nào.</p>
-          {user?.role === "admin" && (
-            <Link to="/quan-tri?tab=bai-viet" className="btn-primary mt-4">
-              Đăng bài viết đầu tiên
-            </Link>
-          )}
-        </div>
-      ) : (
-        <Section title="🔥 Xem nhiều hôm nay" more="/bai-viet?sap-xep=hom-nay">
-          <ArticleGrid articles={data.articles.today} showRecent />
-        </Section>
-      )}
-
       {!noArticles && (
         <>
+          {/* Bài ghim "ưu tiên" luôn đứng đầu trang chủ. */}
+          {data.articles.priority.length > 0 && (
+            <Section title="⭐ Ưu tiên" more="/bai-viet?sap-xep=moi">
+              <ArticleGrid articles={data.articles.priority} />
+            </Section>
+          )}
+          {/* Khối ngẫu nhiên đặt ở đầu trang chủ: mỗi lượt truy cập thấy bộ bài
+              khác nhau (server đổi bộ mỗi 5 phút), nút "Đổi bài khác" lấy ngay. */}
+          <RandomSection initial={data.articles.random} />
           {data.articles.watching.length > 0 && (
             <Section
               title={
@@ -194,13 +203,15 @@ export default function Home() {
             </Section>
           )}
           <AdBanner slot="home" />
+          <Section title="🔥 Xem nhiều hôm nay" more="/bai-viet?sap-xep=hom-nay">
+            <ArticleGrid articles={data.articles.today} showRecent />
+          </Section>
           <Section title="🆕 Bài viết mới nhất" more="/bai-viet">
             <ArticleGrid articles={data.articles.newest} />
           </Section>
           <Section title="🏆 Hay nhất tuần" more="/bai-viet?sap-xep=tuan">
             <ArticleGrid articles={data.articles.week} />
           </Section>
-          <RandomSection initial={data.articles.random} />
         </>
       )}
 

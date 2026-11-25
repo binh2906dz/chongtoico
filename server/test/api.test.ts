@@ -623,4 +623,76 @@ describe("Chống Tối Cổ API", () => {
     assert.equal(lockedPub.article.watchLink, null);
     assert.equal(lockedPub.article.vipLink, null);
   });
+
+  it("pins a priority article to the top of the home page", async () => {
+    // Tạo bài thường rồi bài ưu tiên.
+    const plain = await app.inject({
+      method: "POST",
+      url: "/api/admin/articles",
+      headers: { ...H, cookie: admin },
+      payload: { title: "Bài thường" },
+    });
+    const plainId = plain.json().article.id;
+
+    const pinned = await app.inject({
+      method: "POST",
+      url: "/api/admin/articles",
+      headers: { ...H, cookie: admin },
+      payload: { title: "Bài ưu tiên", isPriority: true },
+    });
+    assert.equal(pinned.statusCode, 200, pinned.body);
+    const pinnedId = pinned.json().article.id;
+
+    // API admin trả về cờ ưu tiên.
+    const adm = (await app.inject({ url: `/api/admin/articles/${pinnedId}`, headers: { cookie: admin } })).json();
+    assert.equal(adm.article.isPriority, true);
+
+    // Trang chủ có khối "priority" chứa bài ưu tiên.
+    const home = (await app.inject("/api/home")).json();
+    assert.ok(Array.isArray(home.articles.priority));
+    assert.equal(home.articles.priority[0].id, pinnedId);
+    assert.equal(home.articles.priority[0].priority, true);
+
+    // Bài ưu tiên xếp trước bài thường trong danh sách bài viết.
+    const list = (await app.inject("/api/articles?sort=new&page=1")).json();
+    assert.equal(list.articles[0].id, pinnedId);
+    assert.equal(list.articles[0].priority, true);
+    assert.ok(list.articles.find((a: { id: number }) => a.id === plainId));
+
+    // Bỏ ghim thì bài không còn ở đầu.
+    const unpin = await app.inject({
+      method: "PATCH",
+      url: `/api/admin/articles/${pinnedId}`,
+      headers: { ...H, cookie: admin },
+      payload: { isPriority: false },
+    });
+    assert.equal(unpin.statusCode, 200, unpin.body);
+    const homeAfter = (await app.inject("/api/home")).json();
+    assert.ok(!homeAfter.articles.priority.some((a: { id: number }) => a.id === pinnedId));
+  });
+
+  it("caches the random article set and bypasses the cache with fresh=1", async () => {
+    // Bộ bài random được cache 5 phút: hai lượt gọi liên tiếp phải cho CÙNG bộ.
+    const first = (await app.inject("/api/articles/random?limit=2")).json();
+    const second = (await app.inject("/api/articles/random?limit=2")).json();
+    assert.equal(first.articles.length, 2);
+    assert.deepEqual(
+      first.articles.map((a: { id: number }) => a.id),
+      second.articles.map((a: { id: number }) => a.id),
+      "bộ bài random phải được cache giữa 2 lượt gọi",
+    );
+
+    // Khối random ở trang chủ dùng CHUNG cache với endpoint -> cùng bộ bài.
+    const home = (await app.inject("/api/home")).json();
+    assert.ok(home.articles.random.length > 0);
+    assert.deepEqual(
+      home.articles.random.slice(0, 2).map((a: { id: number }) => a.id),
+      first.articles.map((a: { id: number }) => a.id),
+      "trang chủ phải dùng cùng bộ random đã cache",
+    );
+
+    // fresh=1 bỏ qua cache -> lấy bộ mới (không nhất thiết khác, nhưng không dùng cache).
+    const fresh = (await app.inject("/api/articles/random?limit=2&fresh=1")).json();
+    assert.equal(fresh.articles.length, 2);
+  });
 });

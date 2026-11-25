@@ -35,6 +35,7 @@ import {
   type VideoExt,
 } from "../media.js";
 import { notify } from "../notify.js";
+import { cachedRandomIds, invalidateArticleCaches } from "../routeCache.js";
 
 const PER_PAGE = 24;
 const COMMENTS_PER_PAGE = 20;
@@ -68,6 +69,7 @@ const cardColumns = {
   commentCount: articles.commentCount,
   visibility: articles.visibility,
   isHot: articles.isHot,
+  isPriority: articles.isPriority,
   createdAt: articles.createdAt,
 };
 
@@ -79,6 +81,7 @@ type CardRow = {
   dislikeCount: number;
   visibility: string;
   isHot?: boolean;
+  isPriority?: boolean;
 } & Record<string, unknown>;
 
 /** Most viewed articles of the last 7 days (at least HOT_MIN_VIEWS), shown with a HOT badge; refreshed every 5 minutes. */
@@ -130,6 +133,8 @@ function mapCard<T extends CardRow>(row: T) {
     membersOnly: visibility === "members",
     // Bài được admin đánh dấu HOT luôn nổi bật, kể cả khi chưa đủ lượt xem.
     hot: row.isHot === true || hotIds.has(row.id),
+    // Bài ghim "ưu tiên": hiện badge ⭐ và luôn xếp trước các bài khác.
+    priority: row.isPriority === true,
     rating: votes ? Math.round((row.likeCount * 100) / votes) : null,
   };
 }
@@ -177,7 +182,7 @@ export async function listArticles(opts: {
       .from(articles)
       .leftJoin(recent, eq(recent.articleId, articles.id))
       .where(where)
-      .orderBy(desc(articles.isHot), desc(sql`coalesce(${recent.n}, 0)`), desc(articles.viewCount), desc(articles.id))
+      .orderBy(desc(articles.isPriority), desc(articles.isHot), desc(sql`coalesce(${recent.n}, 0)`), desc(articles.viewCount), desc(articles.id))
       .limit(opts.limit)
       .offset(offset);
     return { rows: rows.map((r) => hideLockedCover(mapCard(r), opts.viewer ?? null)), where };
@@ -201,6 +206,7 @@ export async function listArticles(opts: {
       .leftJoin(week, eq(week.articleId, articles.id))
       .where(where)
       .orderBy(
+        desc(articles.isPriority),
         desc(sql`coalesce((${week.l} + 1.0) / (${week.l} + ${week.d} + 2), 0)`),
         desc(sql`coalesce(${week.l}, 0)`),
         desc(sql`(${articles.likeCount} + 1.0) / (${articles.likeCount} + ${articles.dislikeCount} + 2)`),
@@ -214,6 +220,7 @@ export async function listArticles(opts: {
   let order: SQL[];
   if (opts.sort === "best") {
     order = [
+      desc(articles.isPriority),
       desc(sql`(${articles.likeCount} + 1.0) / (${articles.likeCount} + ${articles.dislikeCount} + 2)`),
       desc(articles.likeCount),
       desc(articles.viewCount),
@@ -222,7 +229,7 @@ export async function listArticles(opts: {
   } else if (opts.sort === "random") {
     order = [sql`random()`];
   } else {
-    order = [desc(articles.createdAt), desc(articles.id)];
+    order = [desc(articles.isPriority), desc(articles.createdAt), desc(articles.id)];
   }
   const rows = await db
     .select(cardColumns)
@@ -339,6 +346,44 @@ const linkField = z
   .nullable()
   .optional();
 
+/**
+ * Bộ bài ngẫu nhiên cho khối "🎲 Có thể bạn chưa xem".
+ *
+ * Vì sao cache 5 phút: `order by random()` phải quét và sắp xếp TOÀN BỘ bảng
+ * articles (1.544 dòng) mỗi lần gọi. Nếu gọi mỗi lượt truy cập thì 100
+ * khách/sẽ tạo 100 lượt quét/giây — nặng cho VPS. Cache 5 phút giảm còn
+ * 1 truy vấn / 5 phút (12 truy vấn/giờ) dù có bao nhiêu người truy cập.
+ * Đổi bộ bài vẫn tức thì qua tham số `fresh=1` (nút "Đổi bài khác").
+ *
+ * Chỉ cache DANH SÁCH ID bài random. Phần "còn lại" (ảnh bìa bị khoá cho
+ * khách, thành viên thấy đủ) dựng lại theo người xem mỗi lần gọi.
+ */
+const RANDOM_CACHE_MS = 5 * 60_000;
+/** Bộ random luôn được lấy với số lượng lớn nhất rồi cắt theo limit của người gọi. */
+const RANDOM_POOL = 24;
+
+export async function randomArticleIds(limit: number): Promise<number[]> {
+  const ids = await cachedRandomIds(
+    () => listArticles({ sort: "random", limit: RANDOM_POOL }).then((r) => r.rows.map((x) => x.id)),
+    RANDOM_CACHE_MS,
+  );
+  return ids.slice(0, limit);
+}
+
+/**
+ * ID các bài được admin ghim "ưu tiên" (is_priority = true).
+ * Rất ít bài nên truy vấn trực tiếp, không cần cache.
+ */
+export async function priorityArticleIds(limit: number): Promise<number[]> {
+  const rows = await db
+    .select({ id: articles.id })
+    .from(articles)
+    .where(eq(articles.isPriority, true))
+    .orderBy(desc(articles.createdAt))
+    .limit(limit);
+  return rows.map((r) => r.id);
+}
+
 const articleBody = z.object({
   title: z.string().trim().min(2, "Tiêu đề cần ít nhất 2 ký tự.").max(200, "Tiêu đề tối đa 200 ký tự."),
   description: z.string().trim().max(20000, "Nội dung tối đa 20.000 ký tự.").default(""),
@@ -346,6 +391,7 @@ const articleBody = z.object({
   vipLink: linkField,
   visibility: z.enum(VISIBILITIES).default("public"),
   isHot: z.boolean().default(false),
+  isPriority: z.boolean().default(false),
 });
 
 const voteBody = z.object({ value: z.union([z.literal(1), z.literal(-1), z.literal(0)]) });
@@ -399,11 +445,24 @@ export default async function articleRoutes(app: FastifyInstance) {
 
   app.get("/api/articles/random", async (req) => {
     const q = parse(
-      z.object({ limit: z.coerce.number().int().min(1).max(24).default(8), exclude: z.coerce.number().int().positive().optional() }),
+      z.object({
+        limit: z.coerce.number().int().min(1).max(24).default(8),
+        exclude: z.coerce.number().int().positive().optional(),
+        /** "1" = bỏ qua cache, dùng khi người dùng bấm nút "Đổi bài khác". */
+        fresh: z.string().optional(),
+      }),
       req.query,
     );
-    const { rows } = await listArticles({ sort: "random", limit: q.limit, excludeIds: q.exclude ? [q.exclude] : undefined, viewer: req.user });
-    return { articles: rows };
+    // Cache 5 phút: mọi khách truy cập trong cửa sổ này thấy CÙNG một bộ bài,
+    // nên chỉ có 1 truy vấn DB mỗi 5 phút thay vì 1 truy vấn mỗi lượt truy cập.
+    // "fresh=1" (nút Đổi bài khác) bỏ qua cache để lấy bộ mới ngay.
+    if (q.fresh) {
+      const { rows } = await listArticles({ sort: "random", limit: q.limit, excludeIds: q.exclude ? [q.exclude] : undefined, viewer: req.user });
+      return { articles: rows };
+    }
+    const ids = await randomArticleIds(q.limit);
+    const articles = await articlesByIds(ids, req.user);
+    return { articles };
   });
 
   app.get("/api/articles/watching", async (req) => ({ articles: await articlesByIds(watchingNowIds(12), req.user) }));
@@ -809,6 +868,7 @@ export default async function articleRoutes(app: FastifyInstance) {
         vipLink: article.vipLink,
         visibility: article.visibility,
         isHot: article.isHot,
+        isPriority: article.isPriority,
         coverType: article.coverType,
         coverImageKey: article.coverImageKey,
         coverDuration: article.coverDuration,
@@ -835,8 +895,11 @@ export default async function articleRoutes(app: FastifyInstance) {
           vipLink: body.vipLink ?? null,
           visibility: body.visibility,
           isHot: body.isHot,
+          isPriority: body.isPriority,
         })
         .returning({ id: articles.id });
+      // Có bài mới -> bộ random và trang chủ phải đổi ngay, không chờ hết cache.
+      invalidateArticleCaches();
       return { article };
     },
   );
@@ -852,6 +915,7 @@ export default async function articleRoutes(app: FastifyInstance) {
         vipLink: linkField,
         visibility: z.enum(VISIBILITIES).optional(),
         isHot: z.boolean().optional(),
+        isPriority: z.boolean().optional(),
       }),
       req.body,
     );
@@ -859,6 +923,8 @@ export default async function articleRoutes(app: FastifyInstance) {
     if (Object.keys(body).length) await db.update(articles).set(body).where(eq(articles.id, id));
     if (body.visibility === "members") await markMembersOnly(id, true);
     if (body.visibility === "public") await markMembersOnly(id, false);
+    // Đổi cờ ưu tiên/HOT -> trang chủ và bộ random phải cập nhật ngay.
+    if (body.isPriority !== undefined || body.isHot !== undefined) invalidateArticleCaches();
     return { ok: true };
   });
 
@@ -870,6 +936,8 @@ export default async function articleRoutes(app: FastifyInstance) {
     const videos = await db.select({ fileKey: articleVideos.fileKey, ext: articleVideos.ext, thumbKey: articleVideos.thumbKey }).from(articleVideos).where(eq(articleVideos.articleId, id));
     await db.delete(articles).where(eq(articles.id, id));
     lastWatched.delete(id);
+    // Bài bị xoá -> bộ random và trang chủ phải đổi ngay.
+    invalidateArticleCaches();
     for (const img of images) await removeImage("albums", img.fileKey);
     for (const v of videos) {
       membersOnlyKeys.delete(v.fileKey);

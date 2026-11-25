@@ -197,6 +197,8 @@ export const articles = pgTable(
     /** "public" | "members" — members-only articles hide the files from guests. */
     visibility: varchar("visibility", { length: 16 }).notNull().default("public"),
     isHot: boolean("is_hot").notNull().default(false),
+    /** Bài được admin ghim "ưu tiên": xếp lên đầu trang chủ, luôn hiện trước bài khác. */
+    isPriority: boolean("is_priority").notNull().default(false),
     /** "none" | "image" | "video" — what the cover picture was taken from. */
     coverType: varchar("cover_type", { length: 8 }).notNull().default("none"),
     coverImageKey: varchar("cover_image_key", { length: 64 }),
@@ -214,6 +216,7 @@ export const articles = pgTable(
     index("articles_created_idx").on(t.createdAt),
     index("articles_views_idx").on(t.viewCount),
     index("articles_hot_idx").on(t.isHot, t.createdAt),
+    index("articles_priority_idx").on(t.isPriority, t.createdAt),
   ],
 );
 

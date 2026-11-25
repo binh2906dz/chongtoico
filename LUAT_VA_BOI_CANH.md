@@ -677,4 +677,28 @@ Mẫu mỗi mục:
 - **CHƯA chạy**: trên VPS với PostgreSQL thật; chưa deploy.
 - **File**: `server/scripts/purge-orphan-media.mjs`, `LUAT_VA_BOI_CANH.md`, `huongdan.txt`.
 
+## 2026-11-26 — Nút "⭐ Ưu tiên" (ghim bài lên đầu trang chủ) + cache bộ bài ngẫu nhiên 5 phút
+
+- **Yêu cầu**: làm nổi bật nút ưu tiên; đưa khối "🎲 Có thể bạn chưa xem" lên đầu tiên, mỗi lượt truy cập random ngẫu nhiên các video; hỏi về tải hệ thống.
+- **Quyết định của chủ dự án**: nút ưu tiên = ghim lên đầu trang chủ **và** hiện badge nổi bật; phạm vi chỉ trang chủ; random dùng **cache server 5 phút + nút "Đổi bài khác" gọi `fresh=1`** để lấy bộ mới ngay.
+- **Trả lời câu hỏi tải hệ thống**: `order by random()` phải quét + sắp xếp **toàn bộ** bảng `articles` (1.544 dòng) mỗi lần gọi. Gọi mỗi lượt truy cập ⇒ 100 khách/s = 100 lượt quét/giây ⇒ nặng cho VPS. **Cache 5 phút ⇒ 1 truy vấn / 5 phút = 12 truy vấn/giờ** dù có bao nhiêu người truy cập. Đo thực tế: `/api/home` 37 ms, `/api/articles/random` 6,6 ms (PGlite local); có cache nhanh hơn 19% (4,2 vs 5,2 ms/lượt). Trên VPS thật (PostgreSQL qua network) chênh lệch lớn hơn nhiều.
+- **Backend**:
+  - Migration `0011_articles_priority.sql`: thêm cột `articles.is_priority` (boolean, default false) + index `articles_priority_idx`. Đã đăng ký trong `drizzle/meta/_journal.json` (idx 11) — bắt buộc, nếu không Drizzle bỏ qua (bài B64).
+  - `mapCard` trả thêm `priority` (boolean) cho mọi card bài viết.
+  - Mọi `orderBy` của `listArticles` xếp `desc(articles.isPriority)` lên đầu (today/hot, week, best, new) → bài ghim luôn đứng đầu danh sách.
+  - `priorityArticleIds(limit)` — ID bài ghim, truy vấn trực tiếp (rất ít bài, không cần cache).
+  - `randomArticleIds(limit)` — cache 5 phút **danh sách ID** (không cache cả object bài) để ảnh bìa khoá/khách vẫn đúng theo người xem; luôn lấy pool 24 rồi cắt theo limit ⇒ mọi limit dùng chung 1 truy vấn.
+  - `/api/articles/random?fresh=1` bỏ qua cache (nút "Đổi bài khác").
+  - `/api/home` dùng **chung** cache random với endpoint ⇒ trang chủ và khối random luôn hiện cùng một bộ bài.
+- **Module cache mới** `server/src/routeCache.ts`: gom cache trang chủ (30s) + cache random (5 phút) vào một chỗ, có `invalidateArticleCaches()` để tránh phụ thuộc vòng giữa `articles.ts` và `members.ts`.
+- **BUG phát hiện khi test — cache làm mất bài mới**: cache 30s của trang chủ và 5 phút của bộ random khiến bài admin vừa đăng **không hiện** ngay (tệ nhất là test thấy bộ random rỗng vì `/api/home` đã được gọi lúc DB còn trống). Đã sửa bằng cách gọi `invalidateArticleCaches()` khi: tạo bài, xoá bài, PATCH `isPriority`/`isHot`. Bài học: **cache phải tự vô hiệu hoá khi dữ liệu thay đổi**, không chỉ hết hạn theo thời gian.
+- **Frontend**:
+  - Khối "⭐ Ưu tiên" mới ở đầu trang chủ (chỉ hiện khi có bài ghim) + badge "⭐ ƯU TIÊN" trên ảnh bìa (`ArticleCard`).
+  - Khối "🎲 Có thể bạn chưa xem" chuyển lên **ngay dưới** khối ưu tiên (thứ tự mới: ⭐ Ưu tiên → 🎲 Có thể bạn chưa xem → Đang được xem → 🔥 Xem nhiều hôm nay → 🆕 Bài viết mới nhất → 🏆 Hay nhất tuần).
+  - `RandomSection` giữ bộ người dùng đã bấm "Đổi bài khác" (`touched`) — không bị server ghi đè khi trang tải lại.
+  - Admin: nút "⭐ Đánh dấu ưu tiên" / "⭐ Bỏ ưu tiên" trong panel media, checkbox "⭐ Ghim lên đầu trang chủ" khi tạo bài mới, dòng trạng thái "· ⭐ ƯU TIÊN".
+- **Đã kiểm tra**: `npm test` **63/63** (thêm 2 test: ghim ưu tiên đứng đầu trang chủ + danh sách; cache random giữ nguyên bộ và `fresh=1` bỏ qua). `tsc` server OK, `tsc -b` frontend OK, `vite build` OK. API: `GET /api/home` → `articles.priority[0].id = 1710`; `GET /api/articles?sort=new` → bài 1710 đứng đầu; `POST/PATCH /api/admin/articles/:id` với `isPriority` → 200 và đổi ngay. Xem trình duyệt: trang chủ hiện đúng thứ tự khối, badge "⭐ ƯU TIÊN" trên ảnh bìa, bấm "🔀 Đổi bài khác" đổi toàn bộ bộ bài, nút admin đổi đúng giữa "⭐ Bỏ ưu tiên" và "⭐ Đánh dấu ưu tiên".
+- **CHƯA chạy**: trên VPS với PostgreSQL thật; chưa deploy.
+- **File**: `server/drizzle/0011_articles_priority.sql`, `server/drizzle/meta/_journal.json`, `server/src/db/schema.ts`, `server/src/routeCache.ts`, `server/src/routes/articles.ts`, `server/src/routes/members.ts`, `server/test/api.test.ts`, `frontend/src/pages/Home.tsx`, `frontend/src/pages/admin/AdminArticles.tsx`, `frontend/src/components/ArticleCard.tsx`, `frontend/src/types.ts`, `LUAT_VA_BOI_CANH.md`, `huongdan.txt`.
+
 
