@@ -51,7 +51,8 @@ function makeClient(base) {
   };
   return {
     cookieHeader,
-    async request(method, url, body, headers = {}) {
+    /** @param allowRedirect cho phép 3xx (đăng nhập Flask trả 302 khi thành công). */
+    async request(method, url, body, headers = {}, allowRedirect = false) {
       const res = await fetch(`${base}${url}`, {
         method,
         headers: { cookie: cookieHeader(), ...headers },
@@ -62,7 +63,8 @@ function makeClient(base) {
       const text = await res.text();
       let json = null;
       try { json = text ? JSON.parse(text) : null; } catch { /* không phải JSON */ }
-      if (!res.ok) throw new Error(`${method} ${url} -> ${res.status} ${text.slice(0, 300)}`);
+      const ok = res.ok || (allowRedirect && res.status >= 300 && res.status < 400);
+      if (!ok) throw new Error(`${method} ${url} -> ${res.status} ${text.slice(0, 300)}`);
       return { json, text };
     },
   };
@@ -77,7 +79,7 @@ async function loginOld() {
   await c.request("POST", "/login", new URLSearchParams({ username: OLD_USER, password: OLD_PASS, csrf_token: csrf }), {
     "content-type": "application/x-www-form-urlencoded",
     referer: `${OLD}/login`,
-  });
+  }, true);
   return c;
 }
 
