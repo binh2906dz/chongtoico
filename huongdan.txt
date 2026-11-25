@@ -504,8 +504,14 @@ Cài dịch vụ bot Telegram (ngoài Docker — cần token + kết nối Teleg
 7) LỊCH SỬ GIT (oneline — cập nhật sau mỗi lần push)
 --------------------------------------------------------------------------------
 (xem `git log --oneline`; các commit chính)
-32ebe1d feat(deploy): script nap toan bo du lieu (CSDL + media) len VPS thay the he thong cu
+80662a7 fix(scripts): dung git core.autocrlf=input thay cho sed -i (tranh conflict khi pull)
+017142d fix(scripts): chuan hoa LF cho .sh sau moi lan git pull (B69/B74)
+0c33753 feat(deploy): repo cong khai -> VPS dung git clone/pull thay cho scp
+2a96fc0 fix(backup): nen video + chi giu 2 ban video; deploy: chuyen CRLF->LF sau khi giai nen
+831671a docs: ghi nhat ky deploy VPS that (B67-B71) + cap nhat muc 2/7/8
 d0a6538 feat(deploy): giai ma token bot + cai bot service + export setval cho sequence
+c8620c4 docs: ghi nhat ky chuan bi deploy VPS (xuat SQL + nap media + script deploy)
+32ebe1d feat(deploy): script nap toan bo du lieu (CSDL + media) len VPS thay the he thong cu
 bb7972d docs: cap nhat huongdan muc 7 (git log)
 7c4b399 feat(articles): xoa hoan toan tinh nang 'uu tien' (ghim bai)
 b22a390 feat(articles): nut 'uu tien' (ghim bai len dau trang chu) + cache bo bai ngau nhien 5 phut
@@ -1024,6 +1030,33 @@ b22c5f7 feat: scaffold new platform (đã thay thế — xoá ở bản Node.js)
     scripts/install-bot-service.sh (tạo systemd unit cho bot). Đã chạy thử OK.
   - scripts/deploy-with-data.sh: vì repo PRIVATE nên VPS không git clone được (403)
     => script nén thư mục hiện tại rồi scp thay vì clone.
+  - Sau đó repo chuyển PUBLIC => scripts/update.sh dùng git pull --ff-only
+    (git config core.autocrlf input, .gitattributes) — KHÔNG còn scp tarball.
+
+[2026-11-26] SỬA DOMAIN NÚT "XEM NGAY": anonlink.io -> anonlink.co (dữ liệu hiện có).
+  - Yêu cầu: chỉ sửa dữ liệu ĐANG CÓ, KHÔNG thêm logic/tính năng cho tương lai;
+    chỉ đổi tên miền, giữ nguyên phần sau.
+  - Nút "▶ Xem ngay" lấy từ cột articles.watch_link (không phải description).
+    Frontend ArticleLinkButtons.tsx dùng thẳng watchLink từ API, KHÔNG hardcode
+    domain => không cần sửa mã nguồn.
+  - SQL (chạy 1 lần, không migration):
+      UPDATE articles SET watch_link = replace(watch_link,
+        'https://anonlink.io/', 'https://anonlink.co/') WHERE watch_link LIKE '%anonlink.io%';
+  - Kết quả: 1.546 bài đã đổi (7 bài watch_link NULL, 1.551 bài có vip_link giữ nguyên).
+    Trước khi sửa: 1.546 anonlink.io / 0 anonlink.co. Sau: 0 io / 1.546 co.
+  - VPS: pg_dump backup /opt/chongtoico-backups/db-20261125-204305.sql.gz (804K)
+    rồi UPDATE qua docker compose exec db psql. Local PGlite: chạy
+    server/scripts/fix-watch-link-domain.mjs (mới tạo).
+  - KHÔNG sửa (có chủ ý): 7 bài có cụm text quảng cáo "ANH EM CHỌN anonlink.io
+    ĐỂ MUA VỚI GIÁ RẺ HƠN NHA" trong description — đây là text, không có phần
+    sau domain để đổi; chủ dự án chọn chỉ sửa watch_link.
+  - KHÔNG sửa mã nguồn (placeholder "https://anonlink.io/xxxxxxx" trong
+    admin/AdminArticles.tsx, regex anonlink\.io trong script import, test) —
+    đúng yêu cầu "không tự thêm tính năng này cho tương lai".
+  - Đã kiểm tra: API /api/articles/1250 -> https://anonlink.co/PGzIwp; 60/60 bài
+    ngẫu nhiên trả anonlink.co (0 anonlink.io); phần sau domain giữ nguyên
+    (FKUMY, zhU8v, pTlz7fHO, Qg4t...); xem trình duyệt bài 1250 — nút
+    "▶ Xem ngay" + "👑 Kênh VIP" hiển thị đúng.
 
 ================================================================================
 Hết — lưu ý: không lưu mật khẩu / token thật trong file này.

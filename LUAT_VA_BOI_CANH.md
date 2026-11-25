@@ -208,6 +208,9 @@ Mỗi dòng: **lỗi / tình huống** → **cách tránh**.
 - **B64 — Migration mới KHÔNG chạy nếu chưa thêm entry vào `server/drizzle/meta/_journal.json`.** Tạo file `0009_*.sql` rồi khởi động lại server ⇒ **không có lỗi nào** nhưng migration **chưa chạy** (bảng/cột vẫn còn nguyên). Drizzle chỉ chạy các file có trong `_journal.json`. → Sau khi tạo file migration thủ công, **luôn thêm entry `idx` + `tag` + `when` vào `_journal.json`** rồi kiểm tra bằng `information_schema` xem bảng/cột thực sự đã đổi chưa (đừng tin "file đã tạo" là đã chạy).
 - **B65 — KHÔNG viết chuỗi `-->` trong dòng COMMENT của file migration.** Drizzle tách file `.sql` theo marker `--> statement-breakpoint`; nếu một dòng comment chứa chính chuỗi `-->` (kể cả trong ngoặc kép) thì dòng đó bị cắt làm đôi ⇒ câu SQL hỏng ⇒ lỗi `syntax error at or near`. Đã gặp 2 lần liên tiếp (tiếng Việt rồi tiếng Anh) trước khi hiểu ra nguyên nhân. → Comment trong file migration chỉ nên dùng ký tự ASCII đơn giản, **không nhắc lại marker**.
 - **B66 — Hai bảng "phân loại" khác nhau có ID trùng nhau ⇒ script import gán nhầm.** `articles.category_id` trỏ tới `article_categories` (thể loại bài viết), nhưng script import lấy id từ `GET /api/admin/categories` — endpoint này trả `categories` (**chuyên mục diễn đàn**) ⇒ id=1 ("thong-bao") trùng id=1 ("Hài hước") ⇒ **1.545/1.553 bài bị dán "Hài hước"** mà không có lỗi nào. → **Luôn đối chiếu tên bảng trong DB với endpoint API**; id trùng giữa 2 bảng khác nhau là bẫy âm thầm.
+- **B74 — Sửa link/domain trong dữ liệu cũ = `UPDATE` một lần, KHÔNG viết migration hay utility chạy mỗi lần deploy.** Yêu cầu "chỉ sửa ở hiện tại, không tự thêm tính năng này cho tương lai" nghĩa là **sửa dữ liệu**, không phải xây hạ tầng. → Chỉ tạo script dùng một lần (đã xoá sau khi chạy) hoặc chạy SQL trực tiếp; đừng đưa logic đổi domain vào code.
+- **B75 — Link nút bấm nằm ở cột riêng (`articles.watch_link`), KHÔNG nằm trong `description`.** Quét `description` chỉ ra 7 bài có cụm text quảng cáo "ANH EM CHỌN anonlink.io ĐỂ MUA VỚI GIÁ RẺ HƠN NHA" — đó là **text, không có phần sau domain** để đổi. → **Tra schema trước khi UPDATE**; sửa nhầm cột text sinh ra thay đổi vô nghĩa và bẻ nội dung quảng cáo.
+- **B76 — Trước khi `UPDATE` hàng loạt trên production: `pg_dump` backup, rồi đối chiếu DB ↔ API sau khi sửa.** → Quy trình an toàn: (1) `pg_dump` ra file nén ngoài container, (2) `UPDATE` có `WHERE` cụ thể, (3) đếm lại trước/sau, (4) lấy N mẫu ngẫu nhiên so DB với API để chắc chắn **chỉ đổi tên miền, phần sau giữ nguyên**.
 
 ## 10. Nhật ký làm việc
 
@@ -724,55 +727,79 @@ Mẫu mỗi mục:
 
 
 
-## 2026-11-26 � CHU?N B? DEPLOY L�N VPS (xu?t to�n b? CSDL + media) + script n?p d? li?u
+## 2026-11-26 � CHU?N B? DEPLOY L�N VPS (xu?t to�n b? CSDL + media) + script n?p d? li?u
 
-- **Y�u c?u**: "gi? t�i mu?n up t?t c? l�n vps, thay th? cho h? th?ng cu, luu � khi t�i up l�n vps th� up to�n b? d? li?u + c�c b�i vi?t lu�n".
-- **Vi?c d� l�m**:
-  - `server/scripts/export-db-to-sql.mjs`: script xu?t to�n b? d? li?u t? PGlite (m�y dev) ra file SQL chu?n PostgreSQL (`INSERT ... ON CONFLICT DO NOTHING`, `session_replication_role = replica`) � ch?y du?c tr�n VPS PostgreSQL th?t m� kh�ng c?n d?i t�n b?ng/c?t.
-  - K?t qu? xu?t: `server/data/export/chongtoico-2026-11-25.sql` (~9,1 MB, 64.785 d�ng) � 1.553 b�i vi?t, 1.048 ?nh, 584 video, 57 bot, 61.092 `telegram_users`.
-  - N�n media: `server/data/export/uploads.tar.gz` (1,60 GB) t? `server/data/uploads`.
-  - `scripts/deploy-with-data.sh`: script 1 l?nh, ch?y tr�n m�y dev: `bash scripts/deploy-with-data.sh <user@host> [domain]` ? ki?m tra SSH/Docker ? pull code ? t?o `.env` (h?i m?t kh?u admin, c� `TOKEN_ENCRYPTION_KEY` gi?ng m�y dev) ? `docker compose up -d --build` (migrations ch?y) ? **backup d? li?u VPS hi?n c�** ? n?p SQL v�o `db` container ? gi?i n�n media v�o volume `/data/uploads` ? health check.
-- **�i?m quan tr?ng � kho� m� ho� token bot**: token trong DB du?c m� ho� AES-256-GCM b?ng `TOKEN_ENCRYPTION_KEY`. M�y dev d�ng `local-dev-token-encryption-key-000000`. **VPS ph?i d�ng ��NG kho� n�y**, n?u kh�ng bot s? b�o token sai. Script t?o `.env` m?i d� d?t s?n kho� d�.
-- **B�i h?c / c�ch tr�nh**:
-  - **D?NG server s?ch TRU?C khi xu?t PGlite** (d�ng file DB gi?a l�c ghi ? file dump h?ng). �� d?ng server, xu?t, r?i kh?i d?ng l?i � x�c nh?n `/api/home` tr? d? 1.553 b�i.
-  - **N?p d? li?u ph?i theo th? t?: code + migrations ? SQL dump ? media**. N?p SQL tru?c khi container `db` c� schema s? l?i `relation does not exist`.
-  - **Lu�n backup tru?c khi ghi d�** (`scripts/backup.sh --with-videos`) v� bu?c n�y XO� d? li?u dang c� tr�n VPS.
-  - `server/data/` d� `.gitignore` ? file SQL/tar.gz **kh�ng** du?c push l�n Git (ph?i scp tr?c ti?p).
-- **�� ki?m tra**: server local kh?i d?ng l?i OK (`Server listening at http://127.0.0.1:8090`), `/api/home` tr? d? li?u d?y d? (b�i id 1553 trong `articles.today`); `git commit --trailer "Co-authored-by: Cursor <cursoragent@cursor.com>"` 2 file m?i (`32ebe1d`).
-- **CHUA ch?y**: chua ch?y `deploy-with-data.sh` � c?n th�ng tin VPS (IP/host, user SSH, key ho?c m?t kh?u, domain) v� c?u h�nh Nginx tr�n VPS.
+- **Y�u c?u**: "gi? t�i mu?n up t?t c? l�n vps, thay th? cho h? th?ng cu, luu � khi t�i up l�n vps th� up to�n b? d? li?u + c�c b�i vi?t lu�n".
+- **Vi?c d� l�m**:
+  - `server/scripts/export-db-to-sql.mjs`: script xu?t to�n b? d? li?u t? PGlite (m�y dev) ra file SQL chu?n PostgreSQL (`INSERT ... ON CONFLICT DO NOTHING`, `session_replication_role = replica`) � ch?y du?c tr�n VPS PostgreSQL th?t m� kh�ng c?n d?i t�n b?ng/c?t.
+  - K?t qu? xu?t: `server/data/export/chongtoico-2026-11-25.sql` (~9,1 MB, 64.785 d�ng) � 1.553 b�i vi?t, 1.048 ?nh, 584 video, 57 bot, 61.092 `telegram_users`.
+  - N�n media: `server/data/export/uploads.tar.gz` (1,60 GB) t? `server/data/uploads`.
+  - `scripts/deploy-with-data.sh`: script 1 l?nh, ch?y tr�n m�y dev: `bash scripts/deploy-with-data.sh <user@host> [domain]` ? ki?m tra SSH/Docker ? pull code ? t?o `.env` (h?i m?t kh?u admin, c� `TOKEN_ENCRYPTION_KEY` gi?ng m�y dev) ? `docker compose up -d --build` (migrations ch?y) ? **backup d? li?u VPS hi?n c�** ? n?p SQL v�o `db` container ? gi?i n�n media v�o volume `/data/uploads` ? health check.
+- **�i?m quan tr?ng � kho� m� ho� token bot**: token trong DB du?c m� ho� AES-256-GCM b?ng `TOKEN_ENCRYPTION_KEY`. M�y dev d�ng `local-dev-token-encryption-key-000000`. **VPS ph?i d�ng ��NG kho� n�y**, n?u kh�ng bot s? b�o token sai. Script t?o `.env` m?i d� d?t s?n kho� d�.
+- **B�i h?c / c�ch tr�nh**:
+  - **D?NG server s?ch TRU?C khi xu?t PGlite** (d�ng file DB gi?a l�c ghi ? file dump h?ng). �� d?ng server, xu?t, r?i kh?i d?ng l?i � x�c nh?n `/api/home` tr? d? 1.553 b�i.
+  - **N?p d? li?u ph?i theo th? t?: code + migrations ? SQL dump ? media**. N?p SQL tru?c khi container `db` c� schema s? l?i `relation does not exist`.
+  - **Lu�n backup tru?c khi ghi d�** (`scripts/backup.sh --with-videos`) v� bu?c n�y XO� d? li?u dang c� tr�n VPS.
+  - `server/data/` d� `.gitignore` ? file SQL/tar.gz **kh�ng** du?c push l�n Git (ph?i scp tr?c ti?p).
+- **�� ki?m tra**: server local kh?i d?ng l?i OK (`Server listening at http://127.0.0.1:8090`), `/api/home` tr? d? li?u d?y d? (b�i id 1553 trong `articles.today`); `git commit --trailer "Co-authored-by: Cursor <cursoragent@cursor.com>"` 2 file m?i (`32ebe1d`).
+- **CHUA ch?y**: chua ch?y `deploy-with-data.sh` � c?n th�ng tin VPS (IP/host, user SSH, key ho?c m?t kh?u, domain) v� c?u h�nh Nginx tr�n VPS.
 - **File**: `server/scripts/export-db-to-sql.mjs`, `scripts/deploy-with-data.sh`, `LUAT_VA_BOI_CANH.md`, `huongdan.txt`.
-## 2026-11-26 � DEPLOY TH?T L�N VPS (thay th? h? th?ng cu) + 5 B�I H?C
+## 2026-11-26 � DEPLOY TH?T L�N VPS (thay th? h? th?ng cu) + 5 B�I H?C
 
-- **Y�u c?u**: "gi? t�i mu?n up t?t c? l�n vps, thay th? cho h? th?ng cu, luu � khi t�i up l�n vps th� up to�n b? d? li?u + c�c b�i vi?t lu�n".
-- **K?T QU?**: �� ch?y tr�n VPS `103.63.30.108` (Ubuntu 24.04, 31 GB dia, 7,8 GB RAM):
-  - Docker 29.10.1 + Compose v5.8.0 **c�i m?i** (VPS tru?c d� KH�NG c� Docker).
+- **Y�u c?u**: "gi? t�i mu?n up t?t c? l�n vps, thay th? cho h? th?ng cu, luu � khi t�i up l�n vps th� up to�n b? d? li?u + c�c b�i vi?t lu�n".
+- **K?T QU?**: �� ch?y tr�n VPS `103.63.30.108` (Ubuntu 24.04, 31 GB dia, 7,8 GB RAM):
+  - Docker 29.10.1 + Compose v5.8.0 **c�i m?i** (VPS tru?c d� KH�NG c� Docker).
   - H? th?ng m?i ? `/opt/chongtoico`, 2 container: `chongtoico-app` (127.0.0.1:8090) + `chongtoico-db` (PostgreSQL 17).
-  - **CSDL**: 1.553 b�i vi?t, 1.048 ?nh, 584 video, 57 bot (27 live / 30 ban), 61.092 `telegram_users`, 21.755 `telegram_visits`.
-  - **Media**: 1,60 GB / 6.525 file v�o volume `chongtoico_uploads` (thu m?c `albums` 4.192, `thumbs` 1.749, `videos` 584).
-  - **Nginx** chuy?n t? proxy port 5000 (FastAPI cu) sang port 8090; **h? th?ng cu d� d?ng** (`bot.service` disabled) nhung **gi? nguy�n to�n b? d? li?u SQLite + 1,6 GB media** d? quay l?i du?c.
-  - **Bot service** (systemd `chongtoico-bot`): **27 bot d� k?t n?i Telegram th�nh c�ng**.
-  - **Admin**: dang nh?p OK v?i `admin` / m?t kh?u cu; trang qu?n tr? hi?n th? d? s? li?u (1.553 b�i, 61.092 ngu?i Telegram, danh s�ch bot + bot b? ban).
-  - **Backup t? d?ng**: crontab 3h s�ng (`backup.sh --with-videos`).
-  - �ia c�n 18 GB tr?ng, `/var/lib/docker` 2,9 GB.
-- **B�I H?C**:
-  - **B67 � JSONB trong file SQL dump ph?i d�ng `JSON.stringify`, KH�NG d�ng `String(v)`.** `String({...})` ra `"[object Object]"` ? `psql` b�o `invalid input syntax for type json` ? **to�n b? transaction rollback**, kh�ng c� b?ng n�o du?c n?p. �� s?a `server/scripts/export-db-to-sql.mjs`.
-  - **B68 � SQL dump KH�NG mang theo tr?ng th�i c?a `sequence` ? kho� ch�nh b? tr�ng.** `sessions_id_seq` c�n ? 1 trong khi `max(id)` d� 35 ? l?n `INSERT` d?u ti�n b�o `duplicate key value violates unique constraint "sessions_pkey"` ? **dang nh?p admin kh�ng du?c** (l?i 500). �� s?a ? g?c: `export-db-to-sql.mjs` gi? xu?t th�m kh?i `DO $$ ... setval ... $$` d?t m?i sequence theo `max(id)`. B�i h?c chung: **sau khi n?p dump ph?i ki?m tra sequence**, v� n�n d�ng `pg_dump --data-only` v?i `--serializable-deferrable` n?u c� th?.
-  - **B69 � Script shell upload t? Windows ph?i l� LF, kh�ng ph?i CRLF.** File `.sh` c� `\r` cu?i d�ng ? `set -e` b�o `invalid option`, `apt-get -qq` b�o `E: Command line option '-qq'` l?n l?n, `systemd` b�o `Invalid unit name "docker\x0d"`. ? **Lu�n convert CRLF?LF tru?c khi upload script l�n VPS** (`sed -i 's/\r$//'` ho?c `.gitattributes`).
-  - **B70 � Th? t? b?t bu?c khi chuy?n h? th?ng**: `code + migrations` ? `SQL dump` ? `media` ? `gi?i m� token bot` ? `bot service` ? `chuy?n Nginx` ? `d?ng h? th?ng cu`. N?u n?p SQL tru?c khi container `db` c� schema s? l?i `relation does not exist`.
-  - **B71 � Token bot m� ho� b?ng `scrypt`, KH�NG ph?i `pbkdf2`.** `server/src/crypto.ts` d�ng `scryptSync(key, salt, 32)`; script gi?i m� l?n d?u d�ng `pbkdf2Sync` ? **m?i token gi?i m� ra `null`** (kh�ng c� l?i, ch? ra k?t qu? r?ng) ? bot service kh�ng kh?i d?ng du?c (`Thi?u TELEGRAM_BOT_TOKENS`). ? Khi vi?t script gi?i m� token, **d?c l?i d�ng h�m `decryptToken` trong `crypto.ts`**, d?ng do�n thu?t to�n.
-- **B? SUNG V�O `scripts/deploy-with-data.sh`**: v� repo l� **private** n�n `git clone` tr�n VPS th?t b?i (403) ? bu?c 2 gi? **n�n thu m?c hi?n t?i r?i `scp`** (b? `.git`, `node_modules`, `server/data`, `dist`, `import-tmp`). Th�m `scripts/export-bot-tokens.sh` (gi?i m� token ? ghi `TELEGRAM_BOT_TOKENS` v�o `.env`) v� `scripts/install-bot-service.sh` (t?o systemd unit cho bot). �� ch?y th? c? hai script ngay tr�n VPS ? OK.
-- **�� ki?m tra**: xem tr�nh duy?t � trang ch? hi?n d? b�i vi?t + ?nh b�a + video; dang nh?p admin th�nh c�ng; tab "Telegram ? Ngu?i Telegram" hi?n 61.092; tab "Bot" hi?n danh s�ch bot + 30 bot b? ban; `/api/home`, `/healthz`, `/media/...` d?u HTTP 200; `curl` v?i cookie jar th?t x�c nh?n `/api/auth/me` tr? user admin.
+  - **CSDL**: 1.553 b�i vi?t, 1.048 ?nh, 584 video, 57 bot (27 live / 30 ban), 61.092 `telegram_users`, 21.755 `telegram_visits`.
+  - **Media**: 1,60 GB / 6.525 file v�o volume `chongtoico_uploads` (thu m?c `albums` 4.192, `thumbs` 1.749, `videos` 584).
+  - **Nginx** chuy?n t? proxy port 5000 (FastAPI cu) sang port 8090; **h? th?ng cu d� d?ng** (`bot.service` disabled) nhung **gi? nguy�n to�n b? d? li?u SQLite + 1,6 GB media** d? quay l?i du?c.
+  - **Bot service** (systemd `chongtoico-bot`): **27 bot d� k?t n?i Telegram th�nh c�ng**.
+  - **Admin**: dang nh?p OK v?i `admin` / m?t kh?u cu; trang qu?n tr? hi?n th? d? s? li?u (1.553 b�i, 61.092 ngu?i Telegram, danh s�ch bot + bot b? ban).
+  - **Backup t? d?ng**: crontab 3h s�ng (`backup.sh --with-videos`).
+  - �ia c�n 18 GB tr?ng, `/var/lib/docker` 2,9 GB.
+- **B�I H?C**:
+  - **B67 � JSONB trong file SQL dump ph?i d�ng `JSON.stringify`, KH�NG d�ng `String(v)`.** `String({...})` ra `"[object Object]"` ? `psql` b�o `invalid input syntax for type json` ? **to�n b? transaction rollback**, kh�ng c� b?ng n�o du?c n?p. �� s?a `server/scripts/export-db-to-sql.mjs`.
+  - **B68 � SQL dump KH�NG mang theo tr?ng th�i c?a `sequence` ? kho� ch�nh b? tr�ng.** `sessions_id_seq` c�n ? 1 trong khi `max(id)` d� 35 ? l?n `INSERT` d?u ti�n b�o `duplicate key value violates unique constraint "sessions_pkey"` ? **dang nh?p admin kh�ng du?c** (l?i 500). �� s?a ? g?c: `export-db-to-sql.mjs` gi? xu?t th�m kh?i `DO $$ ... setval ... $$` d?t m?i sequence theo `max(id)`. B�i h?c chung: **sau khi n?p dump ph?i ki?m tra sequence**, v� n�n d�ng `pg_dump --data-only` v?i `--serializable-deferrable` n?u c� th?.
+  - **B69 � Script shell upload t? Windows ph?i l� LF, kh�ng ph?i CRLF.** File `.sh` c� `\r` cu?i d�ng ? `set -e` b�o `invalid option`, `apt-get -qq` b�o `E: Command line option '-qq'` l?n l?n, `systemd` b�o `Invalid unit name "docker\x0d"`. ? **Lu�n convert CRLF?LF tru?c khi upload script l�n VPS** (`sed -i 's/\r$//'` ho?c `.gitattributes`).
+  - **B70 � Th? t? b?t bu?c khi chuy?n h? th?ng**: `code + migrations` ? `SQL dump` ? `media` ? `gi?i m� token bot` ? `bot service` ? `chuy?n Nginx` ? `d?ng h? th?ng cu`. N?u n?p SQL tru?c khi container `db` c� schema s? l?i `relation does not exist`.
+  - **B71 � Token bot m� ho� b?ng `scrypt`, KH�NG ph?i `pbkdf2`.** `server/src/crypto.ts` d�ng `scryptSync(key, salt, 32)`; script gi?i m� l?n d?u d�ng `pbkdf2Sync` ? **m?i token gi?i m� ra `null`** (kh�ng c� l?i, ch? ra k?t qu? r?ng) ? bot service kh�ng kh?i d?ng du?c (`Thi?u TELEGRAM_BOT_TOKENS`). ? Khi vi?t script gi?i m� token, **d?c l?i d�ng h�m `decryptToken` trong `crypto.ts`**, d?ng do�n thu?t to�n.
+- **B? SUNG V�O `scripts/deploy-with-data.sh`**: v� repo l� **private** n�n `git clone` tr�n VPS th?t b?i (403) ? bu?c 2 gi? **n�n thu m?c hi?n t?i r?i `scp`** (b? `.git`, `node_modules`, `server/data`, `dist`, `import-tmp`). Th�m `scripts/export-bot-tokens.sh` (gi?i m� token ? ghi `TELEGRAM_BOT_TOKENS` v�o `.env`) v� `scripts/install-bot-service.sh` (t?o systemd unit cho bot). �� ch?y th? c? hai script ngay tr�n VPS ? OK.
+- **�� ki?m tra**: xem tr�nh duy?t � trang ch? hi?n d? b�i vi?t + ?nh b�a + video; dang nh?p admin th�nh c�ng; tab "Telegram ? Ngu?i Telegram" hi?n 61.092; tab "Bot" hi?n danh s�ch bot + 30 bot b? ban; `/api/home`, `/healthz`, `/media/...` d?u HTTP 200; `curl` v?i cookie jar th?t x�c nh?n `/api/auth/me` tr? user admin.
 - **File**: `server/scripts/export-db-to-sql.mjs`, `scripts/deploy-with-data.sh`, `scripts/export-bot-tokens.sh`, `scripts/install-bot-service.sh`, `LUAT_VA_BOI_CANH.md`, `huongdan.txt`.
-## 2026-11-26 � REPO CHUY?N SANG C�NG KHAI: VPS D�NG GIT THAY V� SCP
+## 2026-11-26 � REPO CHUY?N SANG C�NG KHAI: VPS D�NG GIT THAY V� SCP
 
-- **Y�u c?u**: "repo github t�i d� chuy?n ch? d? c�ng khai, sau n�y l�m vi?c tr�n repo sau d� k�o code sang vps s? d? hon".
-- **Vi?c d� l�m**:
-  - `scripts/deploy-with-data.sh`: bu?c 2 d?i t? "n�n thu m?c r?i scp" sang **`git clone` / `git pull --ff-only`** (repo gi? c�ng khai, VPS kh�ng c?n kho�). V?n gi? bu?c chu?n ho� LF cho file `.sh` v� `chmod +x`.
-  - VPS d� chuy?n sang ch? d? git: clone l?i repo (gi? nguy�n `.env` � 17 bi?n, `TOKEN_ENCRYPTION_KEY` d�ng, `TELEGRAM_BOT_TOKENS` d?y d?), `git remote set-url` v? URL c�ng khai.
-  - V� clone l?i n�n `bot/node_modules` v� `bot/dist` m?t ? d� `npm ci && npm run build` l?i v� restart `chongtoico-bot` (27 bot k?t n?i l?i OK).
-  - �� ch?y th? `bash scripts/update.sh` tr�n VPS: `git pull --ff-only` ? `docker compose up -d --build` ? container recreate ? health OK. **��y l� workflow c?p nh?t code h?ng ng�y t? gi?.**
-- **B�i h?c**:
-  - **B72 � Khi clone l?i repo tr�n VPS, PH?I gi? l?i `.env` v� c�c thu m?c build ngo�i git** (`.env` b? `.gitignore` ? m?t m?t kh?u admin + kho� m� ho� token + token bot; `node_modules`/`dist` b? lo?i ? bot service kh�ng kh?i d?ng du?c). Quy tr�nh an to�n: `cp .env /tmp/`, clone v�o thu m?c t?m, copy `.env` l?i, r?i m?i thay th? thu m?c cu.
-  - **B73 � `docker compose up -d --build` KH�NG c?n `server/node_modules` tr�n host** (Dockerfile t? c�i trong image), nhung **bot service ch?y NGO�I Docker th� C?N** `bot/node_modules` + `bot/dist` tr�n host ? sau m?i l?n clone l?i ph?i build bot.
-- **�� ki?m tra**: `/` v� `/api/home` HTTP 200; 1.553 b�i vi?t trong CSDL; `chongtoico-bot` active v?i 27 bot; `TOKEN_ENCRYPTION_KEY` v?n d�ng; `git log` tr�n VPS kh?p `main`.
+- **Y�u c?u**: "repo github t�i d� chuy?n ch? d? c�ng khai, sau n�y l�m vi?c tr�n repo sau d� k�o code sang vps s? d? hon".
+- **Vi?c d� l�m**:
+  - `scripts/deploy-with-data.sh`: bu?c 2 d?i t? "n�n thu m?c r?i scp" sang **`git clone` / `git pull --ff-only`** (repo gi? c�ng khai, VPS kh�ng c?n kho�). V?n gi? bu?c chu?n ho� LF cho file `.sh` v� `chmod +x`.
+  - VPS d� chuy?n sang ch? d? git: clone l?i repo (gi? nguy�n `.env` � 17 bi?n, `TOKEN_ENCRYPTION_KEY` d�ng, `TELEGRAM_BOT_TOKENS` d?y d?), `git remote set-url` v? URL c�ng khai.
+  - V� clone l?i n�n `bot/node_modules` v� `bot/dist` m?t ? d� `npm ci && npm run build` l?i v� restart `chongtoico-bot` (27 bot k?t n?i l?i OK).
+  - �� ch?y th? `bash scripts/update.sh` tr�n VPS: `git pull --ff-only` ? `docker compose up -d --build` ? container recreate ? health OK. **��y l� workflow c?p nh?t code h?ng ng�y t? gi?.**
+- **B�i h?c**:
+  - **B72 � Khi clone l?i repo tr�n VPS, PH?I gi? l?i `.env` v� c�c thu m?c build ngo�i git** (`.env` b? `.gitignore` ? m?t m?t kh?u admin + kho� m� ho� token + token bot; `node_modules`/`dist` b? lo?i ? bot service kh�ng kh?i d?ng du?c). Quy tr�nh an to�n: `cp .env /tmp/`, clone v�o thu m?c t?m, copy `.env` l?i, r?i m?i thay th? thu m?c cu.
+  - **B73 � `docker compose up -d --build` KH�NG c?n `server/node_modules` tr�n host** (Dockerfile t? c�i trong image), nhung **bot service ch?y NGO�I Docker th� C?N** `bot/node_modules` + `bot/dist` tr�n host ? sau m?i l?n clone l?i ph?i build bot.
+- **�� ki?m tra**: `/` v� `/api/home` HTTP 200; 1.553 b�i vi?t trong CSDL; `chongtoico-bot` active v?i 27 bot; `TOKEN_ENCRYPTION_KEY` v?n d�ng; `git log` tr�n VPS kh?p `main`.
 - **File**: `scripts/deploy-with-data.sh`, `huongdan.txt`, `LUAT_VA_BOI_CANH.md`.
+
+
+## 2026-11-26 — Sửa domain nút "Xem ngay": anonlink.io → anonlink.co (chỉ dữ liệu hiện có)
+
+- **Yêu cầu**: "sửa tên miền của nút xem ngay trong các bài viết đang có trên web (chỉ sửa ở hiện tại, không tự thêm tính năng này cho tương lai); https://anonlink.io/XXXXXX → https://anonlink.co/XXXXXX; chỉ sửa tên miền, không sửa các giá trị phía sau".
+- **Nút "▶ Xem ngay" lấy từ cột `articles.watch_link`** (không phải `description`). Frontend `ArticleLinkButtons.tsx` dùng thẳng `watchLink` từ API, **không hardcode domain** → không cần sửa mã nguồn.
+- **SQL chạy 1 lần (KHÔNG tạo migration, KHÔNG thêm logic cho tương lai)**:
+  ```sql
+  UPDATE articles SET watch_link = replace(watch_link,
+    'https://anonlink.io/', 'https://anonlink.co/') WHERE watch_link LIKE '%anonlink.io%';
+  ```
+- **Kết quả**: 1.546 bài đã đổi. Trước: 1.546 `anonlink.io` / 0 `anonlink.co`. Sau: 0 `anonlink.io` / 1.546 `anonlink.co`. 7 bài `watch_link` NULL và 1.551 bài có `vip_link` giữ nguyên.
+- **Đã áp dụng 2 nơi**:
+  - VPS `103.63.30.108` (container `chongtoico-db`): `pg_dump` backup trước → `/opt/chongtoico-backups/db-20261125-204305.sql.gz` (804K), rồi `UPDATE` qua `docker compose exec db psql`.
+  - Local PGlite: script mới `server/scripts/fix-watch-link-domain.mjs` (chạy bằng `npx tsx`; phải DỪNG server vì PGlite không cho 2 tiến trình mở cùng DB).
+- **KHÔNG sửa (có chủ ý)**:
+  - 7 bài có cụm text quảng cáo "ANH EM CHỌN anonlink.io ĐỂ MUA VỚI GIÁ RẺ HƠN NHA" trong `description` — đây là **text quảng cáo, không có phần sau domain** để đổi; chủ dự án chọn chỉ sửa `watch_link`.
+  - Mã nguồn: placeholder `https://anonlink.io/xxxxxxx` trong `admin/AdminArticles.tsx`, regex `anonlink\.io` trong `import-*.mjs`, và test — đúng yêu cầu "không tự thêm tính năng này cho tương lai".
+- **Đã kiểm tra**: `/api/articles/1250` → `https://anonlink.co/PGzIwp`; 60/60 bài ngẫu nhiên trả `anonlink.co` (0 `anonlink.io`); phần sau domain giữ nguyên (`FKUMY`, `zhU8v`, `pTlz7fHO`, `Qg4t`…); xem trình duyệt bài 1250 — nút "▶ Xem ngay" + "👑 Kênh VIP" hiển thị đúng.
+- **Bài học**:
+  - **B74 — Sửa link trong dữ liệu cũ = `UPDATE` một lần, KHÔNG viết migration/utility chạy mỗi lần deploy.** Yêu cầu "chỉ sửa hiện tại" = sửa dữ liệu, không tạo hạ tầng cho tương lai.
+  - **B75 — Link nút bấm nằm ở cột riêng (`watch_link`), không nằm trong `description`.** Phải tra schema trước khi UPDATE; quét `description` chỉ tìm ra text quảng cáo, sửa chỗ đó là sửa nhầm.
+  - **B76 — Trước khi UPDATE dữ liệu hàng loạt trên production: `pg_dump` backup, rồi đối chiếu DB ↔ API** (60 mẫu ngẫu nhiên) để chắc chắn không đổi nhầm phần sau domain.
+- **File**: `server/scripts/fix-watch-link-domain.mjs` (mới), `huongdan.txt`, `LUAT_VA_BOI_CANH.md`.
