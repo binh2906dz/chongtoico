@@ -21,6 +21,8 @@ interface AdminArticle {
   id: number;
   title: string;
   description: string;
+  watchLink: string | null;
+  vipLink: string | null;
   categoryId: number | null;
   visibility: "public" | "members";
   isHot: boolean;
@@ -47,6 +49,8 @@ function captureFrame(video: HTMLVideoElement): Promise<Blob | null> {
 function UploadForm({ categories, onDone, onCreated }: { categories: ArticleCategory[]; onDone: () => void; onCreated: (id: number) => void }) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [watchLink, setWatchLink] = useState("");
+  const [vipLink, setVipLink] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [tags, setTags] = useState("");
   const [membersOnly, setMembersOnly] = useState(false);
@@ -61,11 +65,22 @@ function UploadForm({ categories, onDone, onCreated }: { categories: ArticleCate
     setError(null);
     try {
       const res = await api<{ article: { id: number } }>("/api/admin/articles", {
-        body: { title, description, categoryId: categoryId ? Number(categoryId) : null, tags, visibility: membersOnly ? "members" : "public", isHot },
+        body: {
+          title,
+          description,
+          watchLink: watchLink.trim(),
+          vipLink: vipLink.trim(),
+          categoryId: categoryId ? Number(categoryId) : null,
+          tags,
+          visibility: membersOnly ? "members" : "public",
+          isHot,
+        },
       });
       setDone(res.article.id);
       setTitle("");
       setDescription("");
+      setWatchLink("");
+      setVipLink("");
       setTags("");
       setMembersOnly(false);
       setIsHot(false);
@@ -111,6 +126,33 @@ function UploadForm({ categories, onDone, onCreated }: { categories: ArticleCate
       <div>
         <label className="label">Mô tả</label>
         <textarea className="input" rows={3} maxLength={20000} value={description} onChange={(e) => setDescription(e.target.value)} disabled={busy} />
+      </div>
+      {/* 2 nút bấm dưới nội dung: "Xem ngay" và "Kênh VIP" */}
+      <div className="grid gap-3 md:grid-cols-2">
+        <div>
+          <label className="label">🔗 Link nút "Xem ngay" (mua / xem full video)</label>
+          <input
+            className="input"
+            maxLength={1000}
+            placeholder="https://anonlink.io/xxxxxxx"
+            value={watchLink}
+            onChange={(e) => setWatchLink(e.target.value)}
+            disabled={busy}
+          />
+          <p className="mt-1 text-xs text-muted">Bỏ trống = không hiện nút. Chỉ nhận link http/https.</p>
+        </div>
+        <div>
+          <label className="label">👑 Link nút "Kênh VIP" (kênh Telegram)</label>
+          <input
+            className="input"
+            maxLength={1000}
+            placeholder="https://t.me/nhomchongtoico"
+            value={vipLink}
+            onChange={(e) => setVipLink(e.target.value)}
+            disabled={busy}
+          />
+          <p className="mt-1 text-xs text-muted">Bỏ trống = không hiện nút. Chỉ nhận link http/https.</p>
+        </div>
       </div>
       <div className="grid gap-3 md:grid-cols-3">
         <div className="md:col-span-2">
@@ -268,6 +310,37 @@ function ArticleMediaEditor({ articleId, onChanged, onBack }: { articleId: numbe
         </div>
         <div className="text-sm text-muted">
           {article.images.length} ảnh · {article.videos.length} video · {article.visibility === "public" ? "Công khai" : "Chỉ thành viên"} {article.isHot && "· HOT"}
+        </div>
+        {/* Nút "Xem ngay" + "Kênh VIP" hiển thị dưới nội dung bài viết. */}
+        <div className="grid gap-3 md:grid-cols-2">
+          <div>
+            <label className="label">🔗 Link nút "Xem ngay"</label>
+            <input
+              className="input"
+              maxLength={1000}
+              placeholder="https://anonlink.io/xxxxxxx"
+              defaultValue={article.watchLink ?? ""}
+              disabled={busy}
+              onBlur={(e) => {
+                const v = e.target.value.trim();
+                if (v !== (article.watchLink ?? "")) void act(() => api(`/api/admin/articles/${articleId}`, { method: "PATCH", body: { watchLink: v } }));
+              }}
+            />
+          </div>
+          <div>
+            <label className="label">👑 Link nút "Kênh VIP"</label>
+            <input
+              className="input"
+              maxLength={1000}
+              placeholder="https://t.me/nhomchongtoico"
+              defaultValue={article.vipLink ?? ""}
+              disabled={busy}
+              onBlur={(e) => {
+                const v = e.target.value.trim();
+                if (v !== (article.vipLink ?? "")) void act(() => api(`/api/admin/articles/${articleId}`, { method: "PATCH", body: { vipLink: v } }));
+              }}
+            />
+          </div>
         </div>
         {msg && <div className="text-sm text-emerald-300">{msg}</div>}
         <ErrorBox message={err} />

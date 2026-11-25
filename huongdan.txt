@@ -124,6 +124,14 @@ Bài viết (đa phương tiện — thay mảng video + album cũ):
   ảnh bìa nhưng trang xem bị khoá, file /media/v/ trả 403. Danh sách mã file bị
   khoá giữ trong bộ nhớ (membersOnlyKeys, nạp lúc khởi động, cập nhật khi
   đăng / sửa / xoá).
+- NÚT BẤM TRONG BÀI VIẾT (2026-11-25): articles.watch_link (nút "▶ Xem ngay" —
+  link mua/xem full video) + articles.vip_link (nút "👑 Kênh VIP" — kênh
+  Telegram), migration 0007_article_links.sql. 2 nút hiện trong panel ngay DƯỚI
+  nội dung bài viết (component frontend/src/components/ArticleLinkButtons.tsx),
+  mở tab mới, ai cũng bấm được (kể cả khách). Chỉ nhận link http/https (sai
+  scheme → API trả 400). Bài "chỉ thành viên" trả null cho cả 2 link.
+  Admin nhập/sửa ở Quản trị > Bài viết: 2 ô trong form "Đăng bài viết mới" +
+  2 ô sửa nhanh trong trang Media của bài (lưu khi blur).
 - Sắp xếp: today / hot (bảng article_view_days, giờ Việt Nam — bài viết có lượt
   trong kỳ lên trước, còn lại theo tổng lượt xem), week (tỉ lệ thích của phiếu
   bầu trong 7 ngày), best, new, random. "Đang được xem" = bài viết được mở trong
@@ -689,6 +697,29 @@ b22c5f7 feat: scaffold new platform (đã thay thế — xoá ở bản Node.js)
     thể mất bản ghi (file media vẫn còn trong server/data/uploads). Sau mỗi lần
     restart server hãy kiểm tra lại dữ liệu; nếu mất thì chạy lại script import
     với --replace.
+
+[2026-11-25] NÚT "XEM NGAY" + "KÊNH VIP" trong bài viết.
+  - Yêu cầu chủ dự án: link anonlink.io trong nội dung -> nút "▶ Xem ngay";
+    link t.me/nhomchongtoico -> nút "👑 Kênh VIP"; đoạn "Link 1 … ANH EM CHỌN
+    … Kênh VIP không cần vượt 👉 …" bị xoá. "Test thì tự động, triển khai thực
+    tế thì thủ công"; ai cũng bấm được (kể cả khách).
+  - CSDL: articles.watch_link + articles.vip_link (migration
+    0007_article_links.sql — PHẢI có "--> statement-breakpoint" giữa 2 lệnh
+    vì PGlite không cho nhiều lệnh trong 1 prepared statement, B48).
+  - Server: zod linkField (chỉ http/https, rỗng -> null, sai -> 400) trong
+    articleBody; POST /api/admin/articles + PATCH /api/admin/articles/:id nhận
+    watchLink / vipLink; GET /api/articles/:id trả 2 link (locked -> null);
+    GET /api/admin/articles/:id trả 2 link.
+  - Giao diện: component mới frontend/src/components/ArticleLinkButtons.tsx;
+    ArticlePage hiện 2 nút trong panel dưới nội dung; AdminArticles thêm 2 ô
+    vào form đăng bài + 2 ô sửa nhanh trong trang Media; types.ts thêm 2 field.
+  - Script import: extractLinks() tách anonlink.io -> watchLink, t.me/ -> vipLink,
+    xoá đoạn quảng cáo giữa; cờ --keep-links để giữ nguyên.
+  - Đã kiểm tra: 5 bài (id 133-137) có đủ 2 nút; bài "chỉ thành viên" không
+    lộ link; javascript:alert(1) bị 400; npm test 55/55; build server + giao
+    diện OK; xem trên trình duyệt — 2 nút đúng vị trí, form đăng bài có đủ 2 ô.
+  - CHƯA làm: đồng bộ link khi admin sửa nội dung bài (hiện sửa tay ở ô riêng);
+    tự động tách link khi gõ nội dung trong trình soạn thảo.
 
 ================================================================================
 Hết — lưu ý: không lưu mật khẩu / token thật trong file này.

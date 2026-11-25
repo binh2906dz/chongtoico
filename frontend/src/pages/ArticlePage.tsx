@@ -5,6 +5,7 @@ import { isStaff, useAuth } from "../auth";
 import { AdBanner, ReportButton, ShareBar } from "../components/Extras";
 import { Avatar, ErrorBox, Pagination, PostContent, SectionHeader, UserLink } from "../components/ui";
 import { ArticleCard } from "../components/ArticleCard";
+import { ArticleLinkButtons } from "../components/ArticleLinkButtons";
 import { formatDate, formatNumber, timeAgo } from "../format";
 import { useFetch } from "../useFetch";
 import { rememberArticle } from "../articleHistory";
@@ -575,6 +576,12 @@ export default function ArticlePage() {
           {article.description && (
             <div className="panel p-4">
               <PostContent content={article.description} />
+            </div>
+          )}
+          {/* Nút "Xem ngay" + "Kênh VIP" — nằm ngay dưới nội dung bài viết. */}
+          {(article.watchLink || article.vipLink) && (
+            <div className="panel p-4">
+              <ArticleLinkButtons watchLink={article.watchLink} vipLink={article.vipLink} />
             </div>
           )}
         </div>

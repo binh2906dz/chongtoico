@@ -200,6 +200,8 @@ Mỗi dòng: **lỗi / tình huống** → **cách tránh**.
 - **B45 — `fetch` với `redirect: "manual"` trả 3xx; Flask `POST /login` trả 302 khi đăng nhập ĐÚNG.** Code kiểm tra `res.ok` ⇒ coi 302 là lỗi ⇒ script báo thất bại dù đã đăng nhập thành công. → Cho phép 3xx ở bước đăng nhập (`allowRedirect`), **kiểm tra đăng nhập bằng cách xem trang sau đăng nhập có còn form `name="password"` không** (như `probe-old-login.mjs` đã làm).
 - **B46 — CSDL PGlite ở máy dev bị seed lại mỗi lần tạo mới ⇒ mất bản ghi bài viết đã import (file media vẫn còn trên đĩa).** → Sau khi restart server phải **kiểm tra lại dữ liệu**, không giả định nó còn nguyên; nếu mất thì chạy lại script import (script đã hỗ trợ `--replace` để không nhân bản).
 - **B47 — Album cũ = GOM nhiều bài viết, KHÔNG phải 1 bài viết.** Lần đầu tôi gộp cả album (10 caption + 10 media) thành 1 bài viết ⇒ sai. Chủ dự án nói rõ: "cái bạn copy qua là cả 1 album của 1 ngày, cái đúng phải là [caption của 1 post] sau đó là ảnh hoặc video của bài đó". ⇒ **Mỗi POST của album cũ = 1 bài viết độc lập** trên web mới (tiêu đề = dòng đầu caption, nội dung = caption đầy đủ, media = media của post đó). → Khi port dữ liệu, phải **đọc lại cách web cũ hiển thị** (template `album_view.html`: mỗi `post` có `post-caption` + lưới media riêng) để xác định đơn vị nội dung, đừng suy từ tên "album".
+- **B48 — PGlite KHÔNG cho nhiều câu lệnh SQL trong 1 prepared statement** (`cannot insert multiple commands into a prepared statement`, code 42601). Drizzle migration của file cũ dùng `--> statement-breakpoint` giữa các lệnh — **file SQL mới phải làm y hệt**, nếu không server không khởi động được lúc chạy migration.
+- **B49 — Chạy test server bằng `npm test` (node --import tsx --test), KHÔNG phải `npx vitest run`.** Repo dùng test runner của Node; vitest báo "No test suite found" cho cả 4 file ⇒ dễ tưởng test hỏng. Lệnh đúng: `cd server && npm test` (hiện 55/55 pass).
 
 ## 10. Nhật ký làm việc
 
@@ -555,5 +557,23 @@ Mẫu mỗi mục:
   - Tiêu đề = dòng đầu caption; `description` = caption đầy đủ (kèm link `anonlink.io` + kênh VIP); video có `thumbKey` + `duration`; ảnh bìa set đúng (video → poster, ảnh → ảnh gốc); hiển thị đúng ở trang bài viết và trang chủ (badge `🖼️ 1` / `▶ 🎬 1 0:30`); xoá bản gộp album cũ (id=100).
   - **Chưa chạy thử**: import tự động hàng loạt (nhiều album), chuyển danh mục 1-1 từ web cũ (hiện gán category đầu tiên), giữ nguyên ngày đăng cũ (hiện dùng ngày import), chạy trên VPS với CSDL thật.
 - File / commit: `server/scripts/import-from-old-web.mjs` (mới), `huongdan.txt` (mục 3 không đổi, mục 8 thêm mục), `LUAT_VA_BOI_CANH.md` (mục 9: B42–B47; mục 10: mục này).
+
+## 2026-11-25 — Nút "Xem ngay" + "Kênh VIP" cho bài viết
+
+- **Yêu cầu**: trong nội dung bài có `Link 1 https://anonlink.io/xxx` + đoạn quảng cáo + `👉 https://t.me/nhomchongtoico`. Chủ dự án muốn: link anonlink.io → **nút "Xem ngay"**, link t.me → **nút "Kênh VIP"**, xoá đoạn quảng cáo ở giữa. "Hiện tại test thì tự động, nhưng khi triển khai thực tế thì thủ công"; ai cũng bấm được (kể cả khách).
+- **Thiết kế**: 2 trường mới trong bảng `articles` — `watch_link` (nút Xem ngay) + `vip_link` (nút Kênh VIP), tách khỏi `description`. Migration `0007_article_links.sql` (**phải có `--> statement-breakpoint` — B48**).
+- **Server** (`server/src/routes/articles.ts`):
+  - `linkField` = zod: chỉ nhận `http/https`, rỗng → `null`, sai scheme → 400.
+  - `articleBody` + `PATCH /api/admin/articles/:id` nhận `watchLink` / `vipLink`.
+  - `GET /api/articles/:id` trả 2 link; **bài "chỉ thành viên" (`locked`) trả `null`** cho cả 2 (không lộ link cho khách).
+  - `GET /api/admin/articles/:id` trả 2 link cho admin.
+- **Frontend**:
+  - Component mới `frontend/src/components/ArticleLinkButtons.tsx` — nút "▶ Xem ngay" (nền brand) + "👑 Kênh VIP" (viền brand), mở tab mới `target=_blank rel="noopener noreferrer nofollow ugc"`, không cần đăng nhập.
+  - `ArticlePage.tsx`: hiện 2 nút trong panel ngay **dưới nội dung bài viết**.
+  - `AdminArticles.tsx`: thêm 2 ô vào form đăng bài (📝 Đăng bài viết mới) + 2 ô sửa nhanh trong trang Media của bài (lưu khi blur).
+  - `types.ts`: `ArticleDetail` thêm `watchLink` / `vipLink`.
+- **Script import**: `extractLinks()` tách link khỏi caption — `anonlink.io` → watchLink, `t.me/` → vipLink, xoá đoạn "Link 1 … ANH EM CHỌN … Kênh VIP không cần vượt 👉 …". Cờ `--keep-links` để giữ nguyên (khi triển khai thực tế sẽ nhập tay trong form).
+- **Đã kiểm tra**: album `album_2ed16cc1` → 5 bài (id 133–137) mỗi bài có đủ 2 nút; API công khai trả đúng link; bài "chỉ thành viên" không lộ link; link `javascript:alert(1)` bị 400; `npm test` 55/55 pass; build server + frontend OK; xem trên trình duyệt — 2 nút hiện đúng vị trí, form đăng bài có đủ 2 ô, trang Media hiện giá trị đã lưu.
+- **File**: `server/drizzle/0007_article_links.sql`, `server/src/db/schema.ts`, `server/src/routes/articles.ts`, `server/test/api.test.ts`, `frontend/src/components/ArticleLinkButtons.tsx`, `frontend/src/pages/ArticlePage.tsx`, `frontend/src/pages/admin/AdminArticles.tsx`, `frontend/src/types.ts`, `server/scripts/import-from-old-web.mjs`, `LUAT_VA_BOI_CANH.md`, `huongdan.txt`.
 
 

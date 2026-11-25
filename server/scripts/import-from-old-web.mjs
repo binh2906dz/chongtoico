@@ -10,6 +10,8 @@
 //     [--limit 5] [--replace]
 //
 // --limit N : chỉ tạo N bài viết đầu tiên. --replace: xoá bài cũ trùng tiêu đề.
+// --keep-links: giữ nguyên link trong nội dung (mặc định tách link anonlink.io ->
+//   nút "Xem ngay" và link t.me -> nút "Kênh VIP", xoá đoạn quảng cáo ở giữa).
 //
 // Nguồn: web cũ lưu mỗi album trong bảng SQLite "albums" (data_json) và media ở
 // static/uploads/{images,videos}. Cấu trúc album:
@@ -174,6 +176,55 @@ function titleFromCaption(caption) {
   return first.slice(0, 200) || "Bài viết";
 }
 
+/**
+ * Tách link ra khỏi nội dung để giao diện hiển thị thành nút bấm:
+ *   - link anonlink.io (mua/xem full video) -> watchLink
+ *   - link kênh Telegram (t.me/...)       -> vipLink
+ *   - đoạn "Link 1 ... ANH EM CHỌN ... Kênh VIP không cần vượt 👉 ..." bị xoá
+ *
+ * Có thể tắt bằng cờ --keep-links (khi triển khai thực tế sẽ nhập tay trong form).
+ */
+function extractLinks(caption, { keep = false } = {}) {
+  const text = caption ?? "";
+  if (keep) return { description: text, watchLink: null, vipLink: null };
+
+  const urlRe = /https?:\/\/[^\s<>"']+/g;
+  const all = text.match(urlRe) ?? [];
+  // Link anonlink.io = nút "Xem ngay"; link t.me = nút "Kênh VIP".
+  const watchLink = all.find((u) => /anonlink\.io/i.test(u)) ?? null;
+  const vipLink = all.find((u) => /t\.me\//i.test(u)) ?? null;
+
+  // Xoá đoạn quảng cáo chứa 2 link + dòng giới thiệu, giữ lại phần còn lại.
+  let description = text;
+  if (watchLink && vipLink) {
+    // Từ "Link 1" (hoặc dòng chứa link xem) tới hết dòng chứa link kênh VIP.
+    const re = new RegExp(
+      String.raw`(^|\n)[^\n]*${escapeRe(watchLink)}[^\n]*(\n[^\n]*)*?${escapeRe(vipLink)}[^\n]*(\n|$)?`,
+      "i",
+    );
+    description = description.replace(re, "\n");
+  } else if (watchLink) {
+    description = description.replace(new RegExp(escapeRe(watchLink), "ig"), "");
+  } else if (vipLink) {
+    description = description.replace(new RegExp(escapeRe(vipLink), "ig"), "");
+  }
+
+  // Dọn khoảng trắng thừa do xoá dòng.
+  description = description
+    .split("\n")
+    .map((l) => l.replace(/[ \t]+$/, ""))
+    .filter((l, i, arr) => !(l.trim() === "" && arr[i - 1]?.trim() === "" && (i === 0 || arr[i - 1].trim() === "")))
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
+  return { description, watchLink, vipLink };
+}
+
+function escapeRe(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 // Đăng nhập web mới (CSRF header "x-requested-with: ctc" — xem server/src/app.ts).
 const nc = makeClient(NEW);
 await nc.request("POST", "/api/auth/login", JSON.stringify({ username: NEW_USER, password: NEW_PASS }), {
@@ -204,9 +255,12 @@ const created = [];
 
 for (const [index, p] of posts.entries()) {
   const title = titleFromCaption(p.caption);
+  const { description, watchLink, vipLink } = extractLinks(p.caption, { keep: has("keep-links") });
   const res = await api("POST", "/api/admin/articles", JSON.stringify({
     title,
-    description: p.caption ?? "",
+    description,
+    watchLink,
+    vipLink,
     categoryId,
     tags: "",
     visibility: "public",
@@ -240,7 +294,7 @@ for (const [index, p] of posts.entries()) {
       vidOk++;
     }
   }
-  console.log(`[${index + 1}/${posts.length}] bài #${articleId} "${title.slice(0, 70)}" media=${p.media.length}`);
+  console.log(`[${index + 1}/${posts.length}] bài #${articleId} "${title.slice(0, 70)}" media=${p.media.length}${watchLink ? " +nút xem ngay" : ""}${vipLink ? " +nút kênh VIP" : ""}`);
 }
 
 console.log(`xong: ${created.length} bài viết, ảnh=${imgOk} video=${vidOk}`);

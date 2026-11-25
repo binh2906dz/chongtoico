@@ -557,4 +557,70 @@ describe("Chống Tối Cổ API", () => {
     assert.equal(res.statusCode, 404);
     assert.ok(res.json().error);
   });
+
+  it("stores the watch link and the vip link of an article", async () => {
+    // Tạo bài có 2 link nút bấm.
+    let res = await app.inject({
+      method: "POST",
+      url: "/api/admin/articles",
+      headers: { ...H, cookie: admin },
+      payload: {
+        title: "Bài có nút bấm",
+        description: "Xem ngay và kênh VIP",
+        watchLink: "https://anonlink.io/K8irYWpF",
+        vipLink: "https://t.me/nhomchongtoico",
+      },
+    });
+    assert.equal(res.statusCode, 200, res.body);
+    const id = res.json().article.id;
+
+    // API công khai trả về cả 2 link cho khách.
+    const pub = (await app.inject(`/api/articles/${id}`)).json();
+    assert.equal(pub.article.watchLink, "https://anonlink.io/K8irYWpF");
+    assert.equal(pub.article.vipLink, "https://t.me/nhomchongtoico");
+
+    // API admin cũng trả về.
+    const adm = (await app.inject({ url: `/api/admin/articles/${id}`, headers: { cookie: admin } })).json();
+    assert.equal(adm.article.watchLink, "https://anonlink.io/K8irYWpF");
+    assert.equal(adm.article.vipLink, "https://t.me/nhomchongtoico");
+
+    // Sửa lại link.
+    res = await app.inject({
+      method: "PATCH",
+      url: `/api/admin/articles/${id}`,
+      headers: { ...H, cookie: admin },
+      payload: { watchLink: "https://anonlink.io/moi", vipLink: "" },
+    });
+    assert.equal(res.statusCode, 200, res.body);
+    const after = (await app.inject(`/api/articles/${id}`)).json();
+    assert.equal(after.article.watchLink, "https://anonlink.io/moi");
+    assert.equal(after.article.vipLink, null);
+
+    // Link không hợp lệ (không phải http/https) bị từ chối.
+    res = await app.inject({
+      method: "POST",
+      url: "/api/admin/articles",
+      headers: { ...H, cookie: admin },
+      payload: { title: "Link xấu", watchLink: "javascript:alert(1)" },
+    });
+    assert.equal(res.statusCode, 400, res.body);
+
+    // Bài "chỉ thành viên" không lộ link cho khách.
+    res = await app.inject({
+      method: "POST",
+      url: "/api/admin/articles",
+      headers: { ...H, cookie: admin },
+      payload: {
+        title: "Bài khoá",
+        visibility: "members",
+        watchLink: "https://anonlink.io/khoa",
+        vipLink: "https://t.me/nhomchongtoico",
+      },
+    });
+    const lockedId = res.json().article.id;
+    const lockedPub = (await app.inject(`/api/articles/${lockedId}`)).json();
+    assert.equal(lockedPub.article.locked, true);
+    assert.equal(lockedPub.article.watchLink, null);
+    assert.equal(lockedPub.article.vipLink, null);
+  });
 });

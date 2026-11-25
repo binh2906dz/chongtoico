@@ -146,6 +146,10 @@ export interface ArticleMedia {
 
 export interface ArticleDetail extends ArticleItem {
   description: string;
+  /** Link nút "Xem ngay" (mua/xem full video) — null = không hiện nút. */
+  watchLink: string | null;
+  /** Link nút "Kênh VIP" (kênh Telegram) — null = không hiện nút. */
+  vipLink: string | null;
   locked: boolean;
   author: Author;
   tags: ArticleTag[];

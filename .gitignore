@@ -6,6 +6,7 @@
 # Node
 node_modules/
 dist/
+*.tsbuildinfo
 
 # Local data (PGlite database, uploaded images)
 server/data/

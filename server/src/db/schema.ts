@@ -204,6 +204,10 @@ export const articles = pgTable(
     categoryId: integer("category_id").references(() => articleCategories.id, { onDelete: "set null" }),
     title: varchar("title", { length: 200 }).notNull(),
     description: text("description").notNull().default(""),
+    /** Link nút "Xem ngay" (ví dụ link mua full video) — rỗng = không hiện nút. */
+    watchLink: text("watch_link"),
+    /** Link nút "Kênh VIP" (kênh Telegram) — rỗng = không hiện nút. */
+    vipLink: text("vip_link"),
     /** "public" | "members" — members-only articles hide the files from guests. */
     visibility: varchar("visibility", { length: 16 }).notNull().default("public"),
     isHot: boolean("is_hot").notNull().default(false),

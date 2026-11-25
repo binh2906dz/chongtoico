@@ -440,9 +440,21 @@ async function postProcess(
 
 const optionalId = z.preprocess((v) => (v === "" || v === null || v === undefined ? undefined : v), z.coerce.number().int().positive().optional());
 
+/** Link nút bấm: chỉ nhận http/https, rỗng = không hiện nút. */
+const linkField = z
+  .string()
+  .trim()
+  .max(1000)
+  .transform((v) => (v === "" ? null : v))
+  .refine((v) => v === null || /^https?:\/\/[^\s]+$/i.test(v), "Link phải bắt đầu bằng http:// hoặc https://")
+  .nullable()
+  .optional();
+
 const articleBody = z.object({
   title: z.string().trim().min(2, "Tiêu đề cần ít nhất 2 ký tự.").max(200, "Tiêu đề tối đa 200 ký tự."),
   description: z.string().trim().max(20000, "Nội dung tối đa 20.000 ký tự.").default(""),
+  watchLink: linkField,
+  vipLink: linkField,
   categoryId: optionalId,
   tags: z.string().max(1000).default(""),
   visibility: z.enum(VISIBILITIES).default("public"),
@@ -618,6 +630,8 @@ export default async function articleRoutes(app: FastifyInstance) {
       .select({
         ...cardColumns,
         description: articles.description,
+        watchLink: articles.watchLink,
+        vipLink: articles.vipLink,
         categoryId: articles.categoryId,
         author: authorColumns,
       })
@@ -663,7 +677,7 @@ export default async function articleRoutes(app: FastifyInstance) {
       for (const l of lists) if (l.list === "favorite" || l.list === "later") saved[l.list] = true;
     }
 
-    const { categoryId, author: authorRow, description, ...rest } = row;
+    const { categoryId, author: authorRow, description, watchLink, vipLink, ...rest } = row;
 
     // Locked articles hide their media entirely.
     let images: (typeof mediaFileSchema)["_output"][] = [];
@@ -705,6 +719,9 @@ export default async function articleRoutes(app: FastifyInstance) {
         // Bài "chỉ thành viên" không lộ link ảnh bìa cho khách (ảnh sẽ trả 403 -> vỡ ảnh).
         coverUrl: locked ? null : card.coverUrl,
         description: locked ? "" : description,
+        // Nút "Xem ngay" / "Kênh VIP" — bài "chỉ thành viên" không lộ link cho khách.
+        watchLink: locked ? null : watchLink,
+        vipLink: locked ? null : vipLink,
         locked,
         author: author(authorRow),
         tags: await articleTagsOf(id),
@@ -973,6 +990,8 @@ export default async function articleRoutes(app: FastifyInstance) {
         id: article.id,
         title: article.title,
         description: article.description,
+        watchLink: article.watchLink,
+        vipLink: article.vipLink,
         categoryId: article.categoryId,
         visibility: article.visibility,
         isHot: article.isHot,
@@ -1001,6 +1020,8 @@ export default async function articleRoutes(app: FastifyInstance) {
           categoryId: body.categoryId ?? null,
           title: body.title,
           description: body.description,
+          watchLink: body.watchLink ?? null,
+          vipLink: body.vipLink ?? null,
           visibility: body.visibility,
           isHot: body.isHot,
         })
@@ -1018,6 +1039,8 @@ export default async function articleRoutes(app: FastifyInstance) {
       z.object({
         title: articleBody.shape.title.optional(),
         description: articleBody.shape.description.optional(),
+        watchLink: linkField,
+        vipLink: linkField,
         categoryId: z.number().int().positive().nullable().optional(),
         visibility: z.enum(VISIBILITIES).optional(),
         isHot: z.boolean().optional(),
