@@ -197,6 +197,8 @@ Mỗi dòng: **lỗi / tình huống** → **cách tránh**.
 - **B42 — Mọi request khác GET/HEAD/OPTIONS tới `/api/` đều cần header CSRF `x-requested-with: ctc`.** Thiếu ⇒ `403 {"error":"Yêu cầu không hợp lệ"}` (không phải lỗi đăng nhập!). → Script gọi API phải luôn gửi header này (xem `server/src/app.ts`).
 - **B43 — `hasFfmpeg()` CACHE kết quả trong module.** Cài ffmpeg sau khi server đã chạy ⇒ server vẫn tưởng là không có ⇒ video không có poster/duration. → **Cài ffmpeg phải KHỞI ĐỘNG LẠI server**; nếu không thì gửi kèm `thumb` + `duration`/`width`/`height` khi upload.
 - **B44 — Web cũ (Flask) giữ dữ liệu trên VPS, không có trong repo.** Repo chỉ có mã nguồn + `data.db` không tồn tại + máy dev không có Python ⇒ phải **đăng nhập web cũ qua HTTP** để lấy dữ liệu: `POST /login` (cần `csrf_token` trong HTML) → cookie phiên → `GET /albums/<id>/posts/edit`. Cấu trúc album nằm trong `<script id="rmAlbumsJson">` của trang `/`. Tài khoản mặc định trong `.env.example` cũ (`admin/admin123`) **không** còn dùng ⇒ phải thử/suy đoán hoặc hỏi chủ dự án.
+- **B45 — `fetch` với `redirect: "manual"` trả 3xx; Flask `POST /login` trả 302 khi đăng nhập ĐÚNG.** Code kiểm tra `res.ok` ⇒ coi 302 là lỗi ⇒ script báo thất bại dù đã đăng nhập thành công. → Cho phép 3xx ở bước đăng nhập (`allowRedirect`), **kiểm tra đăng nhập bằng cách xem trang sau đăng nhập có còn form `name="password"` không** (như `probe-old-login.mjs` đã làm).
+- **B46 — CSDL PGlite ở máy dev bị seed lại mỗi lần tạo mới ⇒ mất bản ghi bài viết đã import (file media vẫn còn trên đĩa).** → Sau khi restart server phải **kiểm tra lại dữ liệu**, không giả định nó còn nguyên; nếu mất thì chạy lại script import (script đã hỗ trợ `--replace` để không nhân bản).
 
 ## 10. Nhật ký làm việc
 
