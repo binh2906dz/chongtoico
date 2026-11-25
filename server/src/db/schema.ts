@@ -669,6 +669,16 @@ export const telegramBots = pgTable(
     weight: integer("weight").notNull().default(1),
     sentCount: integer("sent_count").notNull().default(0),
     blockedCount: integer("blocked_count").notNull().default(0),
+    /** How many times a person pressed /start on this bot. */
+    startsCount: integer("starts_count").notNull().default(0),
+    /** How many times a person interacted with this bot (any message). */
+    interactionsCount: integer("interactions_count").notNull().default(0),
+    /** How many replies this bot sent. */
+    repliesCount: integer("replies_count").notNull().default(0),
+    /** When Telegram banned this bot — null while the bot is healthy. */
+    bannedAt: timestamp("banned_at", { withTimezone: true }),
+    /** Why the bot was banned (the Telegram error text). */
+    lastBanReason: text("last_ban_reason"),
     lastCheckedAt: timestamp("last_checked_at", { withTimezone: true }),
     lastError: text("last_error"),
     sortOrder: integer("sort_order").notNull().default(0),
@@ -678,6 +688,29 @@ export const telegramBots = pgTable(
     telegramId: varchar("telegram_id", { length: 32 }),
   },
   (t) => [index("telegram_bots_status_idx").on(t.status)],
+);
+
+/**
+ * Every time a bot runs into a problem — above all a Telegram ban.
+ *
+ * The admin panel reads this list so a ban is never silent: a bot that dies
+ * while nobody is looking would otherwise only show up as "no message sent".
+ */
+export const telegramBotIncidents = pgTable(
+  "telegram_bot_incidents",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    botId: varchar("bot_id", { length: 64 }).notNull(),
+    botUsername: varchar("bot_username", { length: 64 }),
+    /** "ban" | "error" | "rate_limit" */
+    kind: varchar("kind", { length: 24 }).notNull().default("ban"),
+    message: text("message"),
+    detectedAt: timestamp("detected_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("telegram_bot_incidents_bot_idx").on(t.botId),
+    index("telegram_bot_incidents_time_idx").on(t.detectedAt),
+  ],
 );
 
 /**

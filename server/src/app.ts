@@ -46,6 +46,18 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
 
   app.decorateRequest("user", null);
 
+  // A POST without a body is legal ("fire and forget"). Fastify would answer
+  // 415 because the content type is missing, so an empty body is accepted.
+  app.addContentTypeParser("*", { parseAs: "string" }, (_req, body, done) => {
+    const raw = typeof body === "string" ? body.trim() : "";
+    if (!raw) return done(null, undefined);
+    try {
+      done(null, JSON.parse(raw));
+    } catch {
+      done(null, raw);
+    }
+  });
+
   app.addHook("onRequest", async (req) => {
     req.user = null;
     const url = req.url;

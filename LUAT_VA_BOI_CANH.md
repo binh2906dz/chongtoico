@@ -202,6 +202,9 @@ Mỗi dòng: **lỗi / tình huống** → **cách tránh**.
 - **B47 — Album cũ = GOM nhiều bài viết, KHÔNG phải 1 bài viết.** Lần đầu tôi gộp cả album (10 caption + 10 media) thành 1 bài viết ⇒ sai. Chủ dự án nói rõ: "cái bạn copy qua là cả 1 album của 1 ngày, cái đúng phải là [caption của 1 post] sau đó là ảnh hoặc video của bài đó". ⇒ **Mỗi POST của album cũ = 1 bài viết độc lập** trên web mới (tiêu đề = dòng đầu caption, nội dung = caption đầy đủ, media = media của post đó). → Khi port dữ liệu, phải **đọc lại cách web cũ hiển thị** (template `album_view.html`: mỗi `post` có `post-caption` + lưới media riêng) để xác định đơn vị nội dung, đừng suy từ tên "album".
 - **B48 — PGlite KHÔNG cho nhiều câu lệnh SQL trong 1 prepared statement** (`cannot insert multiple commands into a prepared statement`, code 42601). Drizzle migration của file cũ dùng `--> statement-breakpoint` giữa các lệnh — **file SQL mới phải làm y hệt**, nếu không server không khởi động được lúc chạy migration.
 - **B49 — Chạy test server bằng `npm test` (node --import tsx --test), KHÔNG phải `npx vitest run`.** Repo dùng test runner của Node; vitest báo "No test suite found" cho cả 4 file ⇒ dễ tưởng test hỏng. Lệnh đúng: `cd server && npm test` (hiện 55/55 pass).
+- **B50 — `bigserial("id")` SAI trong SQL thủ công.** Đúng là `bigserial PRIMARY KEY NOT NULL` (không có ngoặc) — đặt trong ngoặc thì PostgreSQL hiểu là "type modifier không hợp lệ cho bigint" (code 42611) và migration fail, server không khởi động được. Cũng lưu ý: **file SQL thủ công phải có `--> statement-breakpoint` giữa các lệnh** (B48).
+- **B51 — `POST` không có body bị Fastify trả 415 "Unsupported Media Type".** Fastify mặc định đòi có `content-type`. Đã thêm `addContentTypeParser("*", ...)` trong `server/src/app.ts` để body rỗng = `undefined`; ngoài ra phía giao diện vẫn nên gửi `body: {}` cho các endpoint POST không cần dữ liệu.
+- **B52 — Fastify static CACHE danh sách file lúc khởi động.** Build lại `frontend/dist` mà không khởi động lại server ⇒ server vẫn trả HTML fallback (SPA) cho file JS mới, trang trắng. **Luôn khởi động lại server sau khi build giao diện.**
 
 ## 10. Nhật ký làm việc
 
@@ -575,5 +578,26 @@ Mẫu mỗi mục:
 - **Script import**: `extractLinks()` tách link khỏi caption — `anonlink.io` → watchLink, `t.me/` → vipLink, xoá đoạn "Link 1 … ANH EM CHỌN … Kênh VIP không cần vượt 👉 …". Cờ `--keep-links` để giữ nguyên (khi triển khai thực tế sẽ nhập tay trong form).
 - **Đã kiểm tra**: album `album_2ed16cc1` → 5 bài (id 133–137) mỗi bài có đủ 2 nút; API công khai trả đúng link; bài "chỉ thành viên" không lộ link; link `javascript:alert(1)` bị 400; `npm test` 55/55 pass; build server + frontend OK; xem trên trình duyệt — 2 nút hiện đúng vị trí, form đăng bài có đủ 2 ô, trang Media hiện giá trị đã lưu.
 - **File**: `server/drizzle/0007_article_links.sql`, `server/src/db/schema.ts`, `server/src/routes/articles.ts`, `server/test/api.test.ts`, `frontend/src/components/ArticleLinkButtons.tsx`, `frontend/src/pages/ArticlePage.tsx`, `frontend/src/pages/admin/AdminArticles.tsx`, `frontend/src/types.ts`, `server/scripts/import-from-old-web.mjs`, `LUAT_VA_BOI_CANH.md`, `huongdan.txt`.
+
+## 2026-11-25 — Chuyển dữ liệu bot từ hệ thống cũ + kiểm tra bot bị ban
+
+- **Yêu cầu**: (1) tự động nhập token bot từ hệ thống cũ, kèm hệ thống check bot còn sống hay đã bị ban + báo cáo khi có bot mới bị ban; (2) chủ dự án không rõ về bộ đếm `bot_analytics` ⇒ giữ đủ 4 số liệu; (3) lịch sử gửi **bắt đầu mới** (không chuyển).
+- **Quyết định của chủ dự án**: báo cáo ban hiện trên **trang Quản trị > Telegram**; kiểm tra bot **mỗi ngày 1 lần**; bot bị ban → **tự động ngừng dùng** (đã có sẵn ở bot service) + ghi nhận báo cáo.
+- **CSDL** (migration `0008_bot_health.sql`):
+  - Bảng mới `telegram_bot_incidents` (id, bot_id, bot_username, kind, message, detected_at) — lịch sử ban/lỗi.
+  - `telegram_bots` thêm: `starts_count`, `interactions_count`, `replies_count` (tương đương `bot_analytics` cũ), `banned_at`, `last_ban_reason`.
+- **Server**:
+  - Module mới `server/src/botHealth.ts` — `checkAllBots()` gọi `getMe` cho từng bot, bot sống → `live`; 401 → `ban` + ghi `telegram_bot_incidents` (chỉ ghi khi là ban MỚI); bot hồi sinh → xoá incident cũ + `banned_at = null`. `startBotHealthCheck()` chạy **mỗi 24h** (lần đầu sau 60s), đăng ký trong `src/index.ts`.
+  - `POST /api/admin/telegram/bots/health-check` — admin bấm kiểm tra ngay trên web.
+  - `GET /api/admin/telegram/bots/incidents` — danh sách sự cố.
+  - `POST /api/admin/telegram/bots/import` — nhập hàng loạt bot + id + người đã /start (xem dưới).
+- **Giao diện** (`AdminTelegramTools.tsx`): khối "⚠️ Báo cáo bot bị ban" (đỏ) ở đầu tab Bot; nút "🔍 Kiểm tra bot"; cột mới "Lượt /start" + "Tương tác"; dòng "Bị ban {thời điểm}" dưới badge trạng thái; khi chưa có bot nào bị ban hiện dòng xanh "✅ Chưa có bot nào bị ban…".
+- **Script chuyển dữ liệu**: `server/scripts/import-bot-data.mjs` — đăng nhập web cũ (Flask + CSRF) → đọc `/bots/health`, `/bots/<id>/token`, `/bots/<id>/subscribers` (có phân trang), `/ids`, `/reply_menu` → gọi endpoint import của web mới. Cờ `--dry-run` (chỉ đọc) và `--no-sync` (không báo dịch vụ bot mở kết nối).
+  - **Token luôn đi qua đường mã hoá**: web mới kiểm tra `getMe` rồi `encryptToken()` (AES-256-GCM) — token thô không bao giờ nằm trong CSDL dạng plaintext.
+  - **Quy tắc gộp trạng thái người dùng** (bot cũ có 3 bảng chồng nhau `subscribers` / `age_verifications` / `banned_users`; bảng mới gộp vào `telegram_users`): `banned_users` → `status = "blocked"` (ưu tiên cao nhất) → `telegram_ids.status` → `active`/`blocked`/`invalid`/`unknown`; `age_verifications` → `age_verified_at`; `subscribers` → `notify_enabled = true`.
+  - `user_bot_links` (người đã /start bot nào) → `telegram_user_links` — bảng gần như giống hệt.
+- **Đã kiểm tra**: `npm test` server 59/59, bot 45/45; `tsc` server OK; `vite build` OK; xem trình duyệt — nút "🔍 Kiểm tra bot" chạy được, báo cáo ban hiện đúng; API health-check trả `checked=0` khi chưa có bot.
+- **CHƯA chạy**: script chưa chạy thật với web cũ (cần URL + tài khoản owner + mạng tới VPS); lịch sử gửi cũ (`delivery_log` / `broadcast_logs`) **không chuyển** theo quyết định "bắt đầu mới"; `album_tokens` (token truy cập album tạm) không chuyển (tự hết hạn).
+- **File**: `server/drizzle/0008_bot_health.sql`, `server/src/db/schema.ts`, `server/src/botHealth.ts`, `server/src/routes/telegramAdmin.ts`, `server/src/routes/telegram.ts`, `server/src/app.ts`, `server/src/index.ts`, `server/scripts/import-bot-data.mjs`, `server/test/telegramAdmin.test.ts`, `frontend/src/pages/admin/AdminTelegramTools.tsx`, `frontend/src/types.ts`, `LUAT_VA_BOI_CANH.md`, `huongdan.txt`.
 
 

@@ -218,4 +218,58 @@ describe("Telegram management panel", () => {
     assert.equal(res.statusCode, 400, res.body);
     assert.ok(res.json().error.includes("ALLOW_RESTORE"));
   });
+
+  it("imports the bots of the old system with their counters and their people", async () => {
+    // The Telegram API cannot be reached from the test, so every token is
+    // refused. The import must report that instead of storing a dead token.
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/admin/telegram/bots/import",
+      headers: { ...H, cookie: admin },
+      payload: {
+        bots: [{ oldId: "old-bot-1", name: "Bot cũ", token: "123456789:AAoldtokenvalue123456" }],
+        ids: [{ telegramId: 111111, status: "active", ageVerified: true, captchaOk: true, bots: [] }],
+        startedBy: { "old-bot-1": [111111] },
+      },
+    });
+    assert.equal(res.statusCode, 200, res.body);
+    const body = res.json();
+    // The token cannot be verified, so the bot is reported as failed.
+    assert.equal(body.failed.length, 1);
+    assert.equal(body.failed[0].oldId, "old-bot-1");
+    // The id list is still imported — it does not need a valid token.
+    assert.equal(body.idsImported, 1);
+  });
+
+  it("keeps the import endpoints behind the admin role", async () => {
+    const res = await app.inject({ method: "POST", url: "/api/admin/telegram/bots/import", headers: H, payload: { bots: [] } });
+    assert.equal(res.statusCode, 401);
+  });
+
+  it("records a ban in the incident list", async () => {
+    const { db } = await import("../src/db/index.js");
+    const { telegramBots, telegramBotIncidents } = await import("../src/db/schema.js");
+    await db
+      .insert(telegramBots)
+      .values({ id: "bot-banned", displayName: "Bot bị ban", status: "ban", bannedAt: new Date() })
+      .onConflictDoNothing();
+    await db.insert(telegramBotIncidents).values({ botId: "bot-banned", botUsername: "banned_bot", kind: "ban", message: "Bot bị Telegram cấm (401)." });
+
+    const res = await app.inject({ method: "GET", url: "/api/admin/telegram/bots/incidents", headers: { ...H, cookie: admin } });
+    assert.equal(res.statusCode, 200, res.body);
+    const incidents = res.json().incidents;
+    const found = incidents.find((i: { botId: string }) => i.botId === "bot-banned");
+    assert.ok(found, "The ban must be visible in the report.");
+    assert.equal(found.kind, "ban");
+    assert.ok(found.detectedAt);
+  });
+
+  it("shows the ban time of a bot in the bot list", async () => {
+    const res = await app.inject({ method: "GET", url: "/api/admin/telegram/bots/list", headers: { ...H, cookie: admin } });
+    assert.equal(res.statusCode, 200, res.body);
+    const bot = res.json().bots.find((b: { id: string }) => b.id === "bot-banned");
+    assert.ok(bot);
+    assert.equal(bot.status, "ban");
+    assert.ok(bot.bannedAt, "The time of the ban must be reported.");
+  });
 });

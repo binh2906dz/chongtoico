@@ -4,6 +4,7 @@ import { ErrorBox, Spinner } from "../../components/ui";
 import { formatNumber } from "../../format";
 import { useFetch } from "../../useFetch";
 import type {
+  TelegramBotIncident,
   TelegramBotStat,
   TelegramKeyboard,
   TelegramKeyboardCell,
@@ -51,6 +52,7 @@ export function AdminTelegramBotsManage() {
     "/api/admin/telegram/bots/list",
   );
   const stats = useFetch<{ bots: TelegramBotStat[] }>("/api/admin/telegram/bots/stats");
+  const incidents = useFetch<{ incidents: TelegramBotIncident[] }>("/api/admin/telegram/bots/incidents");
   const [notice, setNotice] = useState<{ tone: "ok" | "err"; message: string } | null>(null);
   const [showAdd, setShowAdd] = useState(false);
   const [name, setName] = useState("");
@@ -106,6 +108,34 @@ export function AdminTelegramBotsManage() {
     }
   }
 
+  /** Ask Telegram about every bot — a ban must never stay unnoticed. */
+  async function runHealthCheck() {
+    setBusy(true);
+    setNotice(null);
+    try {
+      const res = await api<{ checked: number; report: { id: string; name: string; status: string; reason?: string }[] }>(
+        "/api/admin/telegram/bots/health-check",
+        { method: "POST", body: {} },
+      );
+      const banned = res.report.filter((r) => r.status === "ban");
+      const broken = res.report.filter((r) => r.status === "error");
+      setNotice({
+        tone: banned.length ? "err" : "ok",
+        message: banned.length
+          ? `${banned.length} bot bị ban: ${banned.map((b) => b.name).join(", ")}. Bot đã bị ngừng dùng.`
+          : broken.length
+            ? `Đã kiểm tra ${res.checked} bot. ${broken.length} bot lỗi: ${broken.map((b) => b.name).join(", ")}.`
+            : `Đã kiểm tra ${res.checked} bot — tất cả còn sống.`,
+      });
+      reload();
+      incidents.reload();
+    } catch (e) {
+      setNotice({ tone: "err", message: errorMessage(e) });
+    } finally {
+      setBusy(false);
+    }
+  }
+
   if (error) return <ErrorBox message={error} />;
   if (!data) return <Spinner />;
 
@@ -129,15 +159,45 @@ export function AdminTelegramBotsManage() {
 
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-bold">Danh sách bot</h2>
-        <button
-          type="button"
-          className="btn btn-accent"
-          disabled={!data.storageEnabled}
-          onClick={() => setShowAdd((v) => !v)}
-        >
-          {showAdd ? "Đóng" : "+ Thêm bot"}
-        </button>
+        <div className="flex gap-2">
+          <button type="button" className="btn btn-ghost" disabled={busy} onClick={runHealthCheck}>
+            {busy ? "Đang kiểm tra…" : "🔍 Kiểm tra bot"}
+          </button>
+          <button
+            type="button"
+            className="btn btn-accent"
+            disabled={!data.storageEnabled}
+            onClick={() => setShowAdd((v) => !v)}
+          >
+            {showAdd ? "Đóng" : "+ Thêm bot"}
+          </button>
+        </div>
       </div>
+
+      {/* Báo cáo bot bị ban — hệ thống tự kiểm tra mỗi ngày. */}
+      {incidents.data?.incidents.length ? (
+        <div className="panel overflow-hidden">
+          <div className="border-b border-line bg-rose-500/10 px-4 py-2 text-sm font-semibold text-rose-200">
+            ⚠️ Báo cáo bot bị ban ({incidents.data.incidents.length})
+          </div>
+          <ul className="divide-y divide-line">
+            {incidents.data.incidents.slice(0, 20).map((inc) => (
+              <li key={inc.id} className="px-4 py-2 text-sm">
+                <div className="font-medium text-rose-200">
+                  {inc.botUsername ? `@${inc.botUsername}` : inc.botId}
+                </div>
+                <div className="text-xs text-muted">
+                  {inc.message ?? "Bot bị Telegram cấm."} · {new Date(inc.detectedAt).toLocaleString("vi-VN")}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : (
+        <div className="panel p-3 text-xs text-muted">
+          ✅ Chưa có bot nào bị ban. Hệ thống tự kiểm tra mỗi ngày — nếu có bot mới bị ban, báo cáo sẽ hiện ở đây.
+        </div>
+      )}
 
       {showAdd && (
         <div className="panel space-y-3 p-4">
@@ -196,6 +256,8 @@ export function AdminTelegramBotsManage() {
                 <th className="p-3">Token</th>
                 <th className="p-3">Trọng số</th>
                 <th className="p-3">Đã gửi</th>
+                <th className="p-3">Lượt /start</th>
+                <th className="p-3">Tương tác</th>
                 <th className="p-3">Tỉ lệ thành công</th>
                 <th className="p-3">Người theo dõi</th>
                 <th className="p-3" />
@@ -226,6 +288,9 @@ export function AdminTelegramBotsManage() {
                       >
                         {bot.status === "live" ? "Hoạt động" : bot.status === "ban" ? "Bị ban" : bot.status === "error" ? "Lỗi" : "Chưa kiểm tra"}
                       </span>
+                      {bot.bannedAt && (
+                        <div className="mt-1 text-xs text-rose-300">Bị ban {new Date(bot.bannedAt).toLocaleString("vi-VN")}</div>
+                      )}
                     </td>
                     <td className="p-3 font-mono text-xs">{bot.hasToken ? (bot.tokenHint ?? "••••") : "Chưa có"}</td>
                     <td className="p-3">
@@ -242,6 +307,8 @@ export function AdminTelegramBotsManage() {
                       />
                     </td>
                     <td className="p-3">{formatNumber(bot.sentCount)}</td>
+                    <td className="p-3">{formatNumber(bot.startsCount)}</td>
+                    <td className="p-3">{formatNumber(bot.interactionsCount)}</td>
                     <td className="p-3">{stat?.successRate != null ? `${stat.successRate}%` : "—"}</td>
                     <td className="p-3">{stat ? formatNumber(stat.links) : "—"}</td>
                     <td className="p-3 text-right">

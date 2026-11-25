@@ -256,10 +256,29 @@ export interface TelegramManagedBot {
   weight: number;
   sentCount: number;
   blockedCount: number;
+  /** How many people pressed /start on this bot. */
+  startsCount: number;
+  /** How many messages the people sent to this bot. */
+  interactionsCount: number;
+  /** How many replies this bot sent. */
+  repliesCount: number;
+  /** When Telegram banned this bot — null while the bot is healthy. */
+  bannedAt: string | null;
+  lastBanReason: string | null;
   lastCheckedAt: string | null;
   lastError: string | null;
   hasToken: boolean;
   tokenHint: string | null;
+}
+
+/** One entry of the ban report. */
+export interface TelegramBotIncident {
+  id: number;
+  botId: string;
+  botUsername: string | null;
+  kind: "ban" | "error" | "rate_limit";
+  message: string | null;
+  detectedAt: string;
 }
 
 /** The reply keyboard shown under the chat box of the Telegram user. */

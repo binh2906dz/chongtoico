@@ -57,6 +57,13 @@
       "when": 1795615000000,
       "tag": "0007_article_links",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1795617000000,
+      "tag": "0008_bot_health",
+      "breakpoints": true
     }
   ]
 }

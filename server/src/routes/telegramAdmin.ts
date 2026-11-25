@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { count, desc, eq, sql } from "drizzle-orm";
+import { and, count, desc, eq, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { requireAdmin } from "../auth.js";
@@ -7,6 +7,7 @@ import { db } from "../db/index.js";
 import { isValidBotSecret } from "../telegram.js";
 import {
   deliveryLog,
+  telegramBotIncidents,
   telegramBots,
   telegramCampaigns,
   telegramSettings,
@@ -133,6 +134,45 @@ const importIdsBody = z.object({
   filename: z.string().trim().max(200).optional(),
 });
 
+/** One bot of the migration payload. */
+const importBotBody = z.object({
+  /** The id the old system used — kept so the links of the past stay readable. */
+  oldId: z.string().trim().min(1).max(64),
+  name: z.string().trim().max(80).optional(),
+  username: z.string().trim().max(64).optional(),
+  token: z.string().trim().min(20, "Token quá ngắn.").max(200),
+  /** "live" | "ban" | "error" | "unknown" */
+  status: z.enum(["live", "ban", "error", "unknown"]).default("unknown"),
+  autoResponder: z.boolean().default(true),
+  weight: z.number().int().min(0).max(100).default(1),
+  startsCount: z.number().int().min(0).default(0),
+  messagesSent: z.number().int().min(0).default(0),
+  interactionsCount: z.number().int().min(0).default(0),
+  repliesCount: z.number().int().min(0).default(0),
+});
+
+const importBotsBody = z.object({
+  bots: z.array(importBotBody).max(200),
+  /** Telegram ids that pressed /start on a given bot. */
+  startedBy: z.record(z.string(), z.array(z.coerce.number().int().positive())).optional(),
+  /** The imported id list with its status. */
+  ids: z
+    .array(
+      z.object({
+        telegramId: z.coerce.number().int().positive(),
+        status: z.enum(["unknown", "active", "blocked", "invalid"]).default("unknown"),
+        username: z.string().trim().max(64).optional(),
+        firstName: z.string().trim().max(80).optional(),
+        ageVerified: z.boolean().default(false),
+        captchaOk: z.boolean().default(false),
+        /** The bots this person pressed /start on. */
+        bots: z.array(z.string().trim().max(64)).max(50).default([]),
+      }),
+    )
+    .max(500_000)
+    .optional(),
+});
+
 /* ------------------------------------------------------------------ *
  * Routes
  * ------------------------------------------------------------------ */
@@ -163,6 +203,11 @@ export default async function telegramAdminRoutes(app: FastifyInstance) {
         weight: bot.weight,
         sentCount: bot.sentCount,
         blockedCount: bot.blockedCount,
+        startsCount: bot.startsCount,
+        interactionsCount: bot.interactionsCount,
+        repliesCount: bot.repliesCount,
+        bannedAt: bot.bannedAt,
+        lastBanReason: bot.lastBanReason,
         lastCheckedAt: bot.lastCheckedAt,
         lastError: bot.lastError,
         hasToken: Boolean(bot.tokenEncrypted),
@@ -224,6 +269,214 @@ export default async function telegramAdminRoutes(app: FastifyInstance) {
     await db.delete(telegramBots).where(eq(telegramBots.id, id));
     await notifyBotService("remove", id);
     return { ok: true };
+  });
+
+  /**
+   * Import the bots of the old system in one go.
+   *
+   * The tokens arrive in clear text and are encrypted right away, exactly like
+   * a bot added by hand. Every bot is checked against Telegram first, so a
+   * dead token is reported instead of being stored silently.
+   */
+  app.post("/api/admin/telegram/bots/import", async (req) => {
+    requireAdmin(req);
+    if (!tokenStorageEnabled()) {
+      throw badRequest("Máy chủ chưa cấu hình TOKEN_ENCRYPTION_KEY nên chưa thể nhập bot.");
+    }
+    const body = parse(importBotsBody, req.body);
+    const now = new Date();
+    const result: {
+      imported: string[];
+      failed: { oldId: string; reason: string }[];
+      skipped: string[];
+      synced: number;
+    } = { imported: [], failed: [], skipped: [], synced: 0 };
+
+    for (const entry of body.bots) {
+      // The same Telegram bot must not be registered twice.
+      const check = await verifyToken(entry.token);
+      if (!check.ok) {
+        result.failed.push({ oldId: entry.oldId, reason: check.error ?? "Token không hợp lệ." });
+        continue;
+      }
+      const existing = await db.select().from(telegramBots).where(eq(telegramBots.telegramId, check.telegramId!)).limit(1);
+      if (existing.length) {
+        result.skipped.push(entry.oldId);
+        continue;
+      }
+
+      // Keep the old id when it is free, so old links and analytics still match.
+      let id = entry.oldId.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 64) || randomUUID().replace(/-/g, "").slice(0, 16);
+      const [sameId] = await db.select({ id: telegramBots.id }).from(telegramBots).where(eq(telegramBots.id, id)).limit(1);
+      if (sameId) id = `${id}_${randomUUID().replace(/-/g, "").slice(0, 6)}`;
+
+      await db.insert(telegramBots).values({
+        id,
+        username: check.username ?? entry.username ?? null,
+        displayName: entry.name || check.displayName || entry.username || id,
+        telegramId: check.telegramId ?? null,
+        // A bot the old system already reported as banned stays banned.
+        status: entry.status === "ban" ? "ban" : "live",
+        autoResponder: entry.autoResponder,
+        weight: entry.weight,
+        sentCount: entry.messagesSent,
+        startsCount: entry.startsCount,
+        interactionsCount: entry.interactionsCount,
+        repliesCount: entry.repliesCount,
+        bannedAt: entry.status === "ban" ? now : null,
+        lastBanReason: entry.status === "ban" ? "Bị ban ở hệ thống cũ." : null,
+        tokenEncrypted: encryptToken(entry.token),
+        lastCheckedAt: now,
+        lastError: entry.status === "ban" ? "Bot bị Telegram cấm (401)." : null,
+      });
+
+      if (entry.status === "ban") {
+        await db.insert(telegramBotIncidents).values({
+          botId: id,
+          botUsername: check.username ?? entry.username ?? null,
+          kind: "ban",
+          message: "Bot đã bị Telegram ban trước khi chuyển sang hệ thống mới.",
+          detectedAt: now,
+        });
+      }
+
+      // Hand the token over to the bot service so it can open the connection.
+      if (await notifyBotService("add", id, entry.token)) result.synced++;
+      result.imported.push(id);
+    }
+
+    /* ---- the id list and the people who pressed /start ---- */
+    let idsImported = 0;
+    const chunkSize = 1000;
+    if (body.ids?.length) {
+      for (let i = 0; i < body.ids.length; i += chunkSize) {
+        const chunk = body.ids.slice(i, i + chunkSize);
+        await db
+          .insert(telegramUsers)
+          .values(
+            chunk.map((row) => ({
+              telegramId: row.telegramId,
+              username: row.username ?? null,
+              firstName: row.firstName ?? null,
+              ageVerifiedAt: row.ageVerified ? now : null,
+              captchaOk: row.captchaOk,
+              status: row.status,
+              notifyEnabled: true,
+              createdAt: now,
+              updatedAt: now,
+            })),
+          )
+          .onConflictDoNothing();
+        idsImported += chunk.length;
+      }
+    }
+
+    let linksImported = 0;
+    if (body.startedBy && Object.keys(body.startedBy).length) {
+      // Only the bots that really exist can be linked.
+      const known = await db.select({ id: telegramBots.id }).from(telegramBots);
+      const knownIds = new Set(known.map((b) => b.id));
+      for (const [botId, telegramIds] of Object.entries(body.startedBy)) {
+        if (!knownIds.has(botId)) continue;
+        for (let i = 0; i < telegramIds.length; i += chunkSize) {
+          const chunk = telegramIds.slice(i, i + chunkSize).map((tid) => ({
+            telegramId: tid,
+            botId,
+            startedAt: now,
+          }));
+          const inserted = await db.insert(telegramUserLinks).values(chunk).onConflictDoNothing().returning({ telegramId: telegramUserLinks.telegramId });
+          linksImported += inserted.length;
+        }
+      }
+    }
+
+    return { ...result, idsImported, linksImported };
+  });
+
+  /**
+   * Check every bot against Telegram and report the ones that died.
+   *
+   * The admin runs this from the panel; a ban is written to the incident log
+   * so it never stays unnoticed.
+   */
+  app.post("/api/admin/telegram/bots/health-check", async (req) => {
+    requireAdmin(req);
+    const rows = await db.select().from(telegramBots);
+    const now = new Date();
+    const report: { id: string; name: string; status: string; reason?: string }[] = [];
+
+    for (const bot of rows) {
+      if (!bot.tokenEncrypted) {
+        report.push({ id: bot.id, name: bot.displayName ?? bot.id, status: bot.status, reason: "Chưa có token trong hệ thống mới." });
+        continue;
+      }
+      const token = decryptToken(bot.tokenEncrypted);
+      if (!token) {
+        report.push({ id: bot.id, name: bot.displayName ?? bot.id, status: bot.status, reason: "Không giải mã được token." });
+        continue;
+      }
+      const check = await verifyToken(token);
+      const previous = bot.status;
+      if (check.ok) {
+        await db
+          .update(telegramBots)
+          .set({
+            status: "live",
+            lastCheckedAt: now,
+            lastError: null,
+            username: check.username ?? bot.username,
+            telegramId: check.telegramId ?? bot.telegramId,
+            bannedAt: null,
+            lastBanReason: null,
+          })
+          .where(eq(telegramBots.id, bot.id));
+        // A bot that comes back to life must not be reported as banned again.
+        if (previous === "ban") {
+          await db.delete(telegramBotIncidents).where(and(eq(telegramBotIncidents.botId, bot.id), eq(telegramBotIncidents.kind, "ban")));
+        }
+        report.push({ id: bot.id, name: bot.displayName ?? bot.id, status: "live" });
+        continue;
+      }
+
+      const banned = /401|cấm|thu hồi/i.test(check.error ?? "");
+      await db
+        .update(telegramBots)
+        .set({
+          status: banned ? "ban" : "error",
+          lastCheckedAt: now,
+          lastError: check.error ?? "Không kiểm tra được bot.",
+          bannedAt: banned ? now : bot.bannedAt,
+          lastBanReason: banned ? check.error : bot.lastBanReason,
+        })
+        .where(eq(telegramBots.id, bot.id));
+
+      // Only a NEW ban is worth an entry in the report.
+      if (banned && previous !== "ban") {
+        await db.insert(telegramBotIncidents).values({
+          botId: bot.id,
+          botUsername: bot.username,
+          kind: "ban",
+          message: check.error ?? "Bot bị Telegram cấm (401).",
+          detectedAt: now,
+        });
+      }
+      report.push({ id: bot.id, name: bot.displayName ?? bot.id, status: banned ? "ban" : "error", reason: check.error });
+    }
+
+    return { checked: rows.length, report };
+  });
+
+  /** The list of incidents — a ban must never stay unnoticed. */
+  app.get("/api/admin/telegram/bots/incidents", async (req) => {
+    requireAdmin(req);
+    const query = (req.query ?? {}) as Record<string, unknown>;
+    const limit = z.coerce.number().int().min(1).max(200).default(50).parse(query.limit ?? 50);
+    const rows = await db
+      .select()
+      .from(telegramBotIncidents)
+      .orderBy(desc(telegramBotIncidents.detectedAt))
+      .limit(limit);
+    return { incidents: rows };
   });
 
   /* ---------------- settings ---------------- */

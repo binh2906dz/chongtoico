@@ -237,8 +237,22 @@ tab "Telegram" trong admin/Admin.tsx — URL /quan-tri, chỉ admin):
                    Tạm dừng lịch / Kích hoạt lịch / Huỷ.
   3. Người Telegram — lọc theo trạng thái, Chặn / Mở lại, Bật / Tắt thông báo.
   4. Bot         — trạng thái live/ban/error, đổi trọng số, bật/tắt auto-responder,
-                   nút "Kiểm tra" (gọi POST /internal/check-bot của service bot).
+                   nút "🔍 Kiểm tra bot" (gọi getMe cho MỌI bot), khối ĐỎ "⚠️ Báo
+                   cáo bot bị ban" (lịch sử telegram_bot_incidents), cột Lượt /start
+                   + Tương tác + dòng "Bị ban {thời điểm}".
   5. Nhập ID     — nhập hàng loạt id (txt/csv) + bảng Telegram đã biết + Copy id.
+
+KIỂM TRA BOT BỊ BAN (2026-11-25):
+  - Server tự kiểm tra MỌI bot mỗi 24 giờ (server/src/botHealth.ts, chạy lần
+    đầu sau 60s). Gọi getMe: sống -> status = live; 401 -> status = ban, ghi
+    telegram_bot_incidents (chỉ ghi khi là ban MỚI), đặt banned_at +
+    last_ban_reason; bot hồi sinh -> xoá incident cũ + banned_at = null.
+  - Bot bị ban đã bị dịch vụ bot ngừng dùng từ trước (registry.markBanned).
+  - Admin bấm "🔍 Kiểm tra bot" để kiểm tra ngay (POST
+    /api/admin/telegram/bots/health-check). Danh sách sự cố: GET
+    /api/admin/telegram/bots/incidents.
+  - Bộ đếm giống bot_analytics cũ: telegram_bots.starts_count /
+    interactions_count / replies_count / sent_count.
 
 Giao diện người dùng: /tg/entry (Mini App), /tg/lien-ket (mã 1 lần + deep link),
 /tg/stop (từ chối nhận). Menu tài khoản hiện trạng thái đã liên kết Telegram.
@@ -721,6 +735,44 @@ b22c5f7 feat: scaffold new platform (đã thay thế — xoá ở bản Node.js)
     diện OK; xem trên trình duyệt — 2 nút đúng vị trí, form đăng bài có đủ 2 ô.
   - CHƯA làm: đồng bộ link khi admin sửa nội dung bài (hiện sửa tay ở ô riêng);
     tự động tách link khi gõ nội dung trong trình soạn thảo.
+
+[2026-11-25] CHUYỂN DỮ LIỆU BOT TỪ HỆ THỐNG CŨ + KIỂM TRA BOT BỊ BAN.
+  - Yêu cầu: (1) tự động nhập token bot + hệ thống check bot sống/ban và báo
+    cáo khi có bot MỚI bị ban; (2) giữ đủ 4 bộ đếm bot_analytics; (3) lịch sử
+    gửi BẮT ĐẦU MỚI (không chuyển).
+  - Quyết định của chủ dự án: báo cáo ban hiện trên trang Quản trị > Telegram;
+    kiểm tra bot MỖI NGÀY 1 lần; bot bị ban -> tự động ngừng dùng + ghi báo cáo.
+  - CSDL (migration 0008_bot_health.sql): bảng MỚI telegram_bot_incidents
+    (id, bot_id, bot_username, kind, message, detected_at) + telegram_bots thêm
+    starts_count / interactions_count / replies_count / banned_at /
+    last_ban_reason. LƯU ý: "bigserial" trong SQL thủ công KHÔNG được có ngoặc
+    (B50) và phải có "--> statement-breakpoint" (B48).
+  - Server: module MỚI server/src/botHealth.ts (checkAllBots + timer 24h,
+    startBotHealthCheck trong src/index.ts); endpoint MỚI
+    POST /api/admin/telegram/bots/health-check, GET
+    /api/admin/telegram/bots/incidents, POST /api/admin/telegram/bots/import.
+    server/src/app.ts thêm addContentTypeParser("*") để POST không body không bị
+    415 (B51).
+  - Giao diện: AdminTelegramTools.tsx — khối ĐỎ "⚠️ Báo cáo bot bị ban", nút
+    "🔍 Kiểm tra bot", cột Lượt /start + Tương tác, dòng "Bị ban {thời điểm}".
+  - Script chuyển dữ liệu: server/scripts/import-bot-data.mjs
+      OLD_BASE=... OLD_USER=... OLD_PASS=... \
+      NEW_BASE=http://127.0.0.1:8090 NEW_USER=admin NEW_PASS=... \
+      node server/scripts/import-bot-data.mjs [--dry-run] [--no-sync]
+    Đọc web cũ (Flask + CSRF): /bots/health, /bots/<id>/token,
+    /bots/<id>/subscribers, /ids, /reply_menu → gọi endpoint import web mới.
+    Token LUÔN được kiểm tra getMe rồi mã hoá AES-256-GCM — không bao giờ lưu
+    thô trong CSDL. Quy tắc gộp trạng thái: banned_users -> status=blocked (ưu
+    tiên cao) > telegram_ids.status > age_verifications -> age_verified_at >
+    subscribers -> notify_enabled=true. user_bot_links -> telegram_user_links.
+  - Đã kiểm tra: npm test server 59/59, bot 45/45; tsc + vite build OK; xem
+    trình duyệt: nút "🔍 Kiểm tra bot" chạy được, khối báo cáo hiện đúng.
+  - CHƯA chạy: script chưa chạy thật (cần URL + tài khoản OWNER của web cũ +
+    mạng tới VPS); lịch sử gửi cũ không chuyển (theo quyết định); album_tokens
+    (token truy cập album tạm) không chuyển — tự hết hạn.
+  - Bài học: B50 (bigserial), B51 (POST không body -> 415), B52 (Fastify static
+    CACHE danh sách file lúc khởi động => build giao diện xong PHẢI khởi động
+    lại server, nếu không server trả HTML fallback và trang trắng).
 
 ================================================================================
 Hết — lưu ý: không lưu mật khẩu / token thật trong file này.
