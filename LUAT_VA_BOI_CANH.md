@@ -656,4 +656,25 @@ Mẫu mỗi mục:
 - **CHƯA chạy**: trên VPS với PostgreSQL thật; chưa deploy.
 - **File**: `server/drizzle/0010_drop_article_tags.sql`, `server/drizzle/meta/_journal.json`, `server/src/db/schema.ts`, `server/src/routes/articles.ts`, `server/src/routes/members.ts`, `server/src/routes/admin.ts`, `server/scripts/smoke.mjs`, `server/scripts/smoke-admin.mjs`, `server/scripts/import-from-old-web.mjs`, `server/scripts/import-all-from-old-web.mjs`, `server/test/api.test.ts`, `frontend/src/pages/Articles.tsx`, `frontend/src/pages/Home.tsx`, `frontend/src/pages/ArticlePage.tsx`, `frontend/src/pages/admin/AdminArticles.tsx`, `frontend/src/types.ts`, `frontend/src/App.tsx`, `LUAT_VA_BOI_CANH.md`, `huongdan.txt`.
 
+## 2026-11-26 — Xóa 9 bài viết test (seed demo), giữ nguyên bài từ hệ thống cũ
+
+- **Yêu cầu**: xóa các bài viết test như "Chú mèo thông minh tự mở cửa tủ lạnh", chỉ giữ bài lấy từ hệ thống cũ.
+- **Cách phân biệt bài test vs bài thật** (không đoán mò):
+  - Bài seed demo là **id 1–9** — mô tả ghi rõ: *"Mẫu thử nghiệm — không phải nội dung thật của website"*, *"Nội dung mẫu, không có thật. Dùng để kiểm tra bố cục"*. Cả 9 đều không có `watch_link`/`vip_link`.
+  - Bài thật từ hệ thống cũ là **id 166–1710** (1.545 bài) — đều có mô tả + link `anonlink.io` + `t.me`.
+  - Id 10–165 và 167: **đã bị xóa** từ lần import lại trước đó → không còn trong DB.
+  - **#1475** ("Bài viết", 1 video 7 giây, file riêng, tạo lúc 16:56 giữa lô import 16:40–16:58) là bài **thật** bị mất tiêu đề/mô tả/link khi import ⇒ **GIỮ**, không xóa.
+  - Bài có chữ "mẫu" trong tiêu đề (#255, #424, #484, #655, #800, #846, #911, #917, #1657) là nội dung thật (người mẫu ảnh là nghề của tác giả) ⇒ **GIỮ**.
+  - Sau khi xóa: `truoc_import = 0` — **không còn bài nào tạo trước lúc import**, tức mọi bài còn lại đều từ hệ thống cũ.
+- **Đã xóa** (DB): 9 bài id 1–9. `ON DELETE CASCADE` tự dọn `article_images`, `article_videos`, `article_comments`, `article_comment_votes`, `article_votes`, `article_saves`, `article_view_days`, `article_history` ⇒ 19 ảnh + 3 video + 3 bình luận + 3 lượt thích + 3 lượt lưu biến mất.
+- **Đã xóa** (file vật lý): 79 file media của 9 bài test (mỗi ảnh sinh 4 file: gốc + `_t` + `_s` + `_m`).
+- **Phát hiện thêm — file rác lâu dài**: quét toàn thư mục `data/uploads` cho thấy **337 file (35,9 MB)** không được bất kỳ bản ghi nào tham chiếu (ảnh bài đã xóa lần trước, thumb sinh rồi bài bị xóa, 20 file video 76 byte rỗng). Đã xóa hết, quét lại: **0 file rác**.
+  - Bài học: lần đo đầu tiên báo "4.672 file rác (132 MB)" là **SAI** — vì key file resize (`_m`/`_s`/`_t`) khác key gốc nên không khớp với `article_images.file_key`. Phải bỏ hậu tố `_t|_s|_m` trước khi so khớp.
+  - Đã kiểm tra rủi ro xóa nhầm = 0 (không key rác nào trùng key đang dùng).
+- **Script giữ lại**: `server/scripts/purge-orphan-media.mjs` — dọn file rác media, chạy được với `--dry` để xem trước.
+- **Kết quả**: **1.553 → 1.544 bài** (1.537 nút "Xem ngay", 1.542 nút "Kênh VIP", 1.043 ảnh, 580 video, 1 bài không media = #1475).
+- **Đã kiểm tra**: API `GET /api/articles` trả `total = 1544`; quét **cả 65 trang** không còn bài test nào; `/api/articles/1` và `/api/articles/9` → **404**; `/api/articles/166` → 200; media cũ (`/media/a/2443848ec...webp`, `/media/v/5314cb1e...mp4`) → 404; xem trình duyệt — trang `/bai-viet` hiện "1.544 bài viết", đầu danh sách là bài thật từ hệ thống cũ.
+- **CHƯA chạy**: trên VPS với PostgreSQL thật; chưa deploy.
+- **File**: `server/scripts/purge-orphan-media.mjs`, `LUAT_VA_BOI_CANH.md`, `huongdan.txt`.
+
 

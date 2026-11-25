@@ -874,6 +874,25 @@ b22c5f7 feat: scaffold new platform (đã thay thế — xoá ở bản Node.js)
   - Bài liên quan ở trang bài viết: trước "cùng thẻ", nay NGẪU NHIÊN thuần.
   - LƯU Ý: "Chuyên mục" (categories) của diễn đàn vẫn còn nguyên.
 
+[2026-11-26] XÓA 9 BÀI VIẾT TEST (seed demo id 1-9), GIỮ NGUYÊN bài từ hệ thống cũ.
+  - Cách phân biệt (KHÔNG đoán mò):
+    * Bài seed demo = id 1-9 (mô tả ghi rõ "nội dung mẫu / dùng để kiểm tra bố cục",
+      không có watch_link/vip_link). Xóa cả 9.
+    * Bài thật = id 166-1710 (1.545 bài, có mô tả + anonlink.io + t.me). GIỮ.
+    * Id 10-165 và 167: đã bị xóa từ lần import lại trước => không còn trong DB.
+    * #1475 ("Bài viết", 1 video 7s, tạo lúc 16:56 giữa lô import) là bài THẬT
+      bị mất tiêu đề/mô tả/link khi import => GIỮ.
+    * Bài có chữ "mẫu" trong tiêu đề (người mẫu ảnh) là nội dung thật => GIỮ.
+    * Sau khi xóa: truoc_import = 0 => mọi bài còn lại đều từ hệ thống cũ.
+  - Xóa: 9 bài (cascade dọn 19 ảnh, 3 video, 3 bình luận, 3 like, 3 lưu) +
+    79 file media vật lý.
+  - PHÁT HIỆN THÊM: dọn 337 file media rác (35,9 MB) không bản ghi nào tham chiếu.
+    LƯU Ý: lần đo đầu báo "4.672 file rác" là SAI vì file resize có hậu tố
+    _m/_s/_t khác key gốc -> phải bỏ hậu tố _t|_s|_m trước khi so khớp.
+  - Script dọn rác media: server/scripts/purge-orphan-media.mjs (có --dry).
+  - Kết quả: 1.553 -> 1.544 bài (1.537 Xem ngay, 1.542 Kênh VIP, 1.043 ảnh,
+    580 video). /api/articles/1 và /9 -> 404; /api/articles/166 -> 200.
+
 ================================================================================
 Hết — lưu ý: không lưu mật khẩu / token thật trong file này.
 ================================================================================
