@@ -9,6 +9,11 @@ cd "$APP_DIR"
 echo "==> Kéo code mới"
 git pull --ff-only
 
+# Script .sh phải là LF: nếu không, bash báo "invalid option name" (B69).
+# .gitattributes đã đặt eol=lf, nhưng chuẩn hoá lại cho chắc (B69/B74).
+find "$APP_DIR" -name '*.sh' -type f -exec sed -i 's/\r$//' {} +
+chmod +x "$APP_DIR"/scripts/*.sh
+
 echo "==> Build lại và khởi động (migration DB chạy tự động khi app khởi động)"
 docker compose up -d --build
 docker image prune -f >/dev/null

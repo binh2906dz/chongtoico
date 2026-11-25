@@ -32,6 +32,10 @@ else
 fi
 cd "$APP_DIR"
 
+# Script .sh phải là LF, nếu không bash báo "invalid option name" (B69).
+find "$APP_DIR" -name '*.sh' -type f -exec sed -i 's/\r$//' {} +
+chmod +x "$APP_DIR"/scripts/*.sh
+
 if [ ! -f .env ]; then
   echo "==> Tạo file .env"
   read -rp "Tên miền phụ cho hệ thống mới (vd: beta.tenmiencu.com): " DOMAIN </dev/tty
