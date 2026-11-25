@@ -62,6 +62,9 @@ echo "    ($(du -h "$SRC_TGZ" | cut -f1))"
 scp "$SRC_TGZ" "$TARGET:/tmp/chongtoico-src.tar.gz"
 ssh "$TARGET" "mkdir -p '$APP_DIR' && tar -xzf /tmp/chongtoico-src.tar.gz -C '$APP_DIR' && rm -f /tmp/chongtoico-src.tar.gz"
 rm -f "$SRC_TGZ"
+# Script .sh phải là LF: file đóng gói trên Windows có CRLF => bash báo
+# "invalid option name" (B69). Chuyển ngay sau khi giải nén.
+ssh "$TARGET" "find '$APP_DIR' -name '*.sh' -type f -exec sed -i 's/\r\$//' {} + ; chmod +x '$APP_DIR'/scripts/*.sh"
 echo "    code đã lên VPS"
 
 echo "==> 3/7. File .env"

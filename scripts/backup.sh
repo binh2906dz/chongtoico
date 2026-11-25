@@ -27,14 +27,19 @@ docker compose exec -T app tar -C /data/uploads --exclude=./videos -czf - . > "$
 mv "$BACKUP_DIR/files-$TS.tar.gz.part" "$BACKUP_DIR/files-$TS.tar.gz"
 
 if [ "$WITH_VIDEOS" = 1 ]; then
-  echo "==> Sao lưu video (có thể rất lâu và tốn dung lượng)"
-  docker compose exec -T app tar -C /data/uploads -cf - --exclude='*.part' videos > "$BACKUP_DIR/videos-$TS.tar.part"
-  mv "$BACKUP_DIR/videos-$TS.tar.part" "$BACKUP_DIR/videos-$TS.tar"
+  echo "==> Sao lưu video (nén gzip — có thể rất lâu và tốn dung lượng)"
+  # Nén video: video đã là mp4/webm (đã nén sẵn) nên gzip chỉ giảm ~5%,
+  # nhưng đồng đều hơn và giữ đúng định dạng .tar.gz như các bản khác.
+  docker compose exec -T app tar -C /data/uploads --exclude='*.part' -czf - videos > "$BACKUP_DIR/videos-$TS.tar.gz.part"
+  mv "$BACKUP_DIR/videos-$TS.tar.gz.part" "$BACKUP_DIR/videos-$TS.tar.gz"
 fi
 
 echo "==> Giữ lại $KEEP bản mới nhất mỗi loại"
 for prefix in db files videos; do
-  ls -1t "$BACKUP_DIR"/"$prefix"-* 2>/dev/null | grep -v '\.part$' | tail -n +"$((KEEP + 1))" | xargs -r rm -f
+  # Video nặng (mỗi bản ~1,4 GB) nên giữ ít bản hơn, tránh đầy ổ đĩa VPS.
+  keep_n="$KEEP"
+  [ "$prefix" = "videos" ] && keep_n="${KEEP_VIDEOS:-2}"
+  ls -1t "$BACKUP_DIR"/"$prefix"-* 2>/dev/null | grep -v '\.part$' | tail -n +"$((keep_n + 1))" | xargs -r rm -f
 done
 rm -f "$BACKUP_DIR"/*.part
 
