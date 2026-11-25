@@ -8,6 +8,7 @@ import Fastify, { type FastifyError } from "fastify";
 import { SESSION_COOKIE, userFromToken } from "./auth.js";
 import { config } from "./config.js";
 import { HttpError } from "./http.js";
+import { isImportRequest } from "./importSecret.js";
 import { VIDEO_DIR } from "./media.js";
 import adminRoutes from "./routes/admin.js";
 import articleRoutes, { membersOnlyKeys } from "./routes/articles.js";
@@ -41,6 +42,8 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
     global: true,
     max: 300,
     timeWindow: "1 minute",
+    // The import script sends the secret, so it is not stopped by the limit.
+    allowList: (req) => isImportRequest(req.headers),
     errorResponseBuilder: () => ({ statusCode: 429, error: "Bạn thao tác quá nhanh, vui lòng thử lại sau." }),
   });
 

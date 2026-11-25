@@ -810,6 +810,32 @@ b22c5f7 feat: scaffold new platform (đã thay thế — xoá ở bản Node.js)
     trùng). Cả hai cần DỪNG server trước khi chạy (PGlite không cho 2 tiến
     trình mở cùng DB).
 
+[2026-11-25] IMPORT TOÀN BỘ BÀI VIẾT từ web cũ (170 album) + nút 2 nút.
+  - ĐÃ CHẠY THẬT: 170/170 album, 1.543 bài viết mới (tổng CSDL 1.553), 1.062
+    ảnh + 583 video, 1.537 bài có nút "▶ Xem ngay", 1.542 bài có nút "👑 Kênh
+    VIP". Mất 17,2 phút (chạy nền).
+  - Script MỚI: server/scripts/import-all-from-old-web.mjs (thay cho bản cũ chỉ
+    làm 1 album). Đọc danh sách album từ <script id="rmAlbumsJson"> của trang /
+    web cũ (170 album, KHÔNG phân trang — ?page= không đổi). Mỗi post cũ = 1
+    bài viết. Cờ: --album, --limit N, --replace, --keep-links, --resume, --dry-run.
+    Trạng thái lưu ở <src>/.import-state.json để chạy lại được.
+  - BỔ SUNG MÁY CHỦ: file MỚI server/src/importSecret.ts (để app.ts và routes
+    cùng dùng, tránh import vòng). Header "x-import-secret" + biến môi
+    trường IMPORT_SECRET: khi khớp thì request KHÔNG bị rate limit (cả giới
+    hạn chung 300/phút lẫn giới hạn upload video 60/giờ — không có nó thì
+    import bị chặn 429). Để trống = tính năng tắt. Đã thêm vào .env.example.
+  - Tải media SONG SONG 8 file/lần, ghi file .part rồi đổi tên (tránh file
+    dở dang). ffprobe lấy duration/width/height cho video.
+  - Bài học MỚI:
+    B60 (web cũ: danh sách album nằm trong <script type="application/json"
+      id="rmAlbumsJson">; KHÔNG phân trang — mọi ?page= trả cùng trang 1).
+    B61 (rate limit 300/phút chung + 60 video/giờ chặn import hàng loạt =>
+      cần đường bypass có khoá bí mật, KHÔNG bỏ rate limit toàn cục).
+    B62 (import vòng app.ts <-> routes/articles.ts: đặt hằng số chung vào file
+      riêng importSecret.ts).
+    B63 (script tự dừng giữa chừng rồi chạy lại được nhờ file trạng thái;
+      --replace xoá bài trùng tiêu đề trước khi tạo).
+
 ================================================================================
 Hết — lưu ý: không lưu mật khẩu / token thật trong file này.
 ================================================================================

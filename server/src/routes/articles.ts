@@ -7,6 +7,7 @@ import { and, asc, count, desc, eq, gte, ilike, inArray, isNotNull, isNull, notI
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { author, authorColumns, isStaff, requireActive, requireAdmin, requireStaff, requireUser, type User } from "../auth.js";
+import { isImportRequest } from "../importSecret.js";
 import { config } from "../config.js";
 import { db } from "../db/index.js";
 import {
@@ -1134,7 +1135,17 @@ export default async function articleRoutes(app: FastifyInstance) {
   /** Uploads one video into an article (streamed to disk). */
   app.post(
     "/api/admin/articles/:id/videos",
-    { bodyLimit: (config.maxVideoMb + 20) * MB, config: { rateLimit: { max: 60, timeWindow: "1 hour" } } },
+    {
+      bodyLimit: (config.maxVideoMb + 20) * MB,
+      config: {
+        rateLimit: {
+          max: 60,
+          timeWindow: "1 hour",
+          // The import of the old system sends the secret header.
+          allowList: (req) => isImportRequest(req.headers),
+        },
+      },
+    },
     async (req) => {
       requireAdmin(req);
       const { id } = parse(idParam, req.params);

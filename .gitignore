@@ -11,6 +11,9 @@ dist/
 # Local data (PGlite database, uploaded images)
 server/data/
 
+# Thư mục tạm của script import từ hệ thống cũ (media tải về, rất nặng)
+import-tmp/
+
 # OS / editor
 .DS_Store
 Thumbs.db
