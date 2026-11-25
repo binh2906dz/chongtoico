@@ -266,8 +266,25 @@ Chạy service bot (ngoài Docker, vì cần token + kết nối Telegram):
 --------------------------------------------------------------------------------
 2) TRIỂN KHAI (VPS)
 --------------------------------------------------------------------------------
+>>>>> VPS HIỆN TẠI (đã chuyển sang hệ thống mới, 2026-11-26):
+  - 103.63.30.108 — Ubuntu 24.04, đã cài Docker 29.10.1 + Compose v5.8.0.
+  - App: /opt/chongtoico (2 container: app 127.0.0.1:8090 + db PostgreSQL 17).
+  - Nginx: /etc/nginx/sites-enabled/bot -> proxy 127.0.0.1:8090 (bản cũ .bak-* để
+    trong /etc/nginx/sites-available/ để nginx không đọc trùng server_name).
+  - Bot: systemd `chongtoico-bot` (ngoài Docker), log /var/log/chongtoico-bot.log.
+  - Hệ thống cũ (FastAPI/gunicorn port 5000) ĐÃ DỪNG (`bot.service` disabled),
+    dữ liệu SQLite + media vẫn còn ở /root/telegram-bot-dashboard/ để quay lại.
+  - Admin: admin / $qCWF5T0rT06. Mật khẩu admin được đặt lại trực tiếp trong DB.
+  - .env TRÊN VPS phải có TOKEN_ENCRYPTION_KEY=local-dev-token-encryption-key-000000
+    (giống máy dev) — nếu khác thì 57 bot không giải mã được token.
+  - Deploy lần sau (đã đầy đủ dữ liệu): chạy trên máy dev
+    bash scripts/deploy-with-data.sh root@103.63.30.108 ngeyhsvge683874.online
+    (script tự: nén+scp code -> tao .env -> build -> backup -> nap SQL -> nap media ->
+     giai ma token bot -> cai bot service -> health check).
+  - LƯU Ý: repo la PRIVATE => VPS khong git clone duoc (403) => script dung scp.
+
 - DNS: bản ghi A cho tên miền phụ (vd beta.tenmiencu.com) trỏ về IP VPS.
-- Cài lần đầu (root):
+  - Cài lần đầu (root):
     curl -fsSL https://raw.githubusercontent.com/binh2906dz/chongtoico/main/scripts/install.sh | bash
 - Cập nhật sau mỗi lần push:
     bash /opt/chongtoico/scripts/update.sh
@@ -486,6 +503,7 @@ Cài dịch vụ bot Telegram (ngoài Docker — cần token + kết nối Teleg
 --------------------------------------------------------------------------------
 (xem `git log --oneline`; các commit chính)
 32ebe1d feat(deploy): script nap toan bo du lieu (CSDL + media) len VPS thay the he thong cu
+d0a6538 feat(deploy): giai ma token bot + cai bot service + export setval cho sequence
 bb7972d docs: cap nhat huongdan muc 7 (git log)
 7c4b399 feat(articles): xoa hoan toan tinh nang 'uu tien' (ghim bai)
 b22a390 feat(articles): nut 'uu tien' (ghim bai len dau trang chu) + cache bo bai ngau nhien 5 phut
@@ -978,6 +996,32 @@ b22c5f7 feat: scaffold new platform (đã thay thế — xoá ở bản Node.js)
   - server/data/ đã .gitignore => file SQL/tar.gz KHÔNG push lên Git, phải scp.
   - Đã kiểm tra: server local chạy lại OK, /api/home trả đủ dữ liệu (1.553 bài).
   - CHƯA chạy: cần thông tin VPS (host, user SSH, key/mật khẩu, domain) + Nginx.
+
+[2026-11-26] DEPLOY THẬT LÊN VPS 103.63.30.108 — ĐÃ XONG, HỆ THỐNG MỚI
+  ĐANG CHẠY THAY HỆ THỐNG CŨ:
+  - VPS: Ubuntu 24.04, 31 GB đĩa (còn 18 GB), 7,8 GB RAM. ĐÃ CÀI MỚI Docker
+    29.10.1 + Compose v5.8.0 (trước đó không có Docker).
+  - Code: /opt/chongtoico. Container: app (127.0.0.1:8090) + db (PostgreSQL 17).
+    Media: volume chongtoico_uploads (1,60 GB / 6.525 file).
+  - CSDL đã nạp: 1.553 bài viết, 1.048 ảnh, 584 video, 57 bot (27 live + 30 ban),
+    61.092 telegram_users, 21.755 telegram_visits.
+  - Nginx /etc/nginx/sites-enabled/bot -> proxy 127.0.0.1:8090. HỆ THỐNG CŨ ĐÃ
+    DỪNG (bot.service disabled) nhưng dữ liệu SQLite + media cũ VẪN CÒN ở
+    /root/telegram-bot-dashboard/ để quay lại được nếu cần.
+  - Bot: systemd chongtoico-bot (ngoài Docker) — 27 bot kết nối Telegram OK.
+  - Admin: admin / $qCWF5T0rT06 (đã reset hash trong DB). Backup tự động 3h sáng.
+  - 5 BÀI HỌC (chi tiết ở LUAT_VA_BOI_CANH.md mục 9/10):
+    B67 JSONB trong SQL dump phải JSON.stringify (String(v) -> "[object Object]" ->
+         lỗi json => rollback toàn bộ transaction).
+    B68 SQL dump KHÔNG mang trạng thái sequence => duplicate key trên sessions =>
+         đăng nhập admin lỗi 500. ĐÃ SỬA Ở GỐC (export kèm setval).
+    B69 Script .sh upload từ Windows phải LF, không CRLF (apt/systemd báo lỗi).
+    B70 Thứ tự: code+migrations -> SQL -> media -> token bot -> bot service -> Nginx.
+    B71 Token bot mã hoá bằng scrypt (KHÔNG phải pbkdf2) — đọc lại crypto.ts.
+  - Script mới: scripts/export-bot-tokens.sh (giải mã token -> TELEGRAM_BOT_TOKENS),
+    scripts/install-bot-service.sh (tạo systemd unit cho bot). Đã chạy thử OK.
+  - scripts/deploy-with-data.sh: vì repo PRIVATE nên VPS không git clone được (403)
+    => script nén thư mục hiện tại rồi scp thay vì clone.
 
 ================================================================================
 Hết — lưu ý: không lưu mật khẩu / token thật trong file này.

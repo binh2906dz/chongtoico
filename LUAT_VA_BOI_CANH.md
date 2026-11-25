@@ -741,3 +741,25 @@ Máº«u má»—i má»¥c:
 - **Ðã ki?m tra**: server local kh?i d?ng l?i OK (`Server listening at http://127.0.0.1:8090`), `/api/home` tr? d? li?u d?y d? (bài id 1553 trong `articles.today`); `git commit --trailer "Co-authored-by: Cursor <cursoragent@cursor.com>"` 2 file m?i (`32ebe1d`).
 - **CHUA ch?y**: chua ch?y `deploy-with-data.sh` — c?n thông tin VPS (IP/host, user SSH, key ho?c m?t kh?u, domain) và c?u hình Nginx trên VPS.
 - **File**: `server/scripts/export-db-to-sql.mjs`, `scripts/deploy-with-data.sh`, `LUAT_VA_BOI_CANH.md`, `huongdan.txt`.
+## 2026-11-26 — DEPLOY TH?T LÊN VPS (thay th? h? th?ng cu) + 5 BÀI H?C
+
+- **Yêu c?u**: "gi? tôi mu?n up t?t c? lên vps, thay th? cho h? th?ng cu, luu ý khi tôi up lên vps thì up toàn b? d? li?u + các bài vi?t luôn".
+- **K?T QU?**: Ðã ch?y trên VPS `103.63.30.108` (Ubuntu 24.04, 31 GB dia, 7,8 GB RAM):
+  - Docker 29.10.1 + Compose v5.8.0 **cài m?i** (VPS tru?c dó KHÔNG có Docker).
+  - H? th?ng m?i ? `/opt/chongtoico`, 2 container: `chongtoico-app` (127.0.0.1:8090) + `chongtoico-db` (PostgreSQL 17).
+  - **CSDL**: 1.553 bài vi?t, 1.048 ?nh, 584 video, 57 bot (27 live / 30 ban), 61.092 `telegram_users`, 21.755 `telegram_visits`.
+  - **Media**: 1,60 GB / 6.525 file vào volume `chongtoico_uploads` (thu m?c `albums` 4.192, `thumbs` 1.749, `videos` 584).
+  - **Nginx** chuy?n t? proxy port 5000 (FastAPI cu) sang port 8090; **h? th?ng cu dã d?ng** (`bot.service` disabled) nhung **gi? nguyên toàn b? d? li?u SQLite + 1,6 GB media** d? quay l?i du?c.
+  - **Bot service** (systemd `chongtoico-bot`): **27 bot dã k?t n?i Telegram thành công**.
+  - **Admin**: dang nh?p OK v?i `admin` / m?t kh?u cu; trang qu?n tr? hi?n th? d? s? li?u (1.553 bài, 61.092 ngu?i Telegram, danh sách bot + bot b? ban).
+  - **Backup t? d?ng**: crontab 3h sáng (`backup.sh --with-videos`).
+  - Ðia còn 18 GB tr?ng, `/var/lib/docker` 2,9 GB.
+- **BÀI H?C**:
+  - **B67 — JSONB trong file SQL dump ph?i dùng `JSON.stringify`, KHÔNG dùng `String(v)`.** `String({...})` ra `"[object Object]"` ? `psql` báo `invalid input syntax for type json` ? **toàn b? transaction rollback**, không có b?ng nào du?c n?p. Ðã s?a `server/scripts/export-db-to-sql.mjs`.
+  - **B68 — SQL dump KHÔNG mang theo tr?ng thái c?a `sequence` ? khoá chính b? trùng.** `sessions_id_seq` còn ? 1 trong khi `max(id)` dã 35 ? l?n `INSERT` d?u tiên báo `duplicate key value violates unique constraint "sessions_pkey"` ? **dang nh?p admin không du?c** (l?i 500). Ðã s?a ? g?c: `export-db-to-sql.mjs` gi? xu?t thêm kh?i `DO $$ ... setval ... $$` d?t m?i sequence theo `max(id)`. Bài h?c chung: **sau khi n?p dump ph?i ki?m tra sequence**, và nên dùng `pg_dump --data-only` v?i `--serializable-deferrable` n?u có th?.
+  - **B69 — Script shell upload t? Windows ph?i là LF, không ph?i CRLF.** File `.sh` có `\r` cu?i dòng ? `set -e` báo `invalid option`, `apt-get -qq` báo `E: Command line option '-qq'` l?n l?n, `systemd` báo `Invalid unit name "docker\x0d"`. ? **Luôn convert CRLF?LF tru?c khi upload script lên VPS** (`sed -i 's/\r$//'` ho?c `.gitattributes`).
+  - **B70 — Th? t? b?t bu?c khi chuy?n h? th?ng**: `code + migrations` ? `SQL dump` ? `media` ? `gi?i mã token bot` ? `bot service` ? `chuy?n Nginx` ? `d?ng h? th?ng cu`. N?u n?p SQL tru?c khi container `db` có schema s? l?i `relation does not exist`.
+  - **B71 — Token bot mã hoá b?ng `scrypt`, KHÔNG ph?i `pbkdf2`.** `server/src/crypto.ts` dùng `scryptSync(key, salt, 32)`; script gi?i mã l?n d?u dùng `pbkdf2Sync` ? **m?i token gi?i mã ra `null`** (không có l?i, ch? ra k?t qu? r?ng) ? bot service không kh?i d?ng du?c (`Thi?u TELEGRAM_BOT_TOKENS`). ? Khi vi?t script gi?i mã token, **d?c l?i dúng hàm `decryptToken` trong `crypto.ts`**, d?ng doán thu?t toán.
+- **B? SUNG VÀO `scripts/deploy-with-data.sh`**: vì repo là **private** nên `git clone` trên VPS th?t b?i (403) ? bu?c 2 gi? **nén thu m?c hi?n t?i r?i `scp`** (b? `.git`, `node_modules`, `server/data`, `dist`, `import-tmp`). Thêm `scripts/export-bot-tokens.sh` (gi?i mã token ? ghi `TELEGRAM_BOT_TOKENS` vào `.env`) và `scripts/install-bot-service.sh` (t?o systemd unit cho bot). Ðã ch?y th? c? hai script ngay trên VPS ? OK.
+- **Ðã ki?m tra**: xem trình duy?t — trang ch? hi?n d? bài vi?t + ?nh bìa + video; dang nh?p admin thành công; tab "Telegram ? Ngu?i Telegram" hi?n 61.092; tab "Bot" hi?n danh sách bot + 30 bot b? ban; `/api/home`, `/healthz`, `/media/...` d?u HTTP 200; `curl` v?i cookie jar th?t xác nh?n `/api/auth/me` tr? user admin.
+- **File**: `server/scripts/export-db-to-sql.mjs`, `scripts/deploy-with-data.sh`, `scripts/export-bot-tokens.sh`, `scripts/install-bot-service.sh`, `LUAT_VA_BOI_CANH.md`, `huongdan.txt`.
