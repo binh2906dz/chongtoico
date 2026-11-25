@@ -9,12 +9,10 @@ import { StatsPanel } from "../components/Sidebar";
 import { ErrorBox, SectionHeader, Spinner, Tabs, ThreadRows, VideoGridSkeleton } from "../components/ui";
 import { ArticleGrid } from "../components/ArticleCard";
 import { useFetch } from "../useFetch";
-import { TagCloud } from "./Articles";
-import type { ArticleItem, ArticleTag, Channel, Stats, ThreadItem } from "../types";
+import type { ArticleItem, Channel, Stats, ThreadItem } from "../types";
 
 interface HomeData {
   articles: { today: ArticleItem[]; week: ArticleItem[]; newest: ArticleItem[]; random: ArticleItem[]; watching: ArticleItem[] };
-  tags: ArticleTag[];
   feeds: { latest: ThreadItem[]; hot: ThreadItem[]; trending: ThreadItem[] };
   stats: Stats;
 }
@@ -203,11 +201,6 @@ export default function Home() {
             <ArticleGrid articles={data.articles.week} />
           </Section>
           <RandomSection initial={data.articles.random} />
-          {data.tags.length > 0 && (
-            <Section title="🏷️ Thẻ phổ biến" more="/bai-viet/tag">
-              <TagCloud tags={data.tags} />
-            </Section>
-          )}
         </>
       )}
 

@@ -381,33 +381,8 @@ export const articleCommentVotes = pgTable(
   (t) => [primaryKey({ columns: [t.commentId, t.userId] })],
 );
 
-export const articleTags = pgTable(
-  "article_tags",
-  {
-    id: serial("id").primaryKey(),
-    slug: varchar("slug", { length: 64 }).notNull(),
-    name: varchar("name", { length: 40 }).notNull(),
-    articleCount: integer("article_count").notNull().default(0),
-    createdAt: createdAt(),
-  },
-  (t) => [uniqueIndex("article_tags_slug_uq").on(t.slug), index("article_tags_count_idx").on(t.articleCount)],
-);
-
-export const articleTagLinks = pgTable(
-  "article_tag_links",
-  {
-    articleId: integer("article_id")
-      .notNull()
-      .references(() => articles.id, { onDelete: "cascade" }),
-    tagId: integer("tag_id")
-      .notNull()
-      .references(() => articleTags.id, { onDelete: "cascade" }),
-  },
-  (t) => [primaryKey({ columns: [t.articleId, t.tagId] }), index("article_tag_links_tag_idx").on(t.tagId)],
-);
-
 export const articleSaves = pgTable(
-  "article_saves",
+   "article_saves",
   {
     userId: integer("user_id")
       .notNull()

@@ -862,6 +862,17 @@ b22c5f7 feat: scaffold new platform (đã thay thế — xoá ở bản Node.js)
       articles.category_id (thể loại) => 1.545/1.553 bài bị dán nhầm
       "Hài hước" mà không có lỗi nào).
 
+[2026-11-26] XÓA HOÀN TOÀN TÍNH NĂNG THẺ BÀI VIẾT (tags).
+  - Gỡ bảng article_tags + article_tag_links (migration 0010, DROP hẳn theo
+    yêu cầu chủ dự án). Bài viết GIỮ NGUYÊN: còn 1.553 bài, 1.062 ảnh,
+    583 video, 1.537 nút "Xem ngay", 1.542 nút "Kênh VIP".
+  - Gỡ: khối "🏷️ Thẻ phổ biến" ở trang chủ; trang /bai-viet/tag + nút
+    "🏷️ Thẻ"; dãy chip thẻ ở đầu từng bài viết; ô "Thẻ (cách nhau bằng
+    dấu phẩy, tối đa 15)" trong form đăng bài; API GET /api/articles/tags.
+  - Link cũ /bai-viet/tag/<slug> và /bai-viet/tag -> redirect về /bai-viet.
+  - Bài liên quan ở trang bài viết: trước "cùng thẻ", nay NGẪU NHIÊN thuần.
+  - LƯU Ý: "Chuyên mục" (categories) của diễn đàn vẫn còn nguyên.
+
 ================================================================================
 Hết — lưu ý: không lưu mật khẩu / token thật trong file này.
 ================================================================================

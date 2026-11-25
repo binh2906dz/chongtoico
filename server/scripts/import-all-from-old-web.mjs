@@ -332,7 +332,6 @@ for (const [index, a] of albums.entries()) {
         description,
         watchLink,
         vipLink,
-        tags: "",
         visibility: "public",
         isHot: false,
       }), { "content-type": "application/json" });

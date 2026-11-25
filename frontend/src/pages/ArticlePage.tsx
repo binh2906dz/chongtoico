@@ -537,19 +537,6 @@ export default function ArticlePage() {
             </div>
             <VoteBar key={article.id} article={article} initialVote={data.myVote} />
           </div>
-          {article.tags.length > 0 && (
-            <div className="flex flex-wrap gap-1.5">
-              {article.tags.map((t) => (
-                <Link
-                  key={t.id}
-                  to={`/bai-viet/tag/${t.slug}`}
-                  className="rounded-full border border-line px-2.5 py-0.5 text-xs text-slate-300 hover:border-brand/50 hover:text-brand"
-                >
-                  #{t.name}
-                </Link>
-              ))}
-            </div>
-          )}
           <div className="flex flex-wrap items-start justify-between gap-3">
             <SaveButtons key={article.id} articleId={article.id} initial={data.saved} />
             <ReportButton targetType="article" targetId={article.id} className="btn-ghost px-3 py-1.5 text-sm hover:text-red-300" />

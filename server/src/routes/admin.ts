@@ -265,8 +265,6 @@ export default async function adminRoutes(app: FastifyInstance) {
       update article_comments c set
         like_count = (select count(*) from article_comment_votes x where x.comment_id = c.id and x.value = 1),
         dislike_count = (select count(*) from article_comment_votes x where x.comment_id = c.id and x.value = -1)`);
-    await db.execute(sql`
-      update article_tags t set article_count = (select count(*) from article_tag_links l where l.tag_id = t.id)`);
     return ok(reply);
   });
 }

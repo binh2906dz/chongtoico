@@ -60,7 +60,7 @@ if (!cookie) {
 console.log("\n[2] Tao bai viet (co anh + video)");
 r = await req("POST", "/api/admin/articles", {
   cookie,
-  body: { title: `Kiem thu tu dong ${Date.now()}`, description: "Bai viet kiem thu.", visibility: "public", tags: "kiemthu" },
+  body: { title: `Kiem thu tu dong ${Date.now()}`, description: "Bai viet kiem thu.", visibility: "public" },
   json: true,
 });
 ok("POST /api/admin/articles (tao bai viet)", r.status === 200 && !!r.data?.article?.id, `status=${r.status} ${r.data?.error || ""}`);

@@ -16,8 +16,6 @@ import {
   articleHistory,
   articleImages,
   articleSaves,
-  articleTagLinks,
-  articleTags,
   articleViewDays,
   articleVideos,
   articles,
@@ -149,74 +147,10 @@ function likePattern(q: string) {
   return `%${q.replace(/[\\%_]/g, (m) => `\\${m}`)}%`;
 }
 
-export function tagSlug(name: string) {
-  return name
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[đĐ]/g, "d")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 64);
-}
-
-/** "a, b , c" -> unique tag names (2-40 chars, max 15). */
-function parseTagNames(input: string) {
-  const out = new Map<string, string>();
-  for (const raw of input.split(/[,#\n]/)) {
-    const name = raw.replace(/\s+/g, " ").trim().slice(0, 40);
-    const slug = tagSlug(name);
-    if (name.length < 2 || slug.length < 2 || out.has(slug)) continue;
-    out.set(slug, name);
-    if (out.size >= 15) break;
-  }
-  return out;
-}
-
-async function setArticleTags(articleId: number, input: string) {
-  const wanted = parseTagNames(input);
-  await db.transaction(async (tx) => {
-    const current = await tx
-      .select({ id: articleTags.id, slug: articleTags.slug })
-      .from(articleTagLinks)
-      .innerJoin(articleTags, eq(articleTags.id, articleTagLinks.tagId))
-      .where(eq(articleTagLinks.articleId, articleId));
-    const removed = current.filter((t) => !wanted.has(t.slug)).map((t) => t.id);
-    if (removed.length) {
-      await tx.delete(articleTagLinks).where(and(eq(articleTagLinks.articleId, articleId), inArray(articleTagLinks.tagId, removed)));
-      await tx
-        .update(articleTags)
-        .set({ articleCount: sql`greatest(${articleTags.articleCount} - 1, 0)` })
-        .where(inArray(articleTags.id, removed));
-    }
-    const have = new Set(current.map((t) => t.slug));
-    for (const [slug, name] of wanted) {
-      if (have.has(slug)) continue;
-      const [tag] = await tx
-        .insert(articleTags)
-        .values({ slug, name })
-        .onConflictDoUpdate({ target: articleTags.slug, set: { slug } })
-        .returning({ id: articleTags.id });
-      await tx.insert(articleTagLinks).values({ articleId, tagId: tag.id }).onConflictDoNothing();
-      await tx.update(articleTags).set({ articleCount: sql`${articleTags.articleCount} + 1` }).where(eq(articleTags.id, tag.id));
-    }
-  });
-}
-
-async function articleTagsOf(articleId: number) {
-  return db
-    .select({ id: articleTags.id, slug: articleTags.slug, name: articleTags.name })
-    .from(articleTagLinks)
-    .innerJoin(articleTags, eq(articleTags.id, articleTagLinks.tagId))
-    .where(eq(articleTagLinks.articleId, articleId))
-    .orderBy(asc(articleTags.name));
-}
-
 export async function listArticles(opts: {
   sort: ArticleSort;
   limit: number;
   offset?: number;
-  tagId?: number;
   q?: string;
   excludeIds?: number[];
   /** Người đang xem; null = khách. Bài "chỉ thành viên" không lộ ảnh bìa cho khách. */
@@ -224,9 +158,6 @@ export async function listArticles(opts: {
 }) {
   await refreshHotIds();
   const conds: SQL[] = [];
-  if (opts.tagId) {
-    conds.push(inArray(articles.id, db.select({ id: articleTagLinks.articleId }).from(articleTagLinks).where(eq(articleTagLinks.tagId, opts.tagId))));
-  }
   if (opts.q) conds.push(ilike(articles.title, likePattern(opts.q)));
   if (opts.excludeIds?.length) conds.push(notInArray(articles.id, opts.excludeIds));
   const where = conds.length ? and(...conds) : undefined;
@@ -312,13 +243,6 @@ export async function articlesByIds(ids: number[], viewer: User | null = null) {
     .where(inArray(articles.id, ids));
   const byId = new Map(rows.map((r) => [r.id, hideLockedCover(mapCard(r), viewer)]));
   return ids.map((id) => byId.get(id)).filter((v) => v !== undefined);
-}
-
-async function findTag(slug: string | undefined) {
-  if (!slug) return null;
-  const [tag] = await db.select().from(articleTags).where(eq(articleTags.slug, slug)).limit(1);
-  if (!tag) throw notFound("Thẻ không tồn tại.");
-  return tag;
 }
 
 const viewSeen = new Map<string, number>();
@@ -420,7 +344,6 @@ const articleBody = z.object({
   description: z.string().trim().max(20000, "Nội dung tối đa 20.000 ký tự.").default(""),
   watchLink: linkField,
   vipLink: linkField,
-  tags: z.string().max(1000).default(""),
   visibility: z.enum(VISIBILITIES).default("public"),
   isHot: z.boolean().default(false),
 });
@@ -449,40 +372,25 @@ export default async function articleRoutes(app: FastifyInstance) {
     membersOnlyKeys.add(v.fileKey);
   }
 
-  app.get("/api/articles/tags", async (req) => {
-    const { limit } = parse(z.object({ limit: z.coerce.number().int().min(1).max(300).default(100) }), req.query);
-    const tags = await db
-      .select({ id: articleTags.id, slug: articleTags.slug, name: articleTags.name, articleCount: articleTags.articleCount })
-      .from(articleTags)
-      .where(sql`${articleTags.articleCount} > 0`)
-      .orderBy(desc(articleTags.articleCount), asc(articleTags.name))
-      .limit(limit);
-    return { tags };
-  });
-
   app.get("/api/articles", async (req) => {
     const q = parse(
       pageQuery.extend({
         sort: z.enum(ARTICLE_SORTS).default("new"),
-        tag: z.string().max(64).optional(),
         q: z.string().trim().max(100).optional(),
       }),
       req.query,
     );
-    const tag = await findTag(q.tag);
     const { limit, offset } = paginate(q.page, PER_PAGE);
     const { rows, where } = await listArticles({
       sort: q.sort,
       limit,
       offset: q.sort === "random" ? 0 : offset,
-      tagId: tag?.id,
       q: q.q || undefined,
       viewer: req.user,
     });
     const [{ total }] = await db.select({ total: count() }).from(articles).where(where);
     return {
       articles: rows,
-      tag,
       page: q.page,
       totalPages: q.sort === "random" ? 1 : Math.max(1, Math.ceil(total / PER_PAGE)),
       total,
@@ -658,13 +566,8 @@ export default async function articleRoutes(app: FastifyInstance) {
       }));
     }
 
-    // Gợi ý bài liên quan: ưu tiên bài có chung thẻ, phần còn lại ngẫu nhiên
-    // để bài cũ vẫn có cơ hội xuất hiện.
-    const tagIds = (await db.select({ id: articleTagLinks.tagId }).from(articleTagLinks).where(eq(articleTagLinks.articleId, id))).map((t) => t.id);
-    const sameTag = tagIds.length
-      ? (await listArticles({ sort: "today", limit: 6, tagId: tagIds[0], excludeIds: [id], viewer: req.user })).rows
-      : [];
-    const random = await listArticles({ sort: "random", limit: 12 - sameTag.length, excludeIds: [id, ...sameTag.map((v) => v.id)], viewer: req.user });
+    // Gợi ý bài liên quan: ngẫu nhiên (bài cũ vẫn có cơ hội xuất hiện).
+    const random = await listArticles({ sort: "random", limit: 12, excludeIds: [id], viewer: req.user });
     const card = mapCard(rest);
     return {
       article: {
@@ -677,13 +580,12 @@ export default async function articleRoutes(app: FastifyInstance) {
         vipLink: locked ? null : vipLink,
         locked,
         author: author(authorRow),
-        tags: await articleTagsOf(id),
         images,
         videos,
       },
       myVote,
       saved,
-      related: [...sameTag, ...random.rows],
+      related: random.rows,
     };
   });
 
@@ -894,7 +796,6 @@ export default async function articleRoutes(app: FastifyInstance) {
     requireAdmin(req);
     const { id } = parse(idParam, req.params);
     const article = await getArticle(id);
-    const tags = await articleTagsOf(id);
     const [images, videos] = await Promise.all([
       db.select().from(articleImages).where(eq(articleImages.articleId, id)).orderBy(asc(articleImages.sortOrder)),
       db.select().from(articleVideos).where(eq(articleVideos.articleId, id)).orderBy(asc(articleVideos.sortOrder)),
@@ -911,7 +812,6 @@ export default async function articleRoutes(app: FastifyInstance) {
         coverType: article.coverType,
         coverImageKey: article.coverImageKey,
         coverDuration: article.coverDuration,
-        tags: tags.map((t) => t.name).join(", "),
         images: images.map((i) => ({ id: i.id, fileKey: i.fileKey, url: articleImageUrl(i.fileKey), thumbUrl: articleImageUrl(i.fileKey, true) })),
         videos: videos.map((v) => ({ id: v.id, fileKey: v.fileKey, thumbKey: v.thumbKey, url: videoFileUrl(v.fileKey, v.ext), duration: v.duration })),
       },
@@ -937,7 +837,6 @@ export default async function articleRoutes(app: FastifyInstance) {
           isHot: body.isHot,
         })
         .returning({ id: articles.id });
-      if (body.tags) await setArticleTags(article.id, body.tags);
       return { article };
     },
   );
@@ -945,7 +844,7 @@ export default async function articleRoutes(app: FastifyInstance) {
   app.patch("/api/admin/articles/:id", async (req) => {
     requireAdmin(req);
     const { id } = parse(idParam, req.params);
-    const { tags, ...body } = parse(
+    const body = parse(
       z.object({
         title: articleBody.shape.title.optional(),
         description: articleBody.shape.description.optional(),
@@ -953,7 +852,6 @@ export default async function articleRoutes(app: FastifyInstance) {
         vipLink: linkField,
         visibility: z.enum(VISIBILITIES).optional(),
         isHot: z.boolean().optional(),
-        tags: z.string().max(1000).optional(),
       }),
       req.body,
     );
@@ -961,7 +859,6 @@ export default async function articleRoutes(app: FastifyInstance) {
     if (Object.keys(body).length) await db.update(articles).set(body).where(eq(articles.id, id));
     if (body.visibility === "members") await markMembersOnly(id, true);
     if (body.visibility === "public") await markMembersOnly(id, false);
-    if (tags !== undefined) await setArticleTags(id, tags);
     return { ok: true };
   });
 
@@ -969,16 +866,9 @@ export default async function articleRoutes(app: FastifyInstance) {
     requireAdmin(req);
     const { id } = parse(idParam, req.params);
     await getArticle(id);
-    const tagIds = (await db.select({ id: articleTagLinks.tagId }).from(articleTagLinks).where(eq(articleTagLinks.articleId, id))).map((t) => t.id);
     const images = await db.select({ fileKey: articleImages.fileKey }).from(articleImages).where(eq(articleImages.articleId, id));
     const videos = await db.select({ fileKey: articleVideos.fileKey, ext: articleVideos.ext, thumbKey: articleVideos.thumbKey }).from(articleVideos).where(eq(articleVideos.articleId, id));
     await db.delete(articles).where(eq(articles.id, id));
-    if (tagIds.length) {
-      await db
-        .update(articleTags)
-        .set({ articleCount: sql`greatest(${articleTags.articleCount} - 1, 0)` })
-        .where(inArray(articleTags.id, tagIds));
-    }
     lastWatched.delete(id);
     for (const img of images) await removeImage("albums", img.fileKey);
     for (const v of videos) {

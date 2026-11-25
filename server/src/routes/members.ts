@@ -1,9 +1,9 @@
-import { count, desc, eq, gt } from "drizzle-orm";
+import { count, desc, eq } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { author, authorColumns, profileUser, type User } from "../auth.js";
 import { db } from "../db/index.js";
-import { articleTags, posts, threads, users } from "../db/schema.js";
+import { posts, threads, users } from "../db/schema.js";
 import { notFound, parse } from "../http.js";
 import { getOnline } from "../realtime.js";
 import { followStats } from "./follow.js";
@@ -27,18 +27,12 @@ export async function forumStats() {
 }
 
 async function homeData(viewer: User | null = null) {
-  const [today, week, newest, random, watching, tags, latest, hot, trending, stats] = await Promise.all([
+  const [today, week, newest, random, watching, latest, hot, trending, stats] = await Promise.all([
     listArticles({ sort: "today", limit: 8, viewer }),
     listArticles({ sort: "week", limit: 8, viewer }),
     listArticles({ sort: "new", limit: 24, viewer }),
     listArticles({ sort: "random", limit: 8, viewer }),
     articlesByIds(watchingNowIds(8), viewer),
-    db
-      .select({ id: articleTags.id, slug: articleTags.slug, name: articleTags.name, articleCount: articleTags.articleCount })
-      .from(articleTags)
-      .where(gt(articleTags.articleCount, 0))
-      .orderBy(desc(articleTags.articleCount))
-      .limit(30),
     threadFeed("latest", 8),
     threadFeed("hot", 8),
     threadFeed("trending", 8),
@@ -46,7 +40,6 @@ async function homeData(viewer: User | null = null) {
   ]);
   return {
     articles: { today: today.rows, week: week.rows, newest: newest.rows, random: random.rows, watching },
-    tags,
     feeds: { latest, hot, trending },
     stats,
   };

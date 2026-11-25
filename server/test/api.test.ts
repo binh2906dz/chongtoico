@@ -279,7 +279,7 @@ describe("Chống Tối Cổ API", () => {
       method: "POST",
       url: "/api/admin/articles",
       headers: { ...H, cookie: admin },
-      payload: { title: "Phong cảnh", visibility: "members", isHot: true, tags: "cảnh, đẹp" },
+      payload: { title: "Phong cảnh", visibility: "members", isHot: true },
     });
     assert.equal(res.statusCode, 200, res.body);
     const articleId = res.json().article.id;
@@ -377,7 +377,7 @@ describe("Chống Tối Cổ API", () => {
       method: "POST",
       url: "/api/admin/articles",
       headers: { ...H, cookie: admin },
-      payload: { title: "Sẽ xoá", tags: "xoa" },
+      payload: { title: "Sẽ xoá" },
     });
     assert.equal(res.statusCode, 200, res.body);
     const id = res.json().article.id;

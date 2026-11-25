@@ -632,4 +632,28 @@ Mẫu mỗi mục:
 - **CHƯA chạy**: trên VPS với PostgreSQL thật (migration DROP chưa kiểm trên PG thật); chưa deploy.
 - **File**: `server/drizzle/0009_drop_article_categories.sql`, `server/drizzle/meta/_journal.json`, `server/src/db/schema.ts`, `server/src/routes/articles.ts`, `server/src/routes/members.ts`, `server/src/routes/admin.ts`, `server/src/seed.ts`, `server/scripts/import-from-old-web.mjs`, `server/scripts/import-all-from-old-web.mjs`, `server/scripts/smoke-admin.mjs`, `frontend/src/pages/Articles.tsx`, `frontend/src/pages/Home.tsx`, `frontend/src/pages/ArticlePage.tsx`, `frontend/src/components/ArticleCard.tsx`, `frontend/src/components/Hero.tsx`, `frontend/src/pages/admin/AdminArticles.tsx`, `frontend/src/pages/admin/Admin.tsx`, `frontend/src/types.ts`, `frontend/src/App.tsx`, `LUAT_VA_BOI_CANH.md`, `huongdan.txt`.
 
+## 2026-11-26 — Xóa hoàn toàn tính năng thẻ bài viết (tags)
+
+- **Yêu cầu**: chủ dự án xem khối "🏷️ Thẻ phổ biến" ở trang chủ (hiện #review2, #ẩm thực2, #khám phá2, #du lịch2, #thể thao2, #bóng đá2, #vui2, #hài hước2, #mẹo1, #công nghệ1) và yêu cầu xóa.
+- **Chốt phạm vi** (hỏi chủ dự án): chủ dự án chọn **xóa TOÀN BỘ tính năng thẻ** — không chỉ khối ở trang chủ mà cả: trang `/bai-viet/tag`, nút "🏷️ Thẻ", thẻ ở từng bài viết, ô nhập thẻ trong form đăng bài, **và dữ liệu thẻ trong CSDL**.
+- **CSDL** — migration `server/drizzle/0010_drop_article_tags.sql`: `DROP TABLE "article_tag_links"` → `DROP TABLE "article_tags"` (index `article_tags_slug_uq` + `article_tags_count_idx` tự mất theo bảng). Thêm entry idx 10 vào `drizzle/meta/_journal.json` (B64). Bài viết **giữ nguyên**.
+- **Server** (`server/src/routes/articles.ts`):
+  - Xóa `tagSlug()`, `parseTagNames()`, `setArticleTags()`, `articleTagsOf()`, `findTag()`; bỏ `tagId` khỏi `listArticles` options + điều kiện where; bỏ `tags` khỏi `articleBody` zod + `PATCH /api/admin/articles/:id`.
+  - **Xóa hẳn route** `GET /api/articles/tags`; bỏ `tag` khỏi query zod + response của `GET /api/articles`.
+  - `GET /api/articles/:id` không còn trả `tags`; `GET /api/admin/articles/:id` không còn trả `tags`.
+  - **Bài liên quan**: trước lấy "cùng thẻ" (lần trước mới đổi từ "cùng thể loại") ⇒ nay **ngẫu nhiên thuần** 12 bài.
+  - `server/src/routes/members.ts`: `homeData()` bỏ truy vấn `articleTags` + bỏ `tags` khỏi response `/api/home`.
+  - `server/src/routes/admin.ts`: route "tính lại bộ đếm" bỏ lệnh `update article_tags …`.
+- **Frontend**:
+  - Xóa hẳn component `TagCloud` + `ArticleTags` (`pages/Articles.tsx`); xóa khối "🏷️ Thẻ phổ biến" ở `pages/Home.tsx`; bỏ trường `tags` khỏi `HomeData`.
+  - `pages/Articles.tsx` bỏ `useParams` (`tag`), bỏ `tag` khỏi query + response type + tiêu đề, bỏ nút "🏷️ Thẻ".
+  - `pages/ArticlePage.tsx` bỏ dòng thẻ chip ở đầu bài.
+  - `pages/admin/AdminArticles.tsx` bỏ ô "Thẻ (cách nhau bằng dấu phẩy, tối đa 15)" + state + payload + trường `tags` trong interface `AdminArticle`.
+  - `types.ts` bỏ interface `ArticleTag` + trường `tags` trong `ArticleDetail`.
+  - `App.tsx`: route `bai-viet/tag` và `bai-viet/tag/:tag` → `<Navigate to="/bai-viet" replace />` (link cũ không chết).
+- **Script/test**: `smoke.mjs` bỏ 2 dòng kiểm tra `/api/articles/tags` + `/api/articles/categories` (route đã bị xóa từ lần trước nhưng script chưa cập nhật); `smoke-admin.mjs` + 2 script import bỏ `tags` khỏi payload; `server/test/api.test.ts` bỏ `tags` khỏi 2 payload.
+- **Đã kiểm tra**: `npx tsc --noEmit` server OK; `npm test` server **61/61 pass**; `tsc -b` + `vite build` frontend OK; migration chạy thật trên PGlite — `information_schema` xác nhận `article_tags` **và** `article_tag_links` **không còn**; đếm lại CSDL: **1.553 bài viết** nguyên vẹn (1.537 nút Xem ngay, 1.542 nút Kênh VIP, 1.062 ảnh, 583 video); API `GET /api/articles/166` không còn trường `tags`, 12 bài liên quan; `/api/home` không còn `tags`; xem trình duyệt — trang chủ không còn khối "Thẻ phổ biến", trang `/bai-viet` không còn nút "🏷️ Thẻ", form đăng bài không còn ô Thẻ, link cũ `/bai-viet/tag/review` → redirect về `/bai-viet`.
+- **CHƯA chạy**: trên VPS với PostgreSQL thật; chưa deploy.
+- **File**: `server/drizzle/0010_drop_article_tags.sql`, `server/drizzle/meta/_journal.json`, `server/src/db/schema.ts`, `server/src/routes/articles.ts`, `server/src/routes/members.ts`, `server/src/routes/admin.ts`, `server/scripts/smoke.mjs`, `server/scripts/smoke-admin.mjs`, `server/scripts/import-from-old-web.mjs`, `server/scripts/import-all-from-old-web.mjs`, `server/test/api.test.ts`, `frontend/src/pages/Articles.tsx`, `frontend/src/pages/Home.tsx`, `frontend/src/pages/ArticlePage.tsx`, `frontend/src/pages/admin/AdminArticles.tsx`, `frontend/src/types.ts`, `frontend/src/App.tsx`, `LUAT_VA_BOI_CANH.md`, `huongdan.txt`.
+
 

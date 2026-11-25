@@ -29,7 +29,6 @@ interface AdminArticle {
   coverType: string;
   coverImageKey: string | null;
   coverDuration: number;
-  tags: string;
   images: { id: number; fileKey: string; url: string; thumbUrl: string }[];
   videos: AdminMedia[];
 }
@@ -51,7 +50,6 @@ function UploadForm({ onDone, onCreated }: { onDone: () => void; onCreated: (id:
   const [description, setDescription] = useState("");
   const [watchLink, setWatchLink] = useState("");
   const [vipLink, setVipLink] = useState("");
-  const [tags, setTags] = useState("");
   const [membersOnly, setMembersOnly] = useState(false);
   const [isHot, setIsHot] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -69,7 +67,6 @@ function UploadForm({ onDone, onCreated }: { onDone: () => void; onCreated: (id:
           description,
           watchLink: watchLink.trim(),
           vipLink: vipLink.trim(),
-          tags,
           visibility: membersOnly ? "members" : "public",
           isHot,
         },
@@ -79,7 +76,6 @@ function UploadForm({ onDone, onCreated }: { onDone: () => void; onCreated: (id:
       setDescription("");
       setWatchLink("");
       setVipLink("");
-      setTags("");
       setMembersOnly(false);
       setIsHot(false);
       onDone();
@@ -139,21 +135,15 @@ function UploadForm({ onDone, onCreated }: { onDone: () => void; onCreated: (id:
           <p className="mt-1 text-xs text-muted">Bỏ trống = không hiện nút. Chỉ nhận link http/https.</p>
         </div>
       </div>
-      <div className="grid gap-3 md:grid-cols-3">
-        <div className="md:col-span-2">
-          <label className="label">Thẻ (cách nhau bằng dấu phẩy, tối đa 15)</label>
-          <input className="input" maxLength={1000} placeholder="ví dụ: hài hước, mèo, tổng hợp" value={tags} onChange={(e) => setTags(e.target.value)} disabled={busy} />
-        </div>
-        <div className="space-y-2 self-end pb-2">
-          <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={membersOnly} onChange={(e) => setMembersOnly(e.target.checked)} disabled={busy} />
-            🔒 Chỉ thành viên đã đăng nhập được xem
-          </label>
-          <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={isHot} onChange={(e) => setIsHot(e.target.checked)} disabled={busy} />
-            🔥 Đánh dấu HOT
-          </label>
-        </div>
+      <div className="space-y-2">
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={membersOnly} onChange={(e) => setMembersOnly(e.target.checked)} disabled={busy} />
+          🔒 Chỉ thành viên đã đăng nhập được xem
+        </label>
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={isHot} onChange={(e) => setIsHot(e.target.checked)} disabled={busy} />
+          🔥 Đánh dấu HOT
+        </label>
       </div>
       <ErrorBox message={error} />
       <button className="btn-primary" disabled={busy || title.trim().length < 2}>

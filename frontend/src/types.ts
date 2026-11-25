@@ -117,13 +117,6 @@ export interface ArticleItem {
   recentViews?: number;
 }
 
-export interface ArticleTag {
-  id: number;
-  slug: string;
-  name: string;
-  articleCount?: number;
-}
-
 export interface ArticleMedia {
   id: number;
   type: "image" | "video";
@@ -143,7 +136,6 @@ export interface ArticleDetail extends ArticleItem {
   vipLink: string | null;
   locked: boolean;
   author: Author;
-  tags: ArticleTag[];
   images: ArticleMedia[];
   videos: ArticleMedia[];
 }

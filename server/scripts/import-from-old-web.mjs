@@ -258,7 +258,6 @@ for (const [index, p] of posts.entries()) {
     description,
     watchLink,
     vipLink,
-    tags: "",
     visibility: "public",
     isHot: false,
   }), { "content-type": "application/json" });

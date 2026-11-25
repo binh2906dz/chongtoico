@@ -1,11 +1,11 @@
 import { useState, type FormEvent } from "react";
-import { Link, useParams, useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { isAdmin, useAuth } from "../auth";
 import { ErrorBox, Pagination, Tabs, VideoGridSkeleton } from "../components/ui";
 import { ArticleGrid } from "../components/ArticleCard";
 import { formatNumber } from "../format";
 import { useFetch } from "../useFetch";
-import type { ArticleItem, ArticleTag } from "../types";
+import type { ArticleItem } from "../types";
 
 export const SORT_TABS = [
   { id: "hom-nay", api: "today", label: "Xem nhiều hôm nay" },
@@ -17,56 +17,8 @@ export const SORT_TABS = [
 ] as const;
 type SortId = (typeof SORT_TABS)[number]["id"];
 
-export function TagCloud({ tags, limit }: { tags: ArticleTag[]; limit?: number }) {
-  if (!tags.length) return null;
-  const max = Math.max(...tags.map((t) => t.articleCount ?? 1));
-  return (
-    <div className="flex flex-wrap gap-1.5">
-      {tags.slice(0, limit).map((t) => {
-        const weight = (t.articleCount ?? 1) / max;
-        return (
-          <Link
-            key={t.id}
-            to={`/bai-viet/tag/${t.slug}`}
-            className="rounded-full border border-line bg-panel px-3 py-1 text-slate-300 transition hover:border-brand/60 hover:bg-brand/10 hover:text-brand"
-            style={{ fontSize: `${0.75 + weight * 0.35}rem` }}
-          >
-            #{t.name}
-            {t.articleCount ? <span className="ml-1 text-[10px] text-muted">{t.articleCount}</span> : null}
-          </Link>
-        );
-      })}
-    </div>
-  );
-}
-
-export function ArticleTags() {
-  const { data, error, loading } = useFetch<{ tags: ArticleTag[] }>("/api/articles/tags?limit=300");
-  return (
-    <div className="space-y-4">
-      <h1 className="text-2xl font-black">🏷️ Thẻ bài viết</h1>
-      {loading && !data ? (
-        <div className="panel flex flex-wrap gap-2 p-4">
-          {Array.from({ length: 24 }, (_, i) => (
-            <div key={i} className="skeleton h-7 w-20 rounded-full" />
-          ))}
-        </div>
-      ) : error ? (
-        <ErrorBox message={error} />
-      ) : data?.tags.length ? (
-        <div className="panel p-4">
-          <TagCloud tags={data.tags} />
-        </div>
-      ) : (
-        <div className="panel p-8 text-center text-sm text-muted">Chưa có thẻ nào.</div>
-      )}
-    </div>
-  );
-}
-
 export default function Articles() {
   const { user } = useAuth();
-  const { tag: tagSlug } = useParams();
   const [params, setParams] = useSearchParams();
   const sortId = (SORT_TABS.find((t) => t.id === params.get("sap-xep"))?.id ?? "moi") as SortId;
   const sort = SORT_TABS.find((t) => t.id === sortId)!.api;
@@ -75,12 +27,10 @@ export default function Articles() {
   const [draft, setDraft] = useState(q);
 
   const query = new URLSearchParams({ sort, page: String(page) });
-  if (tagSlug) query.set("tag", tagSlug);
   if (q) query.set("q", q);
   const [shuffle, setShuffle] = useState(0);
   const { data, error, loading } = useFetch<{
     articles: ArticleItem[];
-    tag: ArticleTag | null;
     page: number;
     totalPages: number;
     total: number;
@@ -101,11 +51,7 @@ export default function Articles() {
     update({ q: draft.trim() || null, trang: null });
   }
 
-  const title = q
-    ? `Kết quả tìm "${q}"`
-    : data?.tag
-      ? `Thẻ: #${data.tag.name}`
-      : "Bài viết";
+  const title = q ? `Kết quả tìm "${q}"` : "Bài viết";
 
   return (
     <div className="space-y-4">
@@ -134,9 +80,6 @@ export default function Articles() {
           </Link>
           <Link to="/bai-viet/da-xem" className="btn-ghost px-3 py-1.5">
             🕘 Đã xem
-          </Link>
-          <Link to="/bai-viet/tag" className="btn-ghost px-3 py-1.5">
-            🏷️ Thẻ
           </Link>
         </div>
       </div>
