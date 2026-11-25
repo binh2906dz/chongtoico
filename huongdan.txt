@@ -504,6 +504,8 @@ Cài dịch vụ bot Telegram (ngoài Docker — cần token + kết nối Teleg
 7) LỊCH SỬ GIT (oneline — cập nhật sau mỗi lần push)
 --------------------------------------------------------------------------------
 (xem `git log --oneline`; các commit chính)
+a64a299 fix(bot): dung bot.start() de bot nhan message (init() chi goi getMe, khong poll)
+0c12ed7 fix(articles): doi domain nut 'Xem ngay' anonlink.io -> anonlink.co (chi du lieu hien co)
 80662a7 fix(scripts): dung git core.autocrlf=input thay cho sed -i (tranh conflict khi pull)
 017142d fix(scripts): chuan hoa LF cho .sh sau moi lan git pull (B69/B74)
 0c33753 feat(deploy): repo cong khai -> VPS dung git clone/pull thay cho scp
@@ -1057,6 +1059,31 @@ b22c5f7 feat: scaffold new platform (đã thay thế — xoá ở bản Node.js)
     ngẫu nhiên trả anonlink.co (0 anonlink.io); phần sau domain giữ nguyên
     (FKUMY, zhU8v, pTlz7fHO, Qg4t...); xem trình duyệt bài 1250 — nút
     "▶ Xem ngay" + "👑 Kênh VIP" hiển thị đúng.
+
+[2026-11-26] SỬA LỖI BOT KHÔNG PHẢN HỒI /start (thiếu bot.start()).
+  - Triệu chứng: bấm /start không phản hồi; tính năng liên kết Telegram không
+    hoạt động. Service vẫn "active", 27 bot vẫn in "đã sẵn sàng", log sạch.
+  - Phát hiện 1: 27/27 bot còn webhook của HỆ THỐNG CŨ trỏ tới
+    https://ngeyhsvge683874.online/webhook/<token>. Hệ thống mới KHÔNG có route
+    /webhook (test -> 404) => Telegram gửi update vào hư không, long polling bị
+    chặn (getUpdates tra 409 Conflict). ĐÃ XOÁ webhook cả 27 bot.
+  - NGUYÊN NHÂN GỐC: bot/src/index.ts chi goi client.init(). grammY:
+    init() CHI goi getMe de kiem tra token, KHONG mo ket noi nhan update;
+    bot.start() moi bat dau long polling (va tu goi init() ben trong + tu xoa
+    webhook). => bot "khoi dong thanh cong" nhung KHONG BAO GIO nhan message.
+  - Sửa: await client.init() -> void client.start({ onStart, drop_pending_updates:
+    false }).catch(...). KHONG await vi promise cua start() chi resolve khi polling
+    dung -> await se chan ca vong lap, cac bot sau khong bao gio chay.
+  - Deploy VPS: git pull --ff-only -> cd bot && npm ci && npm run build ->
+    systemctl restart chongtoico-bot.
+  - Đã kiểm tra: log moi in "Bot <id> đã sẵn sàng (@username)" (onStart = polling
+    thuc su chay); pending_update_count = 0 cho moi bot (truoc 3 bot ket 6 update);
+    so ket noi HTTPS cua bot 55 (truoc 1) => 27 bot poll song song; /api/bot/link
+    goi 3 lan, /api/bot/start 2 lan; 2 link code da dung; telegram_links co 1 ket
+    qua; user Vuhalinh12000 lien ket thanh cong 21:07. npm test bot 45/45.
+  - BAI HOC (LUAT muc 9): B77 init() != start(); B78 dung await start();
+    B79 xoa webhook cu khi chuyen he thong; B80 token trong .env co tien to
+    "id:" nen can cat moi kiem tra bang getMe.
 
 ================================================================================
 Hết — lưu ý: không lưu mật khẩu / token thật trong file này.

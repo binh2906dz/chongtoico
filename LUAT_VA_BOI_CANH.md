@@ -211,6 +211,10 @@ Mỗi dòng: **lỗi / tình huống** → **cách tránh**.
 - **B74 — Sửa link/domain trong dữ liệu cũ = `UPDATE` một lần, KHÔNG viết migration hay utility chạy mỗi lần deploy.** Yêu cầu "chỉ sửa ở hiện tại, không tự thêm tính năng này cho tương lai" nghĩa là **sửa dữ liệu**, không phải xây hạ tầng. → Chỉ tạo script dùng một lần (đã xoá sau khi chạy) hoặc chạy SQL trực tiếp; đừng đưa logic đổi domain vào code.
 - **B75 — Link nút bấm nằm ở cột riêng (`articles.watch_link`), KHÔNG nằm trong `description`.** Quét `description` chỉ ra 7 bài có cụm text quảng cáo "ANH EM CHỌN anonlink.io ĐỂ MUA VỚI GIÁ RẺ HƠN NHA" — đó là **text, không có phần sau domain** để đổi. → **Tra schema trước khi UPDATE**; sửa nhầm cột text sinh ra thay đổi vô nghĩa và bẻ nội dung quảng cáo.
 - **B76 — Trước khi `UPDATE` hàng loạt trên production: `pg_dump` backup, rồi đối chiếu DB ↔ API sau khi sửa.** → Quy trình an toàn: (1) `pg_dump` ra file nén ngoài container, (2) `UPDATE` có `WHERE` cụ thể, (3) đếm lại trước/sau, (4) lấy N mẫu ngẫu nhiên so DB với API để chắc chắn **chỉ đổi tên miền, phần sau giữ nguyên**.
+- **B77 — grammY: `bot.init()` KHÔNG phải là bắt đầu nhận message. Phải dùng `bot.start()`.** `init()` chỉ gọi `getMe` để kiểm tra token; `start()` mới mở long polling (và tự gọi `init()` bên trong + tự xoá webhook). → Bot có thể in log "đã sẵn sàng" mà **không bao giờ nhận message** nào. Dấu hiệu nhận biết: `getUpdates` báo `409 Conflict: can't use getUpdates method while webhook is active` HOẶC `pending_update_count` đứng yên > 0, trong khi log không có lỗi.
+- **B78 — `await bot.start()` trong vòng lặp sẽ chặn cả vòng lặp.** Promise của `start()` chỉ resolve khi polling dừng ⇒ `await` sẽ khiến các bot sau **không bao giờ khởi động**. → Gọi không chặn: `void bot.start({ onStart }).catch(...)`.
+- **B79 — Khi chuyển hệ thống, PHẢI xoá webhook cũ của mọi bot.** Hệ thống cũ (FastAPI) đã đăng ký webhook `/webhook/<token>`; Telegram cứ gửi update về đó ⇒ hệ thống mới trả 404, long polling không bao giờ có update. → `POST https://api.telegram.org/bot<token>/deleteWebhook` cho từng bot (`bot.start()` cũng tự làm việc này, nhưng phải xoá TRƯỚC khi khởi động nếu còn nhiều bot).
+- **B80 — Token bot trong `.env` có dạng `id:token` (id = uuid trong DB), KHÔNG phải token Telegram thô.** Token Telegram thô = `<bot_id>:<hash>`. Khi kiểm tra bằng `curl https://api.telegram.org/bot<token>/getMe` phải **cắt bỏ phần `id:` đầu tiên**, nếu không sẽ luôn trả 404 và tưởng token hỏng.
 
 ## 10. Nhật ký làm việc
 
@@ -803,3 +807,27 @@ Mẫu mỗi mục:
   - **B75 — Link nút bấm nằm ở cột riêng (`watch_link`), không nằm trong `description`.** Phải tra schema trước khi UPDATE; quét `description` chỉ tìm ra text quảng cáo, sửa chỗ đó là sửa nhầm.
   - **B76 — Trước khi UPDATE dữ liệu hàng loạt trên production: `pg_dump` backup, rồi đối chiếu DB ↔ API** (60 mẫu ngẫu nhiên) để chắc chắn không đổi nhầm phần sau domain.
 - **File**: `server/scripts/fix-watch-link-domain.mjs` (mới), `huongdan.txt`, `LUAT_VA_BOI_CANH.md`.
+
+## 2026-11-26 — SỬA LỖI BOT KHÔNG PHẢN HỒI /start (thiếu `bot.start()`)
+
+- **Triệu chứng**: "các bot khi ấn start không phản hồi" — tính năng liên kết Telegram không hoạt động.
+- **Điều tra** (trên VPS `103.63.30.108`):
+  - `chongtoico-bot` systemd **active**, 27 bot đều in log "đã sẵn sàng", không có lỗi nào trong log.
+  - `/api/bot/register` được gọi 27 lần ⇒ token hợp lệ, bot đã đăng ký với web.
+  - `getWebhookInfo` trả về `"url":"https://ngeyhsvge683874.online/webhook/<token>"` cho **27/27 bot** ⇒ webhook do **hệ thống cũ (FastAPI)** đăng ký từ trước, **chưa được xoá khi chuyển hệ thống**.
+  - `getUpdates` trả `409 Conflict: can't use getUpdates method while webhook is active` ⇒ long polling **bị chặn hoàn toàn**.
+  - Hệ thống mới **không có** route `/webhook` ⇒ Telegram gửi update vào hư không (test `POST /webhook/<token>` → **404**).
+  - 3 bot có `pending_update_count` đứng yên (2/1/3) ⇒ có người đã bấm `/start` nhưng bot không xử lý được.
+- **NGUYÊN NHÂN GỐC (quan trọng)**: trong `bot/src/index.ts` chỉ gọi `client.init()`. grammY: `bot.init()` **chỉ gọi `getMe`** để kiểm tra token, **KHÔNG mở kết nối nhận update**; `bot.start()` mới bắt đầu long polling (và tự gọi `init()` bên trong + tự xoá webhook). ⇒ Bot "khởi động thành công" nhưng **không bao giờ nhận message nào**.
+- **Sửa**:
+  1. `bot/src/index.ts`: `await client.init()` → `void client.start({ onStart, drop_pending_updates: false }).catch(...)`.
+     **KHÔNG `await`** vì promise của `start()` chỉ resolve khi polling dừng — `await` sẽ chặn cả vòng lặp, các bot sau không bao giờ chạy (B78).
+  2. Xoá webhook cũ của cả 27 bot trên Telegram: `POST /bot<token>/deleteWebhook`.
+- **Đã kiểm tra sau khi deploy** (`git pull` + `npm run build` + `systemctl restart chongtoico-bot`):
+  - Log mới in theo mẫu `Bot <id> đã sẵn sàng (@username)` ⇒ là `onStart`, tức long polling **thực sự chạy**.
+  - `pending_update_count`: **0** cho mọi bot (trước: 3 bot kẹt 6 update).
+  - Số kết nối HTTPS của bot: **55** (trước: **1**) ⇒ 27 bot đều poll song song.
+  - `POST /api/bot/link` × 3 và `POST /api/bot/start` × 2 được gọi; **2 link code đã dùng**, `telegram_links` có 1 kết quả liên kết; user `Vuhalinh12000` liên kết thành công lúc 21:07.
+  - `npm test` bot: 45/45 pass; `tsc -p . --noEmit`: sạch.
+- **Bài học**: xem mục 9 — B77 (init ≠ start), B78 (đừng await start), B79 (xoá webhook khi chuyển hệ thống), B80 (token trong `.env` có tiền tố `id:`).
+- **File**: `bot/src/index.ts`, `LUAT_VA_BOI_CANH.md`, `huongdan.txt`.
