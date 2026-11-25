@@ -69,7 +69,17 @@ function sqlString(v) {
   if (v instanceof Date) return `'${v.toISOString()}'`;
   if (Buffer.isBuffer(v)) return `'\\x${v.toString("hex")}'`;
   if (Array.isArray(v)) return `ARRAY[${v.map(sqlString).join(",")}]`;
-  if (typeof v === "object") return `'${String(v).replace(/'/g, "''")}'::jsonb`;
+  // JSON/JSONB: dùng JSON.stringify (KHÔNG dùng String(v) — sẽ ra "[object Object]").
+  if (typeof v === "object") {
+    let s;
+    try {
+      s = JSON.stringify(v);
+    } catch {
+      s = JSON.stringify(String(v));
+    }
+    if (s === undefined) return "NULL";
+    return `'${s.replace(/'/g, "''")}'::jsonb`;
+  }
   return `'${String(v).replace(/'/g, "''")}'`;
 }
 
@@ -140,6 +150,32 @@ push("SET session_replication_role = 'origin';");
 push("");
 push("COMMIT;");
 push("");
+
+// Đặt lại sequence về đúng giá trị lớn nhất đã nạp.
+// Nếu không, lần INSERT tiếp theo sẽ đụng khoá chính (duplicate key).
+push("-- Đặt lại sequence theo max(id) của từng bảng");
+push("DO $$");
+push("DECLARE");
+push("  r RECORD;");
+push("  m BIGINT;");
+push("BEGIN");
+push("  FOR r IN");
+push("    SELECT c.relname AS seq, tc.relname AS tbl");
+push("    FROM pg_class c");
+push("    JOIN pg_namespace n ON n.oid = c.relnamespace");
+push("    JOIN pg_depend d ON d.objid = c.oid AND d.deptype = 'a'");
+push("    JOIN pg_class tc ON tc.oid = d.refobjid");
+push("    JOIN pg_namespace tn ON tn.oid = tc.relnamespace");
+push("    JOIN pg_attribute a ON a.attrelid = tc.oid AND a.attnum = d.refobjsubid");
+push("    WHERE c.relkind = 'S' AND n.nspname = 'public' AND tn.nspname = 'public'");
+push("      AND a.attname = 'id' AND a.attidentity = ''");
+push("  LOOP");
+push("    EXECUTE format('SELECT COALESCE(max(id), 0) FROM %I', r.tbl) INTO m;");
+push("    EXECUTE format('SELECT setval(%L, GREATEST(%s, 1), true)', r.seq, m);");
+push("  END LOOP;");
+push("END $$;");
+push("");
+
 push(`-- TỔNG: ${totalRows} dòng.`);
 
 await db.close();

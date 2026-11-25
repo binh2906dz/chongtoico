@@ -9,15 +9,22 @@
 #
 # Script làm (theo đúng thứ tự, dừng ngay nếu bước nào lỗi):
 #   1. Kiểm tra kết nối SSH + Docker trên VPS.
-#   2. Cài / cập nhật code trên VPS (/opt/chongtoico).
+#   2. Đóng gói và tải code lên VPS (repo là PRIVATE nên không git clone được;
+#      script nén thư mục hiện tại, bỏ .git/node_modules/data, rồi scp).
 #   3. Tạo .env nếu chưa có (hỏi mật khẩu admin) — KHÔNG ghi đè .env cũ.
 #   4. Build + khởi động (migrations tự chạy) -> DB rỗng.
 #   5. Nạp file SQL (dữ liệu bài viết, bot, người dùng Telegram) vào PostgreSQL.
+#      File dump đã kèm đoạn setval để sequence khớp max(id).
 #   6. Nạp media (ảnh + video) vào volume uploads.
 #   7. Kiểm tra sức khoẻ + Nginx.
 #
 # CẢNH BÁO: bước 5-6 GHI ĐÈ dữ liệu đang có trên VPS. Script có bản sao lưu
 # trước khi ghi đè (bước 4b) để có thể quay lại.
+#
+# LƯU Ý QUAN TRỌNG — khoá mã hoá token bot:
+#   .env trên VPS phải có TOKEN_ENCRYPTION_KEY giống máy dev, nếu không bot sẽ
+#   không giải mã được token trong CSDL. Script tạo .env mới đã đặt sẵn khoá
+#   đó; nếu .env đã tồn tại thì hãy tự kiểm tra dòng này.
 set -euo pipefail
 
 TARGET="${1:?Dùng: bash scripts/deploy-with-data.sh <user@host> [domain]}"
@@ -45,8 +52,17 @@ echo "==> 1/7. Kiểm tra kết nối"
 ssh -o BatchMode=yes "$TARGET" 'echo "SSH OK"; docker --version; docker compose version' >/dev/null
 echo "    SSH + Docker OK"
 
-echo "==> 2/7. Code trên VPS"
-ssh "$TARGET" "if [ -d '$APP_DIR/.git' ]; then git -C '$APP_DIR' pull --ff-only; else git clone '$REPO_URL' '$APP_DIR'; fi"
+echo "==> 2/7. Code trên VPS (nén + scp — repo private nên không git clone được)"
+SRC_TGZ="$(mktemp -t chongtoico-src-XXXXXX.tar.gz)"
+tar -czf "$SRC_TGZ" \
+  --exclude=.git --exclude=node_modules --exclude=server/data \
+  --exclude=server/dist --exclude=frontend/dist --exclude=import-tmp --exclude=.cursor \
+  -C "$SRC_DIR" .
+echo "    ($(du -h "$SRC_TGZ" | cut -f1))"
+scp "$SRC_TGZ" "$TARGET:/tmp/chongtoico-src.tar.gz"
+ssh "$TARGET" "mkdir -p '$APP_DIR' && tar -xzf /tmp/chongtoico-src.tar.gz -C '$APP_DIR' && rm -f /tmp/chongtoico-src.tar.gz"
+rm -f "$SRC_TGZ"
+echo "    code đã lên VPS"
 
 echo "==> 3/7. File .env"
 ssh -t "$TARGET" "cd '$APP_DIR' && if [ -f .env ]; then echo '    .env đã có, giữ nguyên'; else
@@ -82,6 +98,14 @@ ssh "$TARGET" "cd '$APP_DIR' && docker compose exec -T db psql -U chongtoico -d 
 echo "==> 6/7. Nạp media (ảnh + video) vào volume uploads"
 scp "$MEDIA_FILE" "$TARGET:/tmp/chongtoico-uploads.tar.gz"
 ssh "$TARGET" "cd '$APP_DIR' && docker compose exec -T app tar -C /data/uploads -xzf - < /tmp/chongtoico-uploads.tar.gz && rm -f /tmp/chongtoico-uploads.tar.gz && echo '    Da nap media'"
+
+echo "==> 6b. Giải mã token bot từ CSDL và ghi vào .env"
+# Token trong CSDL mã hoá AES-256-GCM (scrypt + khoá TOKEN_ENCRYPTION_KEY).
+# Bot service cần token dạng rõ "id:token,id:token" trong TELEGRAM_BOT_TOKENS.
+ssh "$TARGET" "cd '$APP_DIR' && bash scripts/export-bot-tokens.sh" || echo "    (chua co bot token — bo qua, bot se khong chay)"
+
+echo "==> 6c. Cai dich vu bot Telegram (systemd)"
+ssh "$TARGET" "cd '$APP_DIR' && bash scripts/install-bot-service.sh" || echo "    (chua cai duoc bot service)"
 
 echo "==> 7/7. Kiểm tra"
 ssh "$TARGET" "cd '$APP_DIR' && APP_PORT=\$(grep -E '^APP_PORT=' .env | cut -d= -f2- || echo 8090); for i in \$(seq 1 60); do curl -fsS \"http://127.0.0.1:\$APP_PORT/healthz\" >/dev/null 2>&1 && break; sleep 2; done; curl -fsS \"http://127.0.0.1:\$APP_PORT/healthz\"; echo; docker compose ps"
