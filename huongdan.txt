@@ -485,6 +485,8 @@ Cài dịch vụ bot Telegram (ngoài Docker — cần token + kết nối Teleg
 7) LỊCH SỬ GIT (oneline — cập nhật sau mỗi lần push)
 --------------------------------------------------------------------------------
 (xem `git log --oneline`; các commit chính)
+7c4b399 feat(articles): xoa hoan toan tinh nang 'uu tien' (ghim bai)
+b22a390 feat(articles): nut 'uu tien' (ghim bai len dau trang chu) + cache bo bai ngau nhien 5 phut
 26032d8 docs: cap nhat huongdan muc 7 (git log)
 0da0dbe feat(articles): xoa hoan toan tinh nang the bai viet (tags)
 725846f chore(articles): xoa 9 bai viet test seed + don file media rac
