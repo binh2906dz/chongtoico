@@ -69,7 +69,6 @@ const cardColumns = {
   commentCount: articles.commentCount,
   visibility: articles.visibility,
   isHot: articles.isHot,
-  isPriority: articles.isPriority,
   createdAt: articles.createdAt,
 };
 
@@ -81,7 +80,6 @@ type CardRow = {
   dislikeCount: number;
   visibility: string;
   isHot?: boolean;
-  isPriority?: boolean;
 } & Record<string, unknown>;
 
 /** Most viewed articles of the last 7 days (at least HOT_MIN_VIEWS), shown with a HOT badge; refreshed every 5 minutes. */
@@ -133,8 +131,6 @@ function mapCard<T extends CardRow>(row: T) {
     membersOnly: visibility === "members",
     // Bài được admin đánh dấu HOT luôn nổi bật, kể cả khi chưa đủ lượt xem.
     hot: row.isHot === true || hotIds.has(row.id),
-    // Bài ghim "ưu tiên": hiện badge ⭐ và luôn xếp trước các bài khác.
-    priority: row.isPriority === true,
     rating: votes ? Math.round((row.likeCount * 100) / votes) : null,
   };
 }
@@ -182,7 +178,7 @@ export async function listArticles(opts: {
       .from(articles)
       .leftJoin(recent, eq(recent.articleId, articles.id))
       .where(where)
-      .orderBy(desc(articles.isPriority), desc(articles.isHot), desc(sql`coalesce(${recent.n}, 0)`), desc(articles.viewCount), desc(articles.id))
+      .orderBy(desc(articles.isHot), desc(sql`coalesce(${recent.n}, 0)`), desc(articles.viewCount), desc(articles.id))
       .limit(opts.limit)
       .offset(offset);
     return { rows: rows.map((r) => hideLockedCover(mapCard(r), opts.viewer ?? null)), where };
@@ -206,7 +202,6 @@ export async function listArticles(opts: {
       .leftJoin(week, eq(week.articleId, articles.id))
       .where(where)
       .orderBy(
-        desc(articles.isPriority),
         desc(sql`coalesce((${week.l} + 1.0) / (${week.l} + ${week.d} + 2), 0)`),
         desc(sql`coalesce(${week.l}, 0)`),
         desc(sql`(${articles.likeCount} + 1.0) / (${articles.likeCount} + ${articles.dislikeCount} + 2)`),
@@ -220,7 +215,6 @@ export async function listArticles(opts: {
   let order: SQL[];
   if (opts.sort === "best") {
     order = [
-      desc(articles.isPriority),
       desc(sql`(${articles.likeCount} + 1.0) / (${articles.likeCount} + ${articles.dislikeCount} + 2)`),
       desc(articles.likeCount),
       desc(articles.viewCount),
@@ -229,7 +223,7 @@ export async function listArticles(opts: {
   } else if (opts.sort === "random") {
     order = [sql`random()`];
   } else {
-    order = [desc(articles.isPriority), desc(articles.createdAt), desc(articles.id)];
+    order = [desc(articles.createdAt), desc(articles.id)];
   }
   const rows = await db
     .select(cardColumns)
@@ -370,20 +364,6 @@ export async function randomArticleIds(limit: number): Promise<number[]> {
   return ids.slice(0, limit);
 }
 
-/**
- * ID các bài được admin ghim "ưu tiên" (is_priority = true).
- * Rất ít bài nên truy vấn trực tiếp, không cần cache.
- */
-export async function priorityArticleIds(limit: number): Promise<number[]> {
-  const rows = await db
-    .select({ id: articles.id })
-    .from(articles)
-    .where(eq(articles.isPriority, true))
-    .orderBy(desc(articles.createdAt))
-    .limit(limit);
-  return rows.map((r) => r.id);
-}
-
 const articleBody = z.object({
   title: z.string().trim().min(2, "Tiêu đề cần ít nhất 2 ký tự.").max(200, "Tiêu đề tối đa 200 ký tự."),
   description: z.string().trim().max(20000, "Nội dung tối đa 20.000 ký tự.").default(""),
@@ -391,7 +371,6 @@ const articleBody = z.object({
   vipLink: linkField,
   visibility: z.enum(VISIBILITIES).default("public"),
   isHot: z.boolean().default(false),
-  isPriority: z.boolean().default(false),
 });
 
 const voteBody = z.object({ value: z.union([z.literal(1), z.literal(-1), z.literal(0)]) });
@@ -868,7 +847,6 @@ export default async function articleRoutes(app: FastifyInstance) {
         vipLink: article.vipLink,
         visibility: article.visibility,
         isHot: article.isHot,
-        isPriority: article.isPriority,
         coverType: article.coverType,
         coverImageKey: article.coverImageKey,
         coverDuration: article.coverDuration,
@@ -895,7 +873,6 @@ export default async function articleRoutes(app: FastifyInstance) {
           vipLink: body.vipLink ?? null,
           visibility: body.visibility,
           isHot: body.isHot,
-          isPriority: body.isPriority,
         })
         .returning({ id: articles.id });
       // Có bài mới -> bộ random và trang chủ phải đổi ngay, không chờ hết cache.
@@ -915,7 +892,6 @@ export default async function articleRoutes(app: FastifyInstance) {
         vipLink: linkField,
         visibility: z.enum(VISIBILITIES).optional(),
         isHot: z.boolean().optional(),
-        isPriority: z.boolean().optional(),
       }),
       req.body,
     );
@@ -923,8 +899,8 @@ export default async function articleRoutes(app: FastifyInstance) {
     if (Object.keys(body).length) await db.update(articles).set(body).where(eq(articles.id, id));
     if (body.visibility === "members") await markMembersOnly(id, true);
     if (body.visibility === "public") await markMembersOnly(id, false);
-    // Đổi cờ ưu tiên/HOT -> trang chủ và bộ random phải cập nhật ngay.
-    if (body.isPriority !== undefined || body.isHot !== undefined) invalidateArticleCaches();
+    // Đổi cờ HOT -> trang chủ và bộ random phải cập nhật ngay.
+    if (body.isHot !== undefined) invalidateArticleCaches();
     return { ok: true };
   });
 

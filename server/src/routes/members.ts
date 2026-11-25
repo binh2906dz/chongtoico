@@ -9,7 +9,7 @@ import { getOnline } from "../realtime.js";
 import { cachedGuestHome as cachedGuestHomeCached } from "../routeCache.js";
 import { followStats } from "./follow.js";
 import { threadFeed } from "./forum.js";
-import { articlesByIds, listArticles, priorityArticleIds, randomArticleIds, watchingNowIds } from "./articles.js";
+import { articlesByIds, listArticles, randomArticleIds, watchingNowIds } from "./articles.js";
 
 export async function forumStats() {
   const [[t], [p], [u], [latest]] = await Promise.all([
@@ -28,14 +28,13 @@ export async function forumStats() {
 }
 
 async function homeData(viewer: User | null = null) {
-  const [today, week, newest, random, priority, watching, latest, hot, trending, stats] = await Promise.all([
+  const [today, week, newest, random, watching, latest, hot, trending, stats] = await Promise.all([
     listArticles({ sort: "today", limit: 8, viewer }),
     listArticles({ sort: "week", limit: 8, viewer }),
     listArticles({ sort: "new", limit: 24, viewer }),
     // Dùng chung cache 5 phút với endpoint /api/articles/random: trang chủ và
     // khối random luôn hiện CÙNG một bộ bài, và chỉ có 1 truy vấn DB / 5 phút.
     articlesByIds(await randomArticleIds(8), viewer),
-    articlesByIds(await priorityArticleIds(8), viewer),
     articlesByIds(watchingNowIds(8), viewer),
     threadFeed("latest", 8),
     threadFeed("hot", 8),
@@ -43,7 +42,7 @@ async function homeData(viewer: User | null = null) {
     forumStats(),
   ]);
   return {
-    articles: { today: today.rows, week: week.rows, newest: newest.rows, random, priority, watching },
+    articles: { today: today.rows, week: week.rows, newest: newest.rows, random, watching },
     feeds: { latest, hot, trending },
     stats,
   };

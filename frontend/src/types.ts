@@ -112,8 +112,6 @@ export interface ArticleItem {
   rating: number | null;
   membersOnly: boolean;
   hot?: boolean;
-  /** Bài được admin ghim "ưu tiên": xếp lên đầu và hiện badge ⭐. */
-  priority?: boolean;
   createdAt: string;
   viewedAt?: string;
   recentViews?: number;

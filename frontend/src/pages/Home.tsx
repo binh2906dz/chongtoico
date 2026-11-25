@@ -18,8 +18,6 @@ interface HomeData {
     newest: ArticleItem[];
     random: ArticleItem[];
     watching: ArticleItem[];
-    /** Bài được admin ghim "ưu tiên" — luôn đứng đầu trang chủ. */
-    priority: ArticleItem[];
   };
   feeds: { latest: ThreadItem[]; hot: ThreadItem[]; trending: ThreadItem[] };
   stats: Stats;
@@ -182,12 +180,6 @@ export default function Home() {
 
       {!noArticles && (
         <>
-          {/* Bài ghim "ưu tiên" luôn đứng đầu trang chủ. */}
-          {data.articles.priority.length > 0 && (
-            <Section title="⭐ Ưu tiên" more="/bai-viet?sap-xep=moi">
-              <ArticleGrid articles={data.articles.priority} />
-            </Section>
-          )}
           {/* Khối ngẫu nhiên đặt ở đầu trang chủ: mỗi lượt truy cập thấy bộ bài
               khác nhau (server đổi bộ mỗi 5 phút), nút "Đổi bài khác" lấy ngay. */}
           <RandomSection initial={data.articles.random} />

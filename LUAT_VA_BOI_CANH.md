@@ -701,4 +701,25 @@ Mẫu mỗi mục:
 - **CHƯA chạy**: trên VPS với PostgreSQL thật; chưa deploy.
 - **File**: `server/drizzle/0011_articles_priority.sql`, `server/drizzle/meta/_journal.json`, `server/src/db/schema.ts`, `server/src/routeCache.ts`, `server/src/routes/articles.ts`, `server/src/routes/members.ts`, `server/test/api.test.ts`, `frontend/src/pages/Home.tsx`, `frontend/src/pages/admin/AdminArticles.tsx`, `frontend/src/components/ArticleCard.tsx`, `frontend/src/types.ts`, `LUAT_VA_BOI_CANH.md`, `huongdan.txt`.
 
+## 2026-11-26 — XOÁ TÍNH NĂNG "⭐ Ưu tiên" (ghim bài) + KHÔI PHỤC CSDL SAU SỰ CỐ PGLITE
+
+- **Yêu cầu**: "xóa mục ⭐ Ưu tiên" → xoá **HOÀN TOÀN** (không chỉ khối UI): gỡ cả cột `is_priority`, nút admin, badge, và mọi `orderBy` ghim bài lên đầu.
+- **Quyết định**: xoá triệt để ở tất cả tầng (DB → API → giao diện) thay vì chỉ ẩn ở frontend. Bài viết và media **không bị ảnh hưởng**.
+- **Backend**:
+  - Migration MỚI `server/drizzle/0012_drop_articles_priority.sql` (`ALTER TABLE "articles" DROP COLUMN IF EXISTS "is_priority"` + `DROP INDEX IF EXISTS "articles_priority_idx"`), đăng ký `idx 12` trong `drizzle/meta/_journal.json`.
+  - **Bài học B65 (quan trọng)**: KHÔNG ĐƯỢC XOÁ FILE MIGRATION ĐÃ CHẠY. Drizzle so **hash tên file** để biết migration nào đã áp dụng; xoá file `0011_articles_priority.sql` làm journal lệch → Drizzle có thể chạy lại hoặc bỏ qua sai. Đúng cách: **giữ file cũ** và thêm migration mới để ghi ngược thay đổi.
+  - Gỡ khỏi `schema.ts` (cột `isPriority` + index `articles_priority_idx`), `cardColumns`, `mapCard` (thuộc tính `priority`), `articleBody`/`articlePatch` (zod), tạo bài & PATCH admin, và `priorityArticleIds(limit)`.
+  - Gỡ `desc(articles.isPriority)` khỏi **mọi** `orderBy` của `listArticles` (today/hot, week, best, new) → bài mới nhất / nhiều view nhất trở lại xếp theo tiêu chí thật.
+  - `members.ts` (`homeData`) bỏ `priority` khỏi `Promise.all` và khỏi response `articles` → `/api/home` không còn key `priority`.
+  - `invalidateArticleCaches()` giờ chỉ nghe `isHot` (bỏ nhánh `isPriority`).
+- **Frontend**: bỏ khối `<Section title="⭐ Ưu tiên">` ở `Home.tsx` (+ kiểu `priority` trong `HomeData`), badge "⭐ Ưu tiên" ở `ArticleCard.tsx`, trường `priority` ở `types.ts`, và ở `AdminArticles.tsx`: nút "⭐ Đánh dấu ưu tiên"/"⭐ Bỏ ưu tiên", checkbox "⭐ Ghim lên đầu trang chủ", dòng "· ⭐ ƯU TIÊN", cùng field `isPriority` trong payload tạo bài.
+- **SỰ CỐ PGLITE (B66 — bài học đắt giá)**: server bị dừng giữa lúc, file `server/data/pglite/postmaster.pid` còn sót. **Xoá `postmaster.pid` để gỡ lock ⇒ PGlite hỏng vĨNH VIỄN**: mọi truy vấn fail với `RuntimeError: Aborted()` (kể cả `SELECT 1`), không mở được DB để dump. Đã thử và **đều thất bại**: khôi phục WAL từ backup, copy `base/5` + `pg_control` sang DB mới, xoá WAL, copy `pg_xact`, tạo lại `postmaster.pid` với PID hợp lệ ⇒ tất cả vẫn "Aborted" (heap file của PostgreSQL **không thể dán sang instance khác**, cần `pg_resetwal` mà PGlite không có).
+  - **Bài học**: (1) **KHÔNG xoá `postmaster.pid`** khi PGlite còn giữ lock — hãy dừng server sạch để PGlite tự dọn file; (2) **LUÔN copy thư mục `data/pglite` sang nơi khác TRƯỚC khi can thiệp** để có bản sao khôi phục (bản sao tạo *sau* lúc hỏng thì vô dụng).
+- **Khôi phục (đã hoàn tất)**: dựng PGlite mới → `server/data/pglite-new` → đổi tên thành `data/pglite` (giữ bản hỏng ở `data/pglite-corrupt`) → server tự chạy migration + seed (tạo lại admin `admin`) → `server/scripts/import-all-from-old-web.mjs --resume` nạp lại **170/170 album** từ web cũ → `server/scripts/import-bot-data.mjs` nạp bot.
+  - Kết quả: **1.553 bài viết**, 1.048 ảnh, 584 video, **57/58 bot** (1 bot token hỏng), 61.092 `telegram_users`. Dọn media rác bằng `server/scripts/purge-orphan-media.mjs` → xoá 6.480 file (1.588,9 MB), còn 1.603,5 MB / 0 file rác.
+  - Xác nhận: `information_schema` không còn cột `is_priority` (0), `/api/home` không có key `priority`, `GET /api/admin/articles/:id` không có field `isPriority`, trang chủ không còn chữ "Ưu tiên"/"⭐" (thứ tự khối: 🎲 Có thể bạn chưa xem → 🔥 Xem nhiều hôm nay → 🆕 Bài viết mới nhất → 🏆 Hay nhất tuần).
+- **Đã kiểm tra**: `npm test` **62/62** (bỏ 1 test "ghim ưu tiên"), `tsc` server OK, `tsc -b` frontend OK, `vite build` OK, xem trình duyệt xác nhận khối ưu tiên đã mất.
+- **CHƯA chạy**: trên VPS với PostgreSQL thật; chưa deploy.
+- **File**: `server/drizzle/0012_drop_articles_priority.sql`, `server/drizzle/meta/_journal.json`, `server/src/db/schema.ts`, `server/src/routes/articles.ts`, `server/src/routes/members.ts`, `server/test/api.test.ts`, `frontend/src/pages/Home.tsx`, `frontend/src/pages/admin/AdminArticles.tsx`, `frontend/src/components/ArticleCard.tsx`, `frontend/src/types.ts`, `LUAT_VA_BOI_CANH.md`, `huongdan.txt`.
+
 

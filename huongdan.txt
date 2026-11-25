@@ -919,6 +919,45 @@ b22c5f7 feat: scaffold new platform (đã thay thế — xoá ở bản Node.js)
     vite build OK, xem trình duyệt đúng thứ tự + badge + nút đổi bài + nút admin.
   - CHƯA chạy: trên VPS với PostgreSQL thật; chưa deploy.
 
+[2026-11-26] XOÁ TÍNH NĂNG "⭐ ƯU TIÊN" (ghim bài) + KHÔI PHỤC CSDL SAU SỰ CỐ.
+  - Yêu cầu: "xóa mục ⭐ Ưu tiên" -> xoá HOÀN TOÀN (không chỉ khối UI).
+  - Xoá: khối "⭐ Ưu tiên" ở trang chủ, badge "⭐ Ưu tiên" trên ArticleCard,
+    nút admin "⭐ Đánh dấu ưu tiên" + checkbox "⭐ Ghim lên đầu trang chủ",
+    dòng "· ⭐ ƯU TIÊN", field priority trong types.ts, cột articles.is_priority
+    (schema.ts + index articles_priority_idx), priorityArticleIds(), và mọi
+    desc(articles.isPriority) trong orderBy của listArticles (today/week/best/new).
+  - Migration MỚI server/drizzle/0012_drop_articles_priority.sql (DROP COLUMN
+    is_priority + DROP INDEX) đã đăng ký idx 11 trong drizzle/meta/_journal.json.
+    Bài học (B65): KHÔNG ĐƯỢC XOÁ FILE MIGRATION ĐÃ CHẠY — Drizzle so hash
+    tên file; xoá file cũ làm journal lệch. Luôn thêm migration MỚI để ghi
+    ngược thay đổi, giữ file cũ.
+  - SỰ CỐ PGLITE (quan trọng - B66): server bị dừng giữa lúc, file
+    data/pglite/postmaster.pid còn sót. Xoá postmaster.pid để gỡ lock ->
+    PGlite báo "Aborted()" vĨNH VIỄN, mọi truy vấn fail (kể cả SELECT 1),
+    không mở được DB để dump. Đã thử: khôi phục WAL, copy relation file sang
+    DB mới (base/5 + pg_control), xoá WAL, xoá pg_xact -> ĐỀU FAIL vì
+    heap file của PostgreSQL không thể dán sang instance khác (cần pg_resetwal).
+    BÀI HỌC: (1) XOÁ postmaster.pid KHÔNG AN TOÀN khi PGlite còn giữ lock;
+    dừng server sạch rồi để PGlite tự dọn. (2) Luôn COPY THƯ MỤC data/pglite
+    sang thư mục khác TRƯỚC khi can thiệp, để có bản sao khôi phục.
+  - KHÔI PHỤC: dựng PGlite mới (data/pglite-new -> data/pglite), chạy lại
+    migration + seed (tự tạo admin "admin"), rồi
+    server/scripts/import-all-from-old-web.mjs --resume (OLD_BASE/OLD_USER/
+    OLD_PASS/NEW_BASE/NEW_USER/NEW_PASS/IMPORT_SECRET) để nạp lại 170 album
+    từ web cũ (bài + media). Sau đó server/scripts/import-bot-data.mjs cho bot.
+  - Media: file gốc trong data/uploads (1.588 MB) được giữ nguyên; script import
+    tải lại từ web cũ rồi upload qua API nên data/uploads sẽ có bản sao mới.
+  - Kiểm tra: npm test 62/62 (bỏ 1 test ghim ưu tiên), tsc server + frontend OK,
+    vite build OK.
+  - KẾT QUẢ KHÔI PHỤC: import xong 170/170 album -> 1.553 bài viết, 1.048 ảnh,
+    584 video; import bot: 57/58 bot (1 bot token hỏng), 61.092 telegram_users;
+    admin "admin" được seed lại. Dọn media rác: xoá 6.480 file (1.588,9 MB),
+    còn 1.603,5 MB / 0 file rác. DB mới KHÔNG có cột is_priority
+    (information_schema = 0) và /api/home KHÔNG còn key "priority".
+  - LƯU Ý: server/data/pglite-corrupt + pglite-backup-* giữ lại làm dự phòng;
+    xoá sau khi chủ dự án xác nhận. KHÔNG commit server/data (đã .gitignore).
+  - CHƯA chạy: trên VPS với PostgreSQL thật; chưa deploy.
+
 ================================================================================
 Hết — lưu ý: không lưu mật khẩu / token thật trong file này.
 ================================================================================
