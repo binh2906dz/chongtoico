@@ -1,5 +1,5 @@
 import { lazy as reactLazy, type ComponentType } from "react";
-import { Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes } from "react-router-dom";
 import Layout from "./components/Layout";
 import Home from "./pages/Home";
 import Articles, { ArticleTags } from "./pages/Articles";
@@ -56,7 +56,8 @@ export default function App() {
         <Route path="bai-viet/yeu-thich" element={<SavedArticles />} />
         <Route path="bai-viet/tag" element={<ArticleTags />} />
         <Route path="bai-viet/tag/:tag" element={<Articles />} />
-        <Route path="bai-viet/the-loai/:slug" element={<Articles />} />
+        {/* Phân loại bài viết đã bị gỡ — link cũ chuyển về trang danh sách. */}
+        <Route path="bai-viet/the-loai/:slug" element={<Navigate to="/bai-viet" replace />} />
         <Route path="bai-viet/:id" element={<ArticlePage />} />
         <Route path="dang-theo-doi" element={<Following />} />
         <Route path="thong-bao" element={<Notifications />} />

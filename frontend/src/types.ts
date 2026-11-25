@@ -95,14 +95,6 @@ export interface Stats {
   online: Online;
 }
 
-export interface ArticleCategory {
-  id: number;
-  slug: string;
-  name: string;
-  sortOrder: number;
-  articleCount: number;
-}
-
 export interface ArticleItem {
   id: number;
   title: string;
@@ -121,7 +113,6 @@ export interface ArticleItem {
   membersOnly: boolean;
   hot?: boolean;
   createdAt: string;
-  category: { id: number; slug: string; name: string } | null;
   viewedAt?: string;
   recentViews?: number;
 }

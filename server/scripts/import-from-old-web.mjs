@@ -246,9 +246,6 @@ if (has("replace")) {
   }
 }
 
-const cats = await api("GET", "/api/admin/categories");
-const categoryId = (cats?.categories ?? [])[0]?.id ?? null;
-
 let imgOk = 0;
 let vidOk = 0;
 const created = [];
@@ -261,7 +258,6 @@ for (const [index, p] of posts.entries()) {
     description,
     watchLink,
     vipLink,
-    categoryId,
     tags: "",
     visibility: "public",
     isHot: false,

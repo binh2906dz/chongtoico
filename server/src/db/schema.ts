@@ -176,19 +176,6 @@ export const chatMessages = pgTable(
   (t) => [index("chat_messages_channel_idx").on(t.channelId, t.id)],
 );
 
-export const articleCategories = pgTable(
-  "article_categories",
-  {
-    id: serial("id").primaryKey(),
-    slug: varchar("slug", { length: 64 }).notNull(),
-    name: varchar("name", { length: 60 }).notNull(),
-    sortOrder: integer("sort_order").notNull().default(0),
-    articleCount: integer("article_count").notNull().default(0),
-    createdAt: createdAt(),
-  },
-  (t) => [uniqueIndex("article_categories_slug_uq").on(t.slug)],
-);
-
 /**
  * A published article: may contain any number of images and any number of videos.
  * `coverImageKey` is the single picture shown in listings (home page, grids, banners);
@@ -201,7 +188,6 @@ export const articles = pgTable(
     userId: integer("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    categoryId: integer("category_id").references(() => articleCategories.id, { onDelete: "set null" }),
     title: varchar("title", { length: 200 }).notNull(),
     description: text("description").notNull().default(""),
     /** Link nút "Xem ngay" (ví dụ link mua full video) — rỗng = không hiện nút. */
@@ -227,7 +213,6 @@ export const articles = pgTable(
   (t) => [
     index("articles_created_idx").on(t.createdAt),
     index("articles_views_idx").on(t.viewCount),
-    index("articles_category_idx").on(t.categoryId, t.createdAt),
     index("articles_hot_idx").on(t.isHot, t.createdAt),
   ],
 );

@@ -5,7 +5,7 @@ import { ErrorBox, Pagination, Tabs, VideoGridSkeleton } from "../components/ui"
 import { ArticleGrid } from "../components/ArticleCard";
 import { formatNumber } from "../format";
 import { useFetch } from "../useFetch";
-import type { ArticleCategory, ArticleItem, ArticleTag } from "../types";
+import type { ArticleItem, ArticleTag } from "../types";
 
 export const SORT_TABS = [
   { id: "hom-nay", api: "today", label: "Xem nhiều hôm nay" },
@@ -16,30 +16,6 @@ export const SORT_TABS = [
   { id: "ngau-nhien", api: "random", label: "🔀 Ngẫu nhiên" },
 ] as const;
 type SortId = (typeof SORT_TABS)[number]["id"];
-
-export function ArticleCategoryBar({ active }: { active?: string }) {
-  const { data } = useFetch<{ categories: ArticleCategory[] }>("/api/articles/categories");
-  if (!data?.categories.length) return null;
-  const chip = (to: string, label: string, on: boolean) => (
-    <Link
-      key={to}
-      to={to}
-      className={`shrink-0 rounded-full border px-4 py-1.5 text-sm font-semibold whitespace-nowrap transition ${
-        on
-          ? "border-transparent bg-gradient-to-r from-brand to-brand-2 text-white shadow-md shadow-brand/25"
-          : "border-line bg-panel text-slate-300 hover:border-brand/60 hover:text-white"
-      }`}
-    >
-      {label}
-    </Link>
-  );
-  return (
-    <div className="no-scrollbar -mx-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0">
-      {chip("/bai-viet", "Tất cả", !active)}
-      {data.categories.map((c) => chip(`/bai-viet/the-loai/${c.slug}`, c.name, active === c.slug))}
-    </div>
-  );
-}
 
 export function TagCloud({ tags, limit }: { tags: ArticleTag[]; limit?: number }) {
   if (!tags.length) return null;
@@ -90,7 +66,7 @@ export function ArticleTags() {
 
 export default function Articles() {
   const { user } = useAuth();
-  const { slug, tag: tagSlug } = useParams();
+  const { tag: tagSlug } = useParams();
   const [params, setParams] = useSearchParams();
   const sortId = (SORT_TABS.find((t) => t.id === params.get("sap-xep"))?.id ?? "moi") as SortId;
   const sort = SORT_TABS.find((t) => t.id === sortId)!.api;
@@ -99,13 +75,11 @@ export default function Articles() {
   const [draft, setDraft] = useState(q);
 
   const query = new URLSearchParams({ sort, page: String(page) });
-  if (slug) query.set("category", slug);
   if (tagSlug) query.set("tag", tagSlug);
   if (q) query.set("q", q);
   const [shuffle, setShuffle] = useState(0);
   const { data, error, loading } = useFetch<{
     articles: ArticleItem[];
-    category: ArticleCategory | null;
     tag: ArticleTag | null;
     page: number;
     totalPages: number;
@@ -129,11 +103,9 @@ export default function Articles() {
 
   const title = q
     ? `Kết quả tìm "${q}"`
-    : data?.category
-      ? `Thể loại: ${data.category.name}`
-      : data?.tag
-        ? `Thẻ: #${data.tag.name}`
-        : "Bài viết";
+    : data?.tag
+      ? `Thẻ: #${data.tag.name}`
+      : "Bài viết";
 
   return (
     <div className="space-y-4">
@@ -168,7 +140,6 @@ export default function Articles() {
           </Link>
         </div>
       </div>
-      <ArticleCategoryBar active={slug} />
       <div className="flex flex-wrap items-center gap-2">
         <Tabs
           tabs={SORT_TABS.map((t) => ({ id: t.id, label: t.label }))}

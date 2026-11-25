@@ -205,6 +205,9 @@ Mỗi dòng: **lỗi / tình huống** → **cách tránh**.
 - **B50 — `bigserial("id")` SAI trong SQL thủ công.** Đúng là `bigserial PRIMARY KEY NOT NULL` (không có ngoặc) — đặt trong ngoặc thì PostgreSQL hiểu là "type modifier không hợp lệ cho bigint" (code 42611) và migration fail, server không khởi động được. Cũng lưu ý: **file SQL thủ công phải có `--> statement-breakpoint` giữa các lệnh** (B48).
 - **B51 — `POST` không có body bị Fastify trả 415 "Unsupported Media Type".** Fastify mặc định đòi có `content-type`. Đã thêm `addContentTypeParser("*", ...)` trong `server/src/app.ts` để body rỗng = `undefined`; ngoài ra phía giao diện vẫn nên gửi `body: {}` cho các endpoint POST không cần dữ liệu.
 - **B52 — Fastify static CACHE danh sách file lúc khởi động.** Build lại `frontend/dist` mà không khởi động lại server ⇒ server vẫn trả HTML fallback (SPA) cho file JS mới, trang trắng. **Luôn khởi động lại server sau khi build giao diện.**
+- **B64 — Migration mới KHÔNG chạy nếu chưa thêm entry vào `server/drizzle/meta/_journal.json`.** Tạo file `0009_*.sql` rồi khởi động lại server ⇒ **không có lỗi nào** nhưng migration **chưa chạy** (bảng/cột vẫn còn nguyên). Drizzle chỉ chạy các file có trong `_journal.json`. → Sau khi tạo file migration thủ công, **luôn thêm entry `idx` + `tag` + `when` vào `_journal.json`** rồi kiểm tra bằng `information_schema` xem bảng/cột thực sự đã đổi chưa (đừng tin "file đã tạo" là đã chạy).
+- **B65 — KHÔNG viết chuỗi `-->` trong dòng COMMENT của file migration.** Drizzle tách file `.sql` theo marker `--> statement-breakpoint`; nếu một dòng comment chứa chính chuỗi `-->` (kể cả trong ngoặc kép) thì dòng đó bị cắt làm đôi ⇒ câu SQL hỏng ⇒ lỗi `syntax error at or near`. Đã gặp 2 lần liên tiếp (tiếng Việt rồi tiếng Anh) trước khi hiểu ra nguyên nhân. → Comment trong file migration chỉ nên dùng ký tự ASCII đơn giản, **không nhắc lại marker**.
+- **B66 — Hai bảng "phân loại" khác nhau có ID trùng nhau ⇒ script import gán nhầm.** `articles.category_id` trỏ tới `article_categories` (thể loại bài viết), nhưng script import lấy id từ `GET /api/admin/categories` — endpoint này trả `categories` (**chuyên mục diễn đàn**) ⇒ id=1 ("thong-bao") trùng id=1 ("Hài hước") ⇒ **1.545/1.553 bài bị dán "Hài hước"** mà không có lỗi nào. → **Luôn đối chiếu tên bảng trong DB với endpoint API**; id trùng giữa 2 bảng khác nhau là bẫy âm thầm.
 
 ## 10. Nhật ký làm việc
 
@@ -599,5 +602,34 @@ Mẫu mỗi mục:
 - **Đã kiểm tra**: `npm test` server 59/59, bot 45/45; `tsc` server OK; `vite build` OK; xem trình duyệt — nút "🔍 Kiểm tra bot" chạy được, báo cáo ban hiện đúng; API health-check trả `checked=0` khi chưa có bot.
 - **CHƯA chạy**: script chưa chạy thật với web cũ (cần URL + tài khoản owner + mạng tới VPS); lịch sử gửi cũ (`delivery_log` / `broadcast_logs`) **không chuyển** theo quyết định "bắt đầu mới"; `album_tokens` (token truy cập album tạm) không chuyển (tự hết hạn).
 - **File**: `server/drizzle/0008_bot_health.sql`, `server/src/db/schema.ts`, `server/src/botHealth.ts`, `server/src/routes/telegramAdmin.ts`, `server/src/routes/telegram.ts`, `server/src/app.ts`, `server/src/index.ts`, `server/scripts/import-bot-data.mjs`, `server/test/telegramAdmin.test.ts`, `frontend/src/pages/admin/AdminTelegramTools.tsx`, `frontend/src/types.ts`, `LUAT_VA_BOI_CANH.md`, `huongdan.txt`.
+
+## 2026-11-26 — Xóa hoàn toàn phân loại bài viết (thể loại)
+
+- **Yêu cầu**: chủ dự án yêu cầu "xóa phần phân loại Tất cả / Hài hước / Giải trí / Âm nhạc / Thể thao / Game / Tin tức / Công nghệ / Đời sống… khỏi web và bài viết (chỉ xóa phân loại, **không** xóa bài viết)".
+- **Chốt phạm vi** (hỏi chủ dự án trước khi code): (1) "xóa bỏ hoàn toàn chức năng phân loại khỏi web và bài viết"; (2) nhãn phân loại trên từng bài viết + trong card cũng xóa; (3) mức CSDL — chủ dự án chọn **DROP HẲN bảng `article_categories` + cột `articles.category_id`** (không giữ để rollback).
+- **Phân biệt quan trọng**: "Chuyên mục" (`categories`) là phân loại **diễn đàn** — **không đụng tới**. Chỉ "Thể loại bài viết" (`article_categories`) bị xóa.
+- **CSDL** — migration `server/drizzle/0009_drop_article_categories.sql`:
+  - `ALTER TABLE "articles" DROP COLUMN IF EXISTS "category_id"` → `DROP INDEX IF EXISTS "articles_category_idx"` → `DROP TABLE IF EXISTS "article_categories"`.
+  - **PHẢI cập nhật `server/drizzle/meta/_journal.json`** thêm entry idx 9 — nếu không migration **không chạy** mà không báo lỗi (đã gặp: bảng vẫn còn sau khi "đã tạo file .sql", xem B64).
+  - **KHÔNG được viết chuỗi `-->` trong dòng comment** của file migration — drizzle tách file theo marker `--> statement-breakpoint`, comment chứa chính chuỗi đó bị cắt đôi ⇒ lỗi cú pháp SQL (đã gặp 2 lần, xem B65).
+- **Server** (`server/src/routes/articles.ts`):
+  - Xóa import `articleCategories`; `cardColumns` bỏ trường `category`; bỏ **7** chỗ `.leftJoin(articleCategories, …)`; xóa `listArticleCategories()`, `findCategory()`, `bumpCategory()`, `assertCategory()`, `optionalId`, `articleCategoryBody`; bỏ `category` khỏi query zod của `GET /api/articles`.
+  - **Xóa hẳn route** `GET /api/articles/categories` + 4 route admin `/api/admin/article-categories` (GET/POST/PATCH/DELETE).
+  - `POST`/`PATCH /api/admin/articles` bỏ `categoryId` khỏi body zod và logic bump.
+  - **Bài liên quan** (`GET /api/articles/:id`) vốn lấy "cùng thể loại" ⇒ đổi sang **cùng thẻ (tag)** + ngẫu nhiên, giữ nguyên mục đích gợi ý.
+  - `server/src/routes/members.ts`: `homeData()` bỏ `listArticleCategories()` khỏi `Promise.all` và khỏi response `/api/home`.
+  - `server/src/seed.ts`: bỏ `DEFAULT_ARTICLE_CATEGORIES` + khối seed tạo thể loại.
+  - `server/src/routes/admin.ts`: route "tính lại bộ đếm" bỏ lệnh `update article_categories …` (bảng không còn).
+- **Frontend**:
+  - Xóa hẳn component `ArticleCategoryBar` (`pages/Articles.tsx`) + dùng ở trang chủ (`pages/Home.tsx`) và trang `/bai-viet`.
+  - `pages/ArticlePage.tsx` bỏ dòng "· <tên thể loại>"; `components/ArticleCard.tsx` bỏ nhãn thể loại trong card; `components/Hero.tsx` bỏ 2 chỗ đọc `article.category`.
+  - `pages/admin/AdminArticles.tsx` bỏ select "Thể loại" (form đăng bài) + select "— Thể loại —" (danh sách bài) + `useFetch("/api/articles/categories")` + prop `categories`.
+  - `pages/admin/Admin.tsx` bỏ tab "Thể loại bài viết" khỏi `TABS` + khối render + label.
+  - `types.ts` bỏ interface `ArticleCategory` + trường `category` trong `ArticleItem`.
+  - `App.tsx`: route `bai-viet/the-loai/:slug` đổi thành **`<Navigate to="/bai-viet" replace />`** để link cũ không chết.
+- **Script import**: `import-from-old-web.mjs` + `import-all-from-old-web.mjs` bỏ `categoryId` khỏi payload `POST /api/admin/articles` và bỏ đoạn gọi `/api/admin/categories` — đoạn đó lấy **id chuyên mục diễn đàn** (id=1 = "thong-bao") nhưng gán vào `articles.category_id` (FK → `article_categories`) ⇒ **1.545/1.553 bài bị dán nhầm "Hài hước"** vì id trùng nhau (xem B66).
+- **Đã kiểm tra**: `npx tsc --noEmit` server OK; `npm test` server **61/61 pass**; `tsc -b` + `vite build` frontend OK; migration chạy thật trên PGlite — `information_schema` xác nhận `article_categories` **và** `articles.category_id` **không còn**; đếm lại CSDL: **1.553 bài viết** nguyên vẹn (1.537 có nút Xem ngay, 1.542 có nút Kênh VIP, 1.062 ảnh, 583 video); API `GET /api/articles/166` **không còn trường `category`**, 12 bài liên quan, 2 nút còn nguyên; `/api/admin/article-categories` → **404**; xem trình duyệt — trang chủ **không còn thanh chip**, `/bai-viet` không còn chip, bài viết không còn "· Hài hước", quản trị không còn tab "Thể loại bài viết" và không còn ô "Thể loại", link cũ `/bai-viet/the-loai/hai-huoc` → redirect về `/bai-viet`.
+- **CHƯA chạy**: trên VPS với PostgreSQL thật (migration DROP chưa kiểm trên PG thật); chưa deploy.
+- **File**: `server/drizzle/0009_drop_article_categories.sql`, `server/drizzle/meta/_journal.json`, `server/src/db/schema.ts`, `server/src/routes/articles.ts`, `server/src/routes/members.ts`, `server/src/routes/admin.ts`, `server/src/seed.ts`, `server/scripts/import-from-old-web.mjs`, `server/scripts/import-all-from-old-web.mjs`, `server/scripts/smoke-admin.mjs`, `frontend/src/pages/Articles.tsx`, `frontend/src/pages/Home.tsx`, `frontend/src/pages/ArticlePage.tsx`, `frontend/src/components/ArticleCard.tsx`, `frontend/src/components/Hero.tsx`, `frontend/src/pages/admin/AdminArticles.tsx`, `frontend/src/pages/admin/Admin.tsx`, `frontend/src/types.ts`, `frontend/src/App.tsx`, `LUAT_VA_BOI_CANH.md`, `huongdan.txt`.
 
 

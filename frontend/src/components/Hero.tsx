@@ -32,7 +32,6 @@ export function buildHeroSlides(articles: ArticleItem[], max = 7): HeroSlide[] {
         meta: [
           ...(a.recentViews ? [`${compactNumber(a.recentViews)} lượt xem hôm nay`] : a.viewCount ? [`${compactNumber(a.viewCount)} lượt xem`] : []),
           ...(a.hasVideo && a.coverDuration > 0 ? [formatDuration(a.coverDuration)] : []),
-          ...(a.category ? [a.category.name] : []),
         ],
         cta: a.hasVideo ? "▶ Xem ngay" : "Xem bài viết ›",
       };
@@ -67,7 +66,7 @@ function TopList({ title, articles }: { title: string; articles: ArticleItem[] }
               </span>
               <span className="min-w-0">
                 <span className="line-clamp-2 text-[13px] leading-snug font-semibold group-hover:text-brand">{a.title}</span>
-                <span className="text-[11px] text-muted">{a.viewCount ? `👁 ${compactNumber(a.viewCount)}` : a.category?.name}</span>
+                <span className="text-[11px] text-muted">{a.viewCount ? `👁 ${compactNumber(a.viewCount)}` : ""}</span>
               </span>
             </Link>
           </li>

@@ -837,6 +837,29 @@ b22c5f7 feat: scaffold new platform (đã thay thế — xoá ở bản Node.js)
     B63 (script tự dừng giữa chừng rồi chạy lại được nhờ file trạng thái;
       --replace xoá bài trùng tiêu đề trước khi tạo).
 
+[2026-11-26] XÓA HOÀN TOÀN PHÂN LOẠI BÀI VIẾT (thể loại).
+  - Gỡ bảng article_categories + cột articles.category_id (migration 0009,
+    DROP hẳn — chủ dự án chọn mức này). Bài viết GIỮ NGUYÊN: còn 1.553 bài,
+    1.062 ảnh, 583 video, 1.537 nút "Xem ngay", 1.542 nút "Kênh VIP".
+  - Gỡ: thanh chip trang chủ + trang /bai-viet; nhãn "· <thể loại>" ở bài viết
+    và trong card; select "Thể loại" trong form đăng bài và trong danh sách bài;
+    tab "Thể loại bài viết" ở trang quản trị; API GET /api/articles/categories
+    và 4 API admin /api/admin/article-categories.
+  - "Chuyên mục" (categories) là phân loại DIỄN ĐÀN — không đụng tới.
+  - Link cũ /bai-viet/the-loai/<slug> -> redirect về /bai-viet (không chết).
+  - Bài liên quan ở trang bài viết: trước lấy "cùng thể loại", nay lấy "cùng
+    thẻ (tag)" + ngẫu nhiên.
+  - Bài học MỚI:
+    B64 (migration mới KHÔNG chạy nếu chưa thêm entry vào
+      server/drizzle/meta/_journal.json — không báo lỗi, chỉ không đổi CSDL).
+    B65 (KHÔNG viết chuỗi "-->" trong dòng COMMENT của file migration: drizzle
+      cắt file theo marker statement-breakpoint nên dòng bị cắt đôi -> lỗi cú
+      pháp SQL).
+    B66 (2 bảng phân loại khác nhau có ID trùng nhau: script import lấy id từ
+      /api/admin/categories (chuyên mục diễn đàn) nhưng gán vào
+      articles.category_id (thể loại) => 1.545/1.553 bài bị dán nhầm
+      "Hài hước" mà không có lỗi nào).
+
 ================================================================================
 Hết — lưu ý: không lưu mật khẩu / token thật trong file này.
 ================================================================================

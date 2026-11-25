@@ -255,8 +255,6 @@ export default async function adminRoutes(app: FastifyInstance) {
         thread_count = (select count(*) from threads t where t.category_id = c.id),
         post_count = (select count(*) from posts p join threads t on t.id = p.thread_id where t.category_id = c.id)`);
     await db.execute(sql`
-      update article_categories ac set article_count = (select count(*) from articles a where a.category_id = ac.id)`);
-    await db.execute(sql`
       update articles a set
         like_count = (select count(*) from article_votes x where x.article_id = a.id and x.value = 1),
         dislike_count = (select count(*) from article_votes x where x.article_id = a.id and x.value = -1),

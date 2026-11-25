@@ -6,12 +6,11 @@ import { pipeline } from "node:stream/promises";
 import { and, asc, count, desc, eq, gte, ilike, inArray, isNotNull, isNull, notInArray, sql, type SQL } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { author, authorColumns, isStaff, requireActive, requireAdmin, requireStaff, requireUser, type User } from "../auth.js";
+import { author, authorColumns, isStaff, requireActive, requireAdmin, requireUser, type User } from "../auth.js";
 import { isImportRequest } from "../importSecret.js";
 import { config } from "../config.js";
 import { db } from "../db/index.js";
 import {
-  articleCategories,
   articleComments,
   articleCommentVotes,
   articleHistory,
@@ -26,7 +25,7 @@ import {
   users,
 } from "../db/schema.js";
 import { faststart, grabFrame, probeVideo } from "../ffmpeg.js";
-import { badRequest, forbidden, HttpError, idParam, isUniqueViolation, notFound, ok, pageQuery, paginate, parse } from "../http.js";
+import { badRequest, forbidden, HttpError, idParam, notFound, ok, pageQuery, paginate, parse } from "../http.js";
 import {
   looksLikeVideo,
   removeImage,
@@ -38,7 +37,6 @@ import {
   type VideoExt,
 } from "../media.js";
 import { notify } from "../notify.js";
-import { slugSchema } from "./admin.js";
 
 const PER_PAGE = 24;
 const COMMENTS_PER_PAGE = 20;
@@ -73,7 +71,6 @@ const cardColumns = {
   visibility: articles.visibility,
   isHot: articles.isHot,
   createdAt: articles.createdAt,
-  category: { id: articleCategories.id, slug: articleCategories.slug, name: articleCategories.name },
 };
 
 type CardRow = {
@@ -219,7 +216,6 @@ export async function listArticles(opts: {
   sort: ArticleSort;
   limit: number;
   offset?: number;
-  categoryId?: number;
   tagId?: number;
   q?: string;
   excludeIds?: number[];
@@ -228,7 +224,6 @@ export async function listArticles(opts: {
 }) {
   await refreshHotIds();
   const conds: SQL[] = [];
-  if (opts.categoryId) conds.push(eq(articles.categoryId, opts.categoryId));
   if (opts.tagId) {
     conds.push(inArray(articles.id, db.select({ id: articleTagLinks.articleId }).from(articleTagLinks).where(eq(articleTagLinks.tagId, opts.tagId))));
   }
@@ -249,7 +244,6 @@ export async function listArticles(opts: {
     const rows = await db
       .select({ ...cardColumns, recentViews: sql<number>`coalesce(${recent.n}, 0)::int` })
       .from(articles)
-      .leftJoin(articleCategories, eq(articleCategories.id, articles.categoryId))
       .leftJoin(recent, eq(recent.articleId, articles.id))
       .where(where)
       .orderBy(desc(articles.isHot), desc(sql`coalesce(${recent.n}, 0)`), desc(articles.viewCount), desc(articles.id))
@@ -273,7 +267,6 @@ export async function listArticles(opts: {
     const rows = await db
       .select(cardColumns)
       .from(articles)
-      .leftJoin(articleCategories, eq(articleCategories.id, articles.categoryId))
       .leftJoin(week, eq(week.articleId, articles.id))
       .where(where)
       .orderBy(
@@ -303,7 +296,6 @@ export async function listArticles(opts: {
   const rows = await db
     .select(cardColumns)
     .from(articles)
-    .leftJoin(articleCategories, eq(articleCategories.id, articles.categoryId))
     .where(where)
     .orderBy(...order)
     .limit(opts.limit)
@@ -317,21 +309,9 @@ export async function articlesByIds(ids: number[], viewer: User | null = null) {
   const rows = await db
     .select(cardColumns)
     .from(articles)
-    .leftJoin(articleCategories, eq(articleCategories.id, articles.categoryId))
     .where(inArray(articles.id, ids));
   const byId = new Map(rows.map((r) => [r.id, hideLockedCover(mapCard(r), viewer)]));
   return ids.map((id) => byId.get(id)).filter((v) => v !== undefined);
-}
-
-export async function listArticleCategories() {
-  return db.select().from(articleCategories).orderBy(asc(articleCategories.sortOrder), asc(articleCategories.id));
-}
-
-async function findCategory(slug: string | undefined) {
-  if (!slug) return null;
-  const [cat] = await db.select().from(articleCategories).where(eq(articleCategories.slug, slug)).limit(1);
-  if (!cat) throw notFound("Thể loại không tồn tại.");
-  return cat;
 }
 
 async function findTag(slug: string | undefined) {
@@ -368,20 +348,6 @@ async function getArticle(id: number) {
   const [article] = await db.select().from(articles).where(eq(articles.id, id)).limit(1);
   if (!article) throw notFound("Bài viết không tồn tại hoặc đã bị xoá.");
   return article;
-}
-
-async function bumpCategory(categoryId: number | null, delta: number) {
-  if (!categoryId) return;
-  await db
-    .update(articleCategories)
-    .set({ articleCount: sql`greatest(${articleCategories.articleCount} + ${delta}, 0)` })
-    .where(eq(articleCategories.id, categoryId));
-}
-
-async function assertCategory(categoryId: number | null | undefined) {
-  if (!categoryId) return;
-  const [cat] = await db.select({ id: articleCategories.id }).from(articleCategories).where(eq(articleCategories.id, categoryId)).limit(1);
-  if (!cat) throw badRequest("Thể loại không tồn tại.");
 }
 
 /**
@@ -439,8 +405,6 @@ async function postProcess(
   }
 }
 
-const optionalId = z.preprocess((v) => (v === "" || v === null || v === undefined ? undefined : v), z.coerce.number().int().positive().optional());
-
 /** Link nút bấm: chỉ nhận http/https, rỗng = không hiện nút. */
 const linkField = z
   .string()
@@ -456,16 +420,9 @@ const articleBody = z.object({
   description: z.string().trim().max(20000, "Nội dung tối đa 20.000 ký tự.").default(""),
   watchLink: linkField,
   vipLink: linkField,
-  categoryId: optionalId,
   tags: z.string().max(1000).default(""),
   visibility: z.enum(VISIBILITIES).default("public"),
   isHot: z.boolean().default(false),
-});
-
-const articleCategoryBody = z.object({
-  slug: slugSchema,
-  name: z.string().trim().min(2, "Tên thể loại cần ít nhất 2 ký tự.").max(60),
-  sortOrder: z.number().int().default(0),
 });
 
 const voteBody = z.object({ value: z.union([z.literal(1), z.literal(-1), z.literal(0)]) });
@@ -492,8 +449,6 @@ export default async function articleRoutes(app: FastifyInstance) {
     membersOnlyKeys.add(v.fileKey);
   }
 
-  app.get("/api/articles/categories", async () => ({ categories: await listArticleCategories() }));
-
   app.get("/api/articles/tags", async (req) => {
     const { limit } = parse(z.object({ limit: z.coerce.number().int().min(1).max(300).default(100) }), req.query);
     const tags = await db
@@ -509,19 +464,17 @@ export default async function articleRoutes(app: FastifyInstance) {
     const q = parse(
       pageQuery.extend({
         sort: z.enum(ARTICLE_SORTS).default("new"),
-        category: z.string().max(64).optional(),
         tag: z.string().max(64).optional(),
         q: z.string().trim().max(100).optional(),
       }),
       req.query,
     );
-    const [cat, tag] = await Promise.all([findCategory(q.category), findTag(q.tag)]);
+    const tag = await findTag(q.tag);
     const { limit, offset } = paginate(q.page, PER_PAGE);
     const { rows, where } = await listArticles({
       sort: q.sort,
       limit,
       offset: q.sort === "random" ? 0 : offset,
-      categoryId: cat?.id,
       tagId: tag?.id,
       q: q.q || undefined,
       viewer: req.user,
@@ -529,7 +482,6 @@ export default async function articleRoutes(app: FastifyInstance) {
     const [{ total }] = await db.select({ total: count() }).from(articles).where(where);
     return {
       articles: rows,
-      category: cat,
       tag,
       page: q.page,
       totalPages: q.sort === "random" ? 1 : Math.max(1, Math.ceil(total / PER_PAGE)),
@@ -564,7 +516,6 @@ export default async function articleRoutes(app: FastifyInstance) {
         .select({ ...cardColumns, viewedAt: articleHistory.viewedAt })
         .from(articleHistory)
         .innerJoin(articles, eq(articles.id, articleHistory.articleId))
-        .leftJoin(articleCategories, eq(articleCategories.id, articles.categoryId))
         .where(eq(articleHistory.userId, user.id))
         .orderBy(desc(articleHistory.viewedAt))
         .limit(limit)
@@ -596,7 +547,6 @@ export default async function articleRoutes(app: FastifyInstance) {
         .select(cardColumns)
         .from(articleSaves)
         .innerJoin(articles, eq(articles.id, articleSaves.articleId))
-        .leftJoin(articleCategories, eq(articleCategories.id, articles.categoryId))
         .where(own)
         .orderBy(desc(articleSaves.createdAt))
         .limit(limit)
@@ -633,12 +583,10 @@ export default async function articleRoutes(app: FastifyInstance) {
         description: articles.description,
         watchLink: articles.watchLink,
         vipLink: articles.vipLink,
-        categoryId: articles.categoryId,
         author: authorColumns,
       })
       .from(articles)
       .innerJoin(users, eq(users.id, articles.userId))
-      .leftJoin(articleCategories, eq(articleCategories.id, articles.categoryId))
       .where(eq(articles.id, id))
       .limit(1);
     if (!row) throw notFound("Bài viết không tồn tại hoặc đã bị xoá.");
@@ -678,7 +626,7 @@ export default async function articleRoutes(app: FastifyInstance) {
       for (const l of lists) if (l.list === "favorite" || l.list === "later") saved[l.list] = true;
     }
 
-    const { categoryId, author: authorRow, description, watchLink, vipLink, ...rest } = row;
+    const { author: authorRow, description, watchLink, vipLink, ...rest } = row;
 
     // Locked articles hide their media entirely.
     let images: (typeof mediaFileSchema)["_output"][] = [];
@@ -710,9 +658,13 @@ export default async function articleRoutes(app: FastifyInstance) {
       }));
     }
 
-    // Half from the same category, the rest random so older articles keep resurfacing.
-    const sameCat = categoryId ? (await listArticles({ sort: "today", limit: 6, categoryId, excludeIds: [id], viewer: req.user })).rows : [];
-    const random = await listArticles({ sort: "random", limit: 12 - sameCat.length, excludeIds: [id, ...sameCat.map((v) => v.id)], viewer: req.user });
+    // Gợi ý bài liên quan: ưu tiên bài có chung thẻ, phần còn lại ngẫu nhiên
+    // để bài cũ vẫn có cơ hội xuất hiện.
+    const tagIds = (await db.select({ id: articleTagLinks.tagId }).from(articleTagLinks).where(eq(articleTagLinks.articleId, id))).map((t) => t.id);
+    const sameTag = tagIds.length
+      ? (await listArticles({ sort: "today", limit: 6, tagId: tagIds[0], excludeIds: [id], viewer: req.user })).rows
+      : [];
+    const random = await listArticles({ sort: "random", limit: 12 - sameTag.length, excludeIds: [id, ...sameTag.map((v) => v.id)], viewer: req.user });
     const card = mapCard(rest);
     return {
       article: {
@@ -731,7 +683,7 @@ export default async function articleRoutes(app: FastifyInstance) {
       },
       myVote,
       saved,
-      related: [...sameCat, ...random.rows],
+      related: [...sameTag, ...random.rows],
     };
   });
 
@@ -938,45 +890,6 @@ export default async function articleRoutes(app: FastifyInstance) {
     return ok(reply);
   });
 
-  app.get("/api/admin/article-categories", async (req) => {
-    requireStaff(req);
-    return { categories: await listArticleCategories() };
-  });
-
-  app.post("/api/admin/article-categories", async (req) => {
-    requireAdmin(req);
-    const body = parse(articleCategoryBody, req.body);
-    try {
-      const [category] = await db.insert(articleCategories).values(body).returning();
-      return { category };
-    } catch (err) {
-      if (isUniqueViolation(err)) throw badRequest("Đường dẫn thể loại đã tồn tại.");
-      throw err;
-    }
-  });
-
-  app.patch("/api/admin/article-categories/:id", async (req) => {
-    requireAdmin(req);
-    const { id } = parse(idParam, req.params);
-    const body = parse(articleCategoryBody.partial(), req.body);
-    try {
-      const [category] = await db.update(articleCategories).set(body).where(eq(articleCategories.id, id)).returning();
-      if (!category) throw notFound("Thể loại không tồn tại.");
-      return { category };
-    } catch (err) {
-      if (isUniqueViolation(err)) throw badRequest("Đường dẫn thể loại đã tồn tại.");
-      throw err;
-    }
-  });
-
-  app.delete("/api/admin/article-categories/:id", async (req, reply) => {
-    requireAdmin(req);
-    const { id } = parse(idParam, req.params);
-    const [category] = await db.delete(articleCategories).where(eq(articleCategories.id, id)).returning();
-    if (!category) throw notFound("Thể loại không tồn tại.");
-    return ok(reply);
-  });
-
   app.get("/api/admin/articles/:id", async (req) => {
     requireAdmin(req);
     const { id } = parse(idParam, req.params);
@@ -993,7 +906,6 @@ export default async function articleRoutes(app: FastifyInstance) {
         description: article.description,
         watchLink: article.watchLink,
         vipLink: article.vipLink,
-        categoryId: article.categoryId,
         visibility: article.visibility,
         isHot: article.isHot,
         coverType: article.coverType,
@@ -1013,12 +925,10 @@ export default async function articleRoutes(app: FastifyInstance) {
     async (req) => {
       const user = requireAdmin(req);
       const body = parse(articleBody, req.body);
-      await assertCategory(body.categoryId);
       const [article] = await db
         .insert(articles)
         .values({
           userId: user.id,
-          categoryId: body.categoryId ?? null,
           title: body.title,
           description: body.description,
           watchLink: body.watchLink ?? null,
@@ -1027,7 +937,6 @@ export default async function articleRoutes(app: FastifyInstance) {
           isHot: body.isHot,
         })
         .returning({ id: articles.id });
-      await bumpCategory(body.categoryId ?? null, 1);
       if (body.tags) await setArticleTags(article.id, body.tags);
       return { article };
     },
@@ -1042,19 +951,13 @@ export default async function articleRoutes(app: FastifyInstance) {
         description: articleBody.shape.description.optional(),
         watchLink: linkField,
         vipLink: linkField,
-        categoryId: z.number().int().positive().nullable().optional(),
         visibility: z.enum(VISIBILITIES).optional(),
         isHot: z.boolean().optional(),
         tags: z.string().max(1000).optional(),
       }),
       req.body,
     );
-    const article = await getArticle(id);
-    if (body.categoryId !== undefined && body.categoryId !== article.categoryId) {
-      await assertCategory(body.categoryId);
-      await bumpCategory(article.categoryId, -1);
-      await bumpCategory(body.categoryId, 1);
-    }
+    await getArticle(id);
     if (Object.keys(body).length) await db.update(articles).set(body).where(eq(articles.id, id));
     if (body.visibility === "members") await markMembersOnly(id, true);
     if (body.visibility === "public") await markMembersOnly(id, false);
@@ -1065,7 +968,7 @@ export default async function articleRoutes(app: FastifyInstance) {
   app.delete("/api/admin/articles/:id", async (req, reply) => {
     requireAdmin(req);
     const { id } = parse(idParam, req.params);
-    const article = await getArticle(id);
+    await getArticle(id);
     const tagIds = (await db.select({ id: articleTagLinks.tagId }).from(articleTagLinks).where(eq(articleTagLinks.articleId, id))).map((t) => t.id);
     const images = await db.select({ fileKey: articleImages.fileKey }).from(articleImages).where(eq(articleImages.articleId, id));
     const videos = await db.select({ fileKey: articleVideos.fileKey, ext: articleVideos.ext, thumbKey: articleVideos.thumbKey }).from(articleVideos).where(eq(articleVideos.articleId, id));
@@ -1076,7 +979,6 @@ export default async function articleRoutes(app: FastifyInstance) {
         .set({ articleCount: sql`greatest(${articleTags.articleCount} - 1, 0)` })
         .where(inArray(articleTags.id, tagIds));
     }
-    await bumpCategory(article.categoryId, -1);
     lastWatched.delete(id);
     for (const img of images) await removeImage("albums", img.fileKey);
     for (const v of videos) {

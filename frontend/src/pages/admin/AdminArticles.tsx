@@ -4,7 +4,7 @@ import { api, errorMessage, uploadWithProgress } from "../../api";
 import { ErrorBox, Pagination, Spinner } from "../../components/ui";
 import { formatDate, formatDuration, formatNumber } from "../../format";
 import { useFetch } from "../../useFetch";
-import type { ArticleCategory, ArticleItem } from "../../types";
+import type { ArticleItem } from "../../types";
 
 const VIDEO_ACCEPT = "video/mp4,video/webm,video/quicktime,.mp4,.m4v,.webm,.mov";
 const IMAGE_ACCEPT = "image/*";
@@ -46,12 +46,11 @@ function captureFrame(video: HTMLVideoElement): Promise<Blob | null> {
   return new Promise((resolve) => canvas.toBlob((b) => resolve(b), "image/jpeg", 0.85));
 }
 
-function UploadForm({ categories, onDone, onCreated }: { categories: ArticleCategory[]; onDone: () => void; onCreated: (id: number) => void }) {
+function UploadForm({ onDone, onCreated }: { onDone: () => void; onCreated: (id: number) => void }) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [watchLink, setWatchLink] = useState("");
   const [vipLink, setVipLink] = useState("");
-  const [categoryId, setCategoryId] = useState("");
   const [tags, setTags] = useState("");
   const [membersOnly, setMembersOnly] = useState(false);
   const [isHot, setIsHot] = useState(false);
@@ -70,7 +69,6 @@ function UploadForm({ categories, onDone, onCreated }: { categories: ArticleCate
           description,
           watchLink: watchLink.trim(),
           vipLink: vipLink.trim(),
-          categoryId: categoryId ? Number(categoryId) : null,
           tags,
           visibility: membersOnly ? "members" : "public",
           isHot,
@@ -106,22 +104,9 @@ function UploadForm({ categories, onDone, onCreated }: { categories: ArticleCate
           . Bạn có thể thêm ảnh/video và chọn ảnh bìa ở danh sách bên dưới.
         </div>
       )}
-      <div className="grid gap-3 md:grid-cols-3">
-        <div className="md:col-span-2">
-          <label className="label">Tiêu đề</label>
-          <input className="input" value={title} maxLength={200} onChange={(e) => setTitle(e.target.value)} disabled={busy} required minLength={2} />
-        </div>
-        <div>
-          <label className="label">Thể loại</label>
-          <select className="input" value={categoryId} onChange={(e) => setCategoryId(e.target.value)} disabled={busy}>
-            <option value="">— Không chọn —</option>
-            {categories.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-        </div>
+      <div>
+        <label className="label">Tiêu đề</label>
+        <input className="input" value={title} maxLength={200} onChange={(e) => setTitle(e.target.value)} disabled={busy} required minLength={2} />
       </div>
       <div>
         <label className="label">Mô tả</label>
@@ -445,7 +430,6 @@ function ArticleMediaEditor({ articleId, onChanged, onBack }: { articleId: numbe
 }
 
 export default function AdminArticles() {
-  const { data: catData } = useFetch<{ categories: ArticleCategory[] }>("/api/articles/categories");
   const [tick, setTick] = useState(0);
   const [editing, setEditing] = useState<number | null>(null);
   const [page, setPage] = useState(1);
@@ -455,7 +439,6 @@ export default function AdminArticles() {
   const { data, error, loading } = useFetch<{ articles: ArticleItem[]; page: number; totalPages: number; total: number }>(
     `/api/articles?sort=new&page=${page}&q=${encodeURIComponent(search)}&_=${tick}`,
   );
-  const categories = catData?.categories ?? [];
 
   async function act(path: string, opts: { method: string; body: unknown }) {
     setErr(null);
@@ -481,7 +464,7 @@ export default function AdminArticles() {
 
   return (
     <div className="space-y-4">
-      <UploadForm categories={categories} onDone={() => setTick((t) => t + 1)} onCreated={(id) => setEditing(id)} />
+      <UploadForm onDone={() => setTick((t) => t + 1)} onCreated={(id) => setEditing(id)} />
       <section className="panel">
         <div className="panel-head flex-wrap">
           <h2 className="font-bold">📝 Danh sách bài viết {data && <span className="text-muted">({formatNumber(data.total)})</span>}</h2>
@@ -521,18 +504,6 @@ export default function AdminArticles() {
                     🖼️ {a.imageCount} · 🎬 {a.videoCount} · {formatNumber(a.viewCount)} xem · 👍 {a.likeCount} · 💬 {a.commentCount} · {formatDate(a.createdAt)}
                   </div>
                 </div>
-                <select
-                  className="input w-auto py-1 text-xs"
-                  value={a.category?.id ?? ""}
-                  onChange={(e) => act(`/api/admin/articles/${a.id}`, { method: "PATCH", body: { categoryId: e.target.value ? Number(e.target.value) : null } })}
-                >
-                  <option value="">— Thể loại —</option>
-                  {categories.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
                 <div className="flex gap-1">
                   <button
                     className="btn-ghost px-2 py-1 text-xs"

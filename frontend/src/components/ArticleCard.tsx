@@ -89,14 +89,6 @@ export function ArticleCard({
       <div className="mt-1 flex flex-wrap items-center gap-x-1.5 text-xs text-muted">
         {article.rating !== null && <span className="font-semibold text-emerald-400">👍 {article.rating}%</span>}
         {article.rating !== null && <span>·</span>}
-        {article.category && (
-          <>
-            <Link to={`/bai-viet/the-loai/${article.category.slug}`} className="hover:text-brand">
-              {article.category.name}
-            </Link>
-            <span>·</span>
-          </>
-        )}
         <span>{timeAgo(article.viewedAt ?? article.createdAt)}</span>
       </div>
       {onRemove && (

@@ -8,7 +8,7 @@ import { notFound, parse } from "../http.js";
 import { getOnline } from "../realtime.js";
 import { followStats } from "./follow.js";
 import { threadFeed } from "./forum.js";
-import { articlesByIds, listArticleCategories, listArticles, watchingNowIds } from "./articles.js";
+import { articlesByIds, listArticles, watchingNowIds } from "./articles.js";
 
 export async function forumStats() {
   const [[t], [p], [u], [latest]] = await Promise.all([
@@ -27,13 +27,12 @@ export async function forumStats() {
 }
 
 async function homeData(viewer: User | null = null) {
-  const [today, week, newest, random, watching, articleCategories, tags, latest, hot, trending, stats] = await Promise.all([
+  const [today, week, newest, random, watching, tags, latest, hot, trending, stats] = await Promise.all([
     listArticles({ sort: "today", limit: 8, viewer }),
     listArticles({ sort: "week", limit: 8, viewer }),
     listArticles({ sort: "new", limit: 24, viewer }),
     listArticles({ sort: "random", limit: 8, viewer }),
     articlesByIds(watchingNowIds(8), viewer),
-    listArticleCategories(),
     db
       .select({ id: articleTags.id, slug: articleTags.slug, name: articleTags.name, articleCount: articleTags.articleCount })
       .from(articleTags)
@@ -47,7 +46,6 @@ async function homeData(viewer: User | null = null) {
   ]);
   return {
     articles: { today: today.rows, week: week.rows, newest: newest.rows, random: random.rows, watching },
-    articleCategories,
     tags,
     feeds: { latest, hot, trending },
     stats,

@@ -9,7 +9,7 @@ import { StatsPanel } from "../components/Sidebar";
 import { ErrorBox, SectionHeader, Spinner, Tabs, ThreadRows, VideoGridSkeleton } from "../components/ui";
 import { ArticleGrid } from "../components/ArticleCard";
 import { useFetch } from "../useFetch";
-import { ArticleCategoryBar, TagCloud } from "./Articles";
+import { TagCloud } from "./Articles";
 import type { ArticleItem, ArticleTag, Channel, Stats, ThreadItem } from "../types";
 
 interface HomeData {
@@ -154,7 +154,6 @@ export default function Home() {
   return (
     <div className="space-y-8">
       <Hero slides={slides} top={data.articles.week} />
-      <ArticleCategoryBar />
 
       {isAdmin(user) && (
         <div className="flex flex-wrap items-center gap-2">

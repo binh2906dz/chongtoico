@@ -288,9 +288,6 @@ const importHeaders = IMPORT_SECRET ? { [IMPORT_HEADER]: IMPORT_SECRET } : {};
 const api = (method, url, body, headers = {}) =>
   nc.request(method, url, body, { "x-requested-with": "ctc", ...importHeaders, ...headers }).then((r) => r.json);
 
-const cats = await api("GET", "/api/admin/categories");
-const categoryId = (cats?.categories ?? [])[0]?.id ?? null;
-
 // Bảng tra tiêu đề -> id, để --replace xoá đúng bài cũ.
 const existing = new Map();
 if (has("replace")) {
@@ -335,7 +332,6 @@ for (const [index, a] of albums.entries()) {
         description,
         watchLink,
         vipLink,
-        categoryId,
         tags: "",
         visibility: "public",
         isHot: false,

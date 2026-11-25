@@ -531,14 +531,6 @@ export default function ArticlePage() {
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="text-sm text-muted">
               {formatNumber(article.viewCount)} lượt xem · {formatDate(article.createdAt)}
-              {article.category && (
-                <>
-                  {" · "}
-                  <Link to={`/bai-viet/the-loai/${article.category.slug}`} className="text-brand hover:underline">
-                    {article.category.name}
-                  </Link>
-                </>
-              )}
               {article.imageCount > 0 && ` · 🖼️ ${article.imageCount} ảnh`}
               {article.videoCount > 0 && ` · 🎬 ${article.videoCount} video`}
               {article.commentCount > 0 && ` · 💬 ${formatNumber(article.commentCount)} bình luận`}

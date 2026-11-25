@@ -5,7 +5,7 @@ import { isStaff, useAuth } from "../../auth";
 import { Avatar, ErrorBox, Pagination, Spinner, Tabs, UserLink } from "../../components/ui";
 import { formatDate, formatNumber } from "../../format";
 import { useFetch } from "../../useFetch";
-import type { ArticleCategory, Category, Channel, Profile } from "../../types";
+import type { Category, Channel, Profile } from "../../types";
 import AdminArticles from "./AdminArticles";
 import AdminReports from "./AdminReports";
 import AdminSettings from "./AdminSettings";
@@ -24,7 +24,7 @@ import {
 } from "./AdminTelegramTools";
 import { AdminSystem } from "./AdminSystem";
 
-const TABS = ["overview", "reports", "bai-viet", "the-loai", "users", "categories", "channels", "support", "telegram", "settings", "system"] as const;
+const TABS = ["overview", "reports", "bai-viet", "users", "categories", "channels", "support", "telegram", "settings", "system"] as const;
 type Tab = (typeof TABS)[number];
 
 function Overview() {
@@ -368,7 +368,6 @@ export default function Admin() {
           { id: "overview", label: "Tổng quan" },
           { id: "reports", label: "Báo vi phạm" },
           { id: "bai-viet", label: "Bài viết" },
-          { id: "the-loai", label: "Thể loại bài viết" },
           { id: "users", label: "Thành viên" },
           { id: "categories", label: "Chuyên mục" },
           { id: "channels", label: "Kênh chat" },
@@ -384,19 +383,6 @@ export default function Admin() {
       {tab === "reports" && <AdminReports />}
       {tab === "settings" && admin && <AdminSettings />}
       {tab === "bai-viet" && <AdminArticles />}
-      {tab === "the-loai" && (
-        <CrudList<ArticleCategory>
-          endpoint="/api/admin/article-categories"
-          listKey="categories"
-          canEdit={admin}
-          blank={{ slug: "", name: "", sortOrder: 0 }}
-          fields={[
-            { key: "name", label: "Tên thể loại" },
-            { key: "slug", label: "Đường dẫn" },
-            { key: "sortOrder", label: "Thứ tự", type: "number", width: "w-20" },
-          ]}
-        />
-      )}
       {tab === "users" && <Users />}
       {tab === "categories" && (
         <CrudList<Category>
