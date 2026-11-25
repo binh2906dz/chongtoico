@@ -463,6 +463,8 @@ Cài dịch vụ bot Telegram (ngoài Docker — cần token + kết nối Teleg
 7) LỊCH SỬ GIT (oneline — cập nhật sau mỗi lần push)
 --------------------------------------------------------------------------------
 (xem `git log --oneline`; các commit chính)
+2ccba8d docs: ghi bai hoc B45-B46 (302 khi dang nhap web cu, PGlite bi seed lai)
+87abeb8 fix(scripts): chap nhan 3xx khi dang nhap web cu (Flask tra 302 Redirecting)
 eafaf0d feat(scripts): cong cu chuyen bai viet tu web cu (telegram-bot-dashboard) sang web moi
 a3b3dae feat(telegram): port tinh nang quan ly tu repo cu - quan ly bot (token ma hoa AES-256-GCM), ban phim Telegram, mau tin nhan, quan ly ID, cau hinh gio/slogan, backup he thong
 806267e docs: ghi nhat ky thay doi Telegram UI (LUAT muc 9/10, huongdan muc 1B/7/8)
