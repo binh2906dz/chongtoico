@@ -504,6 +504,7 @@ Cài dịch vụ bot Telegram (ngoài Docker — cần token + kết nối Teleg
 7) LỊCH SỬ GIT (oneline — cập nhật sau mỗi lần push)
 --------------------------------------------------------------------------------
 (xem `git log --oneline`; các commit chính)
+c302d6d feat(telegram): them tinh nang loi chao khi /start + tab quan tri
 84f8e91 docs: ghi nhat ky dat lai mat khau admin (B81-B82)
 a64a299 fix(bot): dung bot.start() de bot nhan message (init() chi goi getMe, khong poll)
 0c12ed7 fix(articles): doi domain nut 'Xem ngay' anonlink.io -> anonlink.co (chi du lieu hien co)
@@ -1121,6 +1122,53 @@ b22c5f7 feat: scaffold new platform (đã thay thế — xoá ở bản Node.js)
   - Da kiem tra: /api/articles/166 -> vipLink = https://t.me/nhomchongtoicoo;
     60/60 bai ngau nhien tra nhomchongtoicoo (0 link cu); xem trinh duyet bai 166
     - hai nut "▶ Xem ngay" + "👑 Kênh VIP" hien thi dung.
+
+[2026-11-26] THEM TINH NANG LOI CHAO KHI NGUOI DUNG BAM /start (tab "Lời chào").
+  - Yêu cầu: "tính năng lời chào khi người dùng start bot hiện chưa có, thêm nó
+    vào trang quản lý để tôi dễ thao tác".
+  - Quyết định (hỏi user): HTML + biến {{name}}/{{link}}; chọn NGẪU NHIÊN 1
+    câu trong danh sách; đặt ở TAB RIÊNG "Lời chào" trong khu vực Telegram.
+  - Lưu trữ: bảng telegram_settings, key = "greeting" (dùng cơ chế có sẵn, KHÔNG
+    tạo bảng/migration mới). Cấu trúc:
+      { enabled: bool, keepButtons: bool, items: [{ id, text }] }
+  - Backend:
+    - GET  /api/admin/telegram/settings  -> them `greeting` vao response
+    - PUT  /api/admin/telegram/settings/greeting  (route moi, co requireAdmin)
+    - GET  /api/bot/settings -> them `greeting` de bot doc duoc
+    - File: server/src/routes/telegramAdmin.ts (greetingBody zod schema)
+  - Bot (file moi bot/src/greeting.ts):
+    - loadGreeting(): doc setting qua /api/bot/settings, cache 60s, fallback
+      {enabled:false} khi web app khong phat duoc.
+    - pickGreeting(): chon NGẪU NHIÊN 1 trong cac cau (bo qua cau rong), tra
+      null neu tat hoac chua co cau -> bot dung cau mac dinh cu.
+    - fillGreeting(): thay {{name}} (ten nguoi dung) va {{link}} (link web),
+      escape HTML de khong lam hong tin nhan.
+    - commands.ts handleStart(): dung cau chao neu co, giu nguyen nut bam neu
+      keepButtons=true (tac checkbox de bo nut).
+    - index.ts: goi loadGreeting(fetchSettings) truoc khi tra loi lenh.
+  - Frontend:
+    - File moi component AdminTelegramGreeting trong AdminTelegramTools.tsx.
+    - Tab con moi "loi-chao" (giua "Bàn phím" va "Mẫu tin nhắn") trong Admin.tsx
+      + them "loi-chao" vao TG_TABS (neu quen, TS error TS2367/TS2322).
+    - types.ts: them TelegramGreeting + TelegramGreetingItem.
+    - Giao dien: checkbox "Bật lời chào", checkbox "Giữ nút bấm bên dưới lời
+      chào", 2 nut bien {{name}}/{{link}} (bam de chen vao cau cuoi), danh sach
+      textarea "Câu chào N", nut "+ Thêm lời chào" / "Lưu lời chào".
+  - Test: bot/test/greeting.test.ts (8 test) -> 53/53 pass. Server 62/62 pass.
+    tsc server + frontend build deu sach.
+  - Deploy VPS: git pull --ff-only -> docker compose up -d --build app ->
+    cd bot && npm ci && npm run build -> systemctl restart chongtoico-bot.
+  - ĐÃ KIỂM TRA:
+    - API: PUT luu -> GET lai -> bot doc qua /api/bot/settings (enabled=true, 2 cau)
+      -> ghi trong DB (key=greeting).
+    - Logic bot tren VPS: chon ngau nhien 100 lan => phan bo 52/48 (g1/g2);
+      thay bien dung ("Chào Nam"); tat => null.
+    - UI (browser thu te): 5/5 diem DAT — tab "Lời chào" dung vi tri, 2
+      checkbox, 2 textarea co {{name}}/{{link}}, nut Thêm/Lưu, 2 nut bien.
+      Bam {{name}} chen dung vao cuoi Câu chào 2 (47->56 ky tu); bam "Lưu lời
+      chào" hien thong bao xanh "Đã lưu lời chào."; gia tri con nguyen sau khi
+      tai lai trang (luu that, khong phai state tam).
+  - Da dat san 2 cau chao mau (enabled=false) de admin tu bat va sua.
 
 ================================================================================
 Hết — lưu ý: không lưu mật khẩu / token thật trong file này.

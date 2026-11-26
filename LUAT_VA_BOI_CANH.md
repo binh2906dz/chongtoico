@@ -219,6 +219,10 @@ Mỗi dòng: **lỗi / tình huống** → **cách tránh**.
 - **B82 — Shell script truyền mật khẩu có ký tự `$` (ví dụ `$qCWF5T0rT06`) phải escape hoặc truyền qua file JSON tạm**, nếu không shell sẽ nội suy biến thành chuỗi rỗng và luôn báo "sai mật khẩu" — dễ tưởng tài khoản hỏng.
 - **B83 — Trước khi `UPDATE` link hàng loạt, hãy liệt kê TẤT CẢ giá trị phân biệt trong cột** (`GROUP BY` theo giá trị), đừng chỉ đếm tổng. Ở đây cả 1.551 bài đều dùng **một** URL nên một lệnh `replace` là đủ — nếu có biến thể (ví dụ `?t=`, `www.`) mà không kiểm tra trước thì sẽ sót.
 - **B84 — Khi đổi một cột, phải xác nhận cột liên quan trong cùng bảng không bị đụng.** Ở đây `vip_link` và `watch_link` cùng nằm trong bảng `articles` nhưng là 2 nút khác nhau — kiểm tra lại `watch_link` sau khi sửa.
+- **B85 — Muốn thêm cấu hình mà KHÔNG tạo migration: dùng bảng `telegram_settings` (key/value JSONB) đã có sẵn.** Key mới = `greeting`, đọc/ghi qua `readSetting`/`writeSetting`. Không cần đụng schema, không cần migrate, và bot đã có sẵn đường `/api/bot/settings` để lấy.
+- **B86 — Thêm tab mới trong React + TS: cập nhật CẢ mảng tab lẫn danh sách phần tử render.** Bỏ sót mảng `TG_TABS` ⇒ lỗi `TS2367` ("types have no overlap") và `TS2322` (Union không khớp). Nhớ thêm vào mảng `const ... as const`.
+- **B87 — Biến do người dùng nhập vào tin nhắn HTML phải được escape.** `fillGreeting()` escape `& < > "` trước khi chèn `{{name}}`/`{{link}}` — nếu không, tên người dùng chứa `<b>` sẽ phá HTML của tin nhắn Telegram.
+- **B88 — Với 27 bot cùng chạy 1 process, cache cấu hình ở bot phải có TTL** (60 giây) để bot không hỏi web app liên tục, nhưng vẫn nhận được thay đổi của admin trong thời gian ngắn.
 
 ## 10. Nhật ký làm việc
 
@@ -870,3 +874,42 @@ Mẫu mỗi mục:
   - **B83 — Trước khi `UPDATE` link hàng loạt, hãy liệt kê TẤT CẢ giá trị phân biệt trong cột** (`GROUP BY` theo giá trị), đừng chỉ đếm tổng. Ở đây cả 1.551 bài đều dùng **một** URL nên một lệnh `replace` là đủ — nếu có biến thể (ví dụ `?t=` hay link có `www`) mà không kiểm tra trước thì sẽ sót.
   - **B84 — Khi đổi một cột, phải xác nhận cột liên quan không bị đụng.** Ở đây `vip_link` và `watch_link` nằm cùng bảng `articles` nhưng là 2 nút khác nhau — kiểm tra lại `watch_link` sau khi sửa (`1.546 anonlink.co, 0 sai`).
 - **File**: `server/scripts/fix-vip-link.mjs` (mới), `huongdan.txt`, `LUAT_VA_BOI_CANH.md`.
+
+## 2026-11-26 — THÊM TÍNH NĂNG "LỜI CHÀO" KHI NGƯỜI DÙNG BẤM /start (+ tab quản trị)
+
+- **Yêu cầu**: *"tính năng lời chào khi người dùng start bot hiện chưa có, thêm nó vào trang quản lý để tôi dễ thao tác"*.
+- **Quyết định thiết kế** (hỏi user qua AskQuestion):
+  - Nội dung: **HTML + biến `{{name}}` / `{{link}}`** (chọn "html-bien").
+  - Nhiều câu thì bot **chọn ngẫu nhiên** 1 câu mỗi lần /start.
+  - Vị trí: **tab riêng "Lời chào"** trong khu vực Telegram của trang quản trị.
+- **Lưu trữ**: bảng `telegram_settings`, `key = "greeting"` — **tái dùng cơ chế có sẵn, KHÔNG tạo bảng/migration mới**:
+  ```json
+  { "enabled": true, "keepButtons": true, "items": [{ "id": "g1", "text": "👋 Chào mừng {{name}}...\n\n{{link}}" }] }
+  ```
+- **Backend** (`server/src/routes/telegramAdmin.ts`):
+  - Schema zod `greetingBody`: `enabled`, `keepButtons`, `items[]` (mỗi item `{id?, text}`, text 1–2000 ký tự, tối đa 50 câu).
+  - `GET /api/admin/telegram/settings` → thêm `greeting` vào response.
+  - `PUT /api/admin/telegram/settings/greeting` (route mới, có `requireAdmin`).
+  - `GET /api/bot/settings` → thêm `greeting` để bot đọc được.
+- **Bot** (file mới `bot/src/greeting.ts`):
+  - `loadGreeting()`: đọc `/api/bot/settings`, cache 60 giây, fallback `{enabled:false}` khi web app không phản hồi.
+  - `pickGreeting()`: **chọn ngẫu nhiên** 1 trong các câu (bỏ câu rỗng), trả `null` khi tắt hoặc chưa có câu ⇒ bot giữ câu mặc định.
+  - `fillGreeting()`: thay `{{name}}` (tên người dùng) và `{{link}}` (link web), **escape HTML** để không làm hỏng tin nhắn.
+  - `commands.ts` → `handleStart()` dùng câu chào nếu có; giữ nút bấm nếu `keepButtons=true`.
+  - `index.ts` → gọi `loadGreeting(fetchSettings)` trước khi trả lời lệnh.
+- **Frontend**:
+  - `AdminTelegramTools.tsx` → component mới `AdminTelegramGreeting`: checkbox "Bật lời chào", checkbox "Giữ nút bấm bên dưới lời chào", 2 nút biến `{{name}}`/`{{link}}` (bấm là chèn vào câu cuối), danh sách textarea "Câu chào N", nút "+ Thêm lời chào" / "Lưu lời chào".
+  - `Admin.tsx` → tab con `loi-chao` (giữa "Bàn phím" và "Mẫu tin nhắn") + thêm vào mảng `TG_TABS`.
+  - `types.ts` → `TelegramGreeting`, `TelegramGreetingItem`.
+- **Test**: `bot/test/greeting.test.ts` (8 test) → **53/53 pass**; server **62/62 pass**; `tsc` server sạch; `npm run build` frontend sạch.
+- **Đã kiểm tra trên production**:
+  - API: PUT → GET lại → bot đọc qua `/api/bot/settings` (`enabled=true`, 2 câu) → ghi đúng trong DB (`key=greeting`).
+  - Logic bot chạy trên VPS: chọn ngẫu nhiên 100 lần ⇒ phân bố **52/48** (g1/g2); thay biến đúng ("Chào Nam"); tắt ⇒ `null`.
+  - UI (browser thật): **5/5 điểm ĐẠT** — tab đúng vị trí, 2 checkbox, 2 textarea có `{{name}}`/`{{link}}`, nút Thêm/Lưu, 2 nút biến. Bấm `{{name}}` chèn đúng vào cuối Câu chào 2 (47→56 ký tự); bấm "Lưu lời chào" hiện thông báo xanh "Đã lưu lời chào."; **giá trị còn nguyên sau khi tải lại trang** (lưu thật xuống server).
+  - Đã đặt sẵn 2 câu chào mẫu với `enabled=false` để admin tự bật và sửa.
+- **Bài học**:
+  - **B85 — Muốn thêm cấu hình mà KHÔNG tạo migration: dùng bảng `telegram_settings` (key/value JSONB) đã có sẵn.** Key mới = `greeting`, đọc/ghi qua `readSetting`/`writeSetting`. Không cần đụng schema, không cần migrate, và bot đã có sẵn đường `/api/bot/settings` để lấy.
+  - **B86 — Thêm tab mới trong React + TS: cập nhật CẢ mảng tab lẫn danh sách phần tử render.** Bỏ sót mảng `TG_TABS` ⇒ lỗi `TS2367` ("types have no overlap") và `TS2322` (Union không khớp). Nhớ thêm vào mảng const và mảng `as const`.
+  - **B87 — Biến do người dùng nhập vào tin nhắn HTML phải được escape.** `fillGreeting()` escape `& < > "` trước khi chèn `{{name}}`/`{{link}}` — nếu không, tên người dùng chứa `<b>` sẽ phá HTML của tin nhắn Telegram.
+  - **B88 — Với 27 bot cùng chạy 1 process, cache cấu hình ở bot phải có TTL** (60 giây) để bot không hỏi web app liên tục, nhưng vẫn nhận được thay đổi của admin trong thời gian ngắn.
+- **File**: `bot/src/greeting.ts` (mới), `bot/test/greeting.test.ts` (mới), `bot/src/client.ts`, `bot/src/commands.ts`, `bot/src/index.ts`, `server/src/routes/telegramAdmin.ts`, `frontend/src/pages/admin/AdminTelegramTools.tsx`, `frontend/src/pages/admin/Admin.tsx`, `frontend/src/types.ts`, `huongdan.txt`, `LUAT_VA_BOI_CANH.md`.
