@@ -1,4 +1,8 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { createWriteStream } from "node:fs";
+import { mkdir, open, rename, rm, stat } from "node:fs/promises";
+import path from "node:path";
+import { pipeline } from "node:stream/promises";
 import { and, count, desc, eq, gte, inArray, isNotNull, lte, sql } from "drizzle-orm";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
@@ -20,6 +24,7 @@ import {
 } from "../db/schema.js";
 import { badRequest, HttpError, notFound, parse } from "../http.js";
 import { config } from "../config.js";
+import { looksLikeVideo, storeImage, VIDEO_DIR, videoExtFromName } from "../media.js";
 import { nextAllowedTime, queueCampaign } from "../scheduler.js";
 import {
   consumeLinkCode,
@@ -40,6 +45,9 @@ import {
 /* ------------------------------------------------------------------ *
  * Schemas
  * ------------------------------------------------------------------ */
+
+/** One megabyte in bytes. */
+const MB = 1024 * 1024;
 
 const initDataBody = z.object({ initData: z.string().min(1).max(8000) });
 
@@ -113,11 +121,16 @@ const campaignBody = z.object({
   mediaNote: z.string().max(500).nullish(),
   buttons: z.array(z.object({ label: z.string().trim().min(1).max(40), url: z.string().trim().url().max(500) })).max(10).default([]),
   articleIds: z.array(z.number().int().positive()).max(20).default([]),
-  targetType: z.enum(["all_linked", "visited", "stalled", "status", "ids"]).default("all_linked"),
+  targetType: z.enum(["all_linked", "visited", "stalled", "status", "ids", "imported"]).default("all_linked"),
   targetIds: z
     .array(z.union([z.number().int().positive(), z.string().trim().min(1).max(32)]))
     .max(100000)
     .default([]),
+  /**
+   * An emergency campaign skips every frequency rule: it goes out at once,
+   * even to people who received a message today.
+   */
+  isEmergency: z.boolean().default(false),
   schedule: z.enum(["now", "at", "daily", "weekly"]).default("now"),
   hour: z.number().int().min(0).max(23).default(8),
   minute: z.number().int().min(0).max(59).default(0),
@@ -130,13 +143,15 @@ const campaignPatchBody = z.object({
   text: z.string().max(4000).optional(),
   mediaType: z.enum(["image", "video", "none"]).optional(),
   mediaKey: z.string().trim().max(64).nullish(),
+  mediaSource: z.enum(["article", "upload"]).optional(),
   buttons: z.array(z.object({ label: z.string().trim().min(1).max(40), url: z.string().trim().url().max(500) })).max(10).optional(),
   articleIds: z.array(z.number().int().positive()).max(20).optional(),
-  targetType: z.enum(["all_linked", "visited", "stalled", "status", "ids"]).optional(),
+  targetType: z.enum(["all_linked", "visited", "stalled", "status", "ids", "imported"]).optional(),
   targetIds: z
     .array(z.union([z.number().int().positive(), z.string().trim().min(1).max(32)]))
     .max(100000)
     .optional(),
+  isEmergency: z.boolean().optional(),
   schedule: z.enum(["now", "at", "daily", "weekly"]).optional(),
   hour: z.number().int().min(0).max(23).optional(),
   minute: z.number().int().min(0).max(59).optional(),
@@ -651,6 +666,7 @@ export default async function telegramRoutes(app: FastifyInstance) {
         articleIds: body.articleIds,
         targetType: body.targetType,
         targetIds: body.targetIds,
+        isEmergency: body.isEmergency,
         schedule: body.schedule,
         // A schedule never runs until the admin activates it (rule Q9).
         scheduleStatus: "paused",
@@ -662,6 +678,112 @@ export default async function telegramRoutes(app: FastifyInstance) {
       })
       .returning();
     return { campaign: created };
+  });
+
+  /**
+   * Upload a media file for a campaign.
+   *
+   * The file is described the same way the campaigns and the greetings describe
+   * their media, so the bot can send it as it is.
+   */
+  app.post(
+    "/api/admin/telegram/campaigns/media",
+    { config: { rateLimit: { max: 30, timeWindow: "10 minutes" } } },
+    async (req) => {
+      requireAdmin(req);
+      const parts = req.parts({ limits: { fileSize: config.maxVideoMb * MB, files: 1, fields: 4 } });
+      for await (const part of parts) {
+        if (part.type === "field") continue;
+        const filename = part.filename ?? "";
+        const isVideo = /\.(mp4|webm|mov)$/i.test(filename);
+
+        if (isVideo) {
+          const ext = videoExtFromName(filename);
+          if (!ext) {
+            part.file.resume();
+            throw badRequest("Chỉ nhận video định dạng mp4, webm hoặc mov.");
+          }
+          const dir = VIDEO_DIR();
+          await mkdir(dir, { recursive: true });
+          const key = randomBytes(16).toString("hex");
+          const tmp = path.join(dir, `${key}.${ext}.part`);
+          try {
+            await pipeline(part.file, createWriteStream(tmp));
+          } catch (err) {
+            await rm(tmp, { force: true });
+            if ((err as { statusCode?: number }).statusCode === 413) {
+              throw new HttpError(413, `Video quá lớn (tối đa ${config.maxVideoMb} MB).`);
+            }
+            throw err;
+          }
+          if (part.file.truncated) {
+            await rm(tmp, { force: true });
+            throw new HttpError(413, `Video quá lớn (tối đa ${config.maxVideoMb} MB).`);
+          }
+          const head = Buffer.alloc(16);
+          const fh = await open(tmp, "r");
+          try {
+            await fh.read(head, 0, 16, 0);
+          } finally {
+            await fh.close();
+          }
+          if (!looksLikeVideo(head, ext)) {
+            await rm(tmp, { force: true });
+            throw badRequest("File không phải video hợp lệ.");
+          }
+          const sizeBytes = (await stat(tmp)).size;
+          await rename(tmp, path.join(dir, `${key}.${ext}`));
+          return {
+            type: "video",
+            key: `video:${key}.${ext}`,
+            source: "upload",
+            url: `/media/v/${key}.${ext}`,
+            sizeBytes,
+          };
+        }
+
+        // An image.
+        const buffer = await part.toBuffer();
+        if (!buffer.length) throw badRequest("Chưa chọn ảnh.");
+        const stored = await storeImage("ads", buffer);
+        return {
+          type: "image",
+          key: `image:${stored.key}`,
+          source: "upload",
+          url: `/media/b/${stored.key}.webp`,
+          width: stored.width,
+          height: stored.height,
+        };
+      }
+      throw badRequest("Chưa chọn file.");
+    },
+  );
+
+  /**
+   * The imported ids grouped by their status.
+   *
+   * This is the list the admin picks from: the first emergency scan goes to
+   * everybody, the later ones only to the ids that turned out to be alive.
+   */
+  app.get("/api/admin/telegram/ids/groups", async (req) => {
+    requireAdmin(req);
+    const rows = await db
+      .select({ status: telegramUsers.status, n: count() })
+      .from(telegramUsers)
+      .groupBy(telegramUsers.status);
+    const groups: { status: string; count: number; label: string }[] = [];
+    const labels: Record<string, string> = {
+      active: "Hoạt động (bot đã bắt được)",
+      blocked: "Đã bị chặn (Telegram chặn bot)",
+      invalid: "Không hợp lệ (id sai / không tồn tại)",
+      unknown: "Chưa gửi lần nào",
+    };
+    for (const row of rows) {
+      const status = row.status ?? "unknown";
+      groups.push({ status, count: row.n, label: labels[status] ?? status });
+    }
+    const total = groups.reduce((sum, g) => sum + g.count, 0);
+    return { groups, total };
   });
 
   app.patch("/api/admin/telegram/campaigns/:id", async (req) => {
@@ -685,7 +807,8 @@ export default async function telegramRoutes(app: FastifyInstance) {
     if (!campaign) throw notFound("Không tìm thấy chiến dịch.");
 
     // Sending only happens inside the allowed window (08:00–22:00 Vietnam).
-    const scheduledAt = nextAllowedTime();
+    // An emergency campaign goes out right away.
+    const scheduledAt = campaign.isEmergency ? new Date() : nextAllowedTime();
     const result = await queueCampaign(id, scheduledAt);
     if (result.queued > 0) {
       await db

@@ -144,6 +144,66 @@ export function looksLikeVideo(head: Buffer, ext: VideoExt): boolean {
   return head.toString("latin1", 4, 8) === "ftyp";
 }
 
+/**
+ * A media file an admin uploaded for a message (a greeting or a campaign).
+ *
+ * Images live in the ads folder, videos with the other videos. The description
+ * is the same everywhere, so the bot can send the file without knowing where
+ * it came from.
+ */
+export interface UploadedMedia {
+  type: "image" | "video";
+  /** "<kind>:<fileKey>" — the shape the campaigns use. */
+  key: string;
+  source: "upload";
+  /** The path the file is served under. */
+  url: string;
+  sizeBytes: number;
+}
+
+/**
+ * Store an uploaded image in the ads folder.
+ *
+ * The image is converted to webp, so the bot always receives a file Telegram
+ * accepts.
+ */
+export async function storeUploadedImage(input: Buffer): Promise<UploadedMedia> {
+  const stored = await storeImage("ads", input);
+  return {
+    type: "image",
+    key: `image:${stored.key}`,
+    source: "upload",
+    url: `/media/b/${stored.key}.webp`,
+    sizeBytes: 0,
+  };
+}
+
+/**
+ * Store an uploaded video in the videos folder.
+ *
+ * The magic bytes are checked, so a renamed file cannot slip through.
+ */
+export async function storeUploadedVideo(
+  input: Buffer,
+  filename: string,
+): Promise<UploadedMedia> {
+  const ext = videoExtFromName(filename);
+  if (!ext) throw badRequest("Chỉ nhận video định dạng mp4, webm hoặc mov.");
+  const head = input.subarray(0, 16);
+  if (!looksLikeVideo(head, ext)) throw badRequest("File không phải video hợp lệ.");
+  const dir = VIDEO_DIR();
+  await mkdir(dir, { recursive: true });
+  const key = randomBytes(16).toString("hex");
+  await writeFile(path.join(dir, `${key}.${ext}`), input);
+  return {
+    type: "video",
+    key: `video:${key}.${ext}`,
+    source: "upload",
+    url: `/media/v/${key}.${ext}`,
+    sizeBytes: input.length,
+  };
+}
+
 export async function removeVideoFile(key: string, ext: string) {
   if (!KEY_RE.test(key) || !/^[a-z0-9]{2,5}$/.test(ext)) return;
   await removeFile(path.join(VIDEO_DIR(), `${key}.${ext}`));

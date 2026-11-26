@@ -34,6 +34,18 @@ function cookieOf(res: { headers: Record<string, unknown> }): string {
   return list.map((c: string) => c.split(";")[0]).join("; ");
 }
 
+/** Signs in as the admin and returns the session cookie for admin routes. */
+async function loginAdmin(): Promise<string> {
+  const login = await app.inject({
+    method: "POST",
+    url: "/api/auth/login",
+    headers: H,
+    payload: { username: "boss", password: "boss-password" },
+  });
+  assert.equal(login.statusCode, 200, login.body);
+  return cookieOf(login);
+}
+
 before(async () => {
   await initDb("pglite:memory");
   db = (await import("../src/db/index.js")).db;
@@ -191,5 +203,73 @@ describe("Telegram scheduler and frequency limits", () => {
       payload: { jobId: maxId + 9999, status: "sent" },
     });
     assert.equal(res.statusCode, 404);
+  });
+
+  it("sends an emergency campaign to the imported ids even when the daily limit is reached", async () => {
+    // The person received a message today, so the normal rules would block it.
+    await db.update(telegramUsers).set({ optOut: false, notifyEnabled: true }).where(eq(telegramUsers.telegramId, 500001));
+    await db.insert(deliveryLog).values({
+      campaignId: "campaign-hom-truoc",
+      telegramId: 500001,
+      botId: "bot-a",
+      status: "sent",
+      sentAt: new Date(),
+      error: null,
+    });
+
+    const adminCookie = await loginAdmin();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/admin/telegram/campaigns",
+      headers: { ...H, cookie: adminCookie },
+      payload: {
+        name: "Khẩn cấp",
+        text: "Nội dung khẩn cấp",
+        mediaType: "none",
+        targetType: "imported",
+        targetIds: [],
+        isEmergency: true,
+        schedule: "now",
+      },
+    });
+    assert.equal(res.statusCode, 200, res.body);
+    const { campaign } = res.json();
+    assert.equal(campaign.isEmergency, true);
+
+    // The emergency campaign goes through anyway.
+    const queued = await queueCampaign(campaign.id, new Date());
+    assert.equal(queued.queued, 1, JSON.stringify(queued));
+    assert.equal(queued.skipped, 0, JSON.stringify(queued));
+  });
+
+  it("narrows the imported ids down to the chosen status group", async () => {
+    // One person that is not active.
+    await db.insert(telegramUsers).values({ telegramId: 500002, status: "invalid" });
+
+    const adminCookie = await loginAdmin();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/admin/telegram/campaigns",
+      headers: { ...H, cookie: adminCookie },
+      payload: {
+        name: "Chỉ nhóm active",
+        text: "Nội dung riêng cho nhóm active",
+        mediaType: "none",
+        targetType: "imported",
+        targetIds: ["active"],
+        isEmergency: true,
+        schedule: "now",
+      },
+    });
+    assert.equal(res.statusCode, 200, res.body);
+    const { campaign } = res.json();
+
+    const queued = await queueCampaign(campaign.id, new Date());
+    // Only the active person is targeted — the invalid one is left out.
+    assert.equal(queued.queued, 1, JSON.stringify(queued));
+
+    const jobs = await db.select().from(notificationJobs).where(eq(notificationJobs.campaignId, campaign.id));
+    assert.equal(jobs.length, 1);
+    assert.equal(jobs[0].telegramId, 500001);
   });
 });

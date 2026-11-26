@@ -272,6 +272,7 @@ const targetLabel: Record<string, string> = {
   stalled: "Hồi sinh (≥14 ngày không vào)",
   status: "Theo trạng thái",
   ids: "Danh sách ID cụ thể",
+  imported: "Toàn bộ ID đã nhập",
 };
 
 const scheduleLabel: Record<string, string> = {
@@ -355,6 +356,9 @@ export function AdminTelegramCampaigns() {
                         {c.mediaType === "video" ? "🎬 Video" : "🖼️ Ảnh"}
                       </span>
                     )}
+                    {c.isEmergency && (
+                      <span className="badge bg-amber-500/20 text-amber-300">⚡ Khẩn cấp</span>
+                    )}
                   </div>
                   <div className="mt-2 text-xs text-muted">
                     Đã gửi {formatNumber(c.sentCount)}/{formatNumber(c.total)} · lỗi {formatNumber(c.failedCount)} · trạng thái{" "}
@@ -400,6 +404,10 @@ function CampaignForm({ onCreated }: { onCreated: () => void }) {
   const [dayOfWeek, setDayOfWeek] = useState(1);
   const [mediaType, setMediaType] = useState("none");
   const [mediaKey, setMediaKey] = useState("");
+  const [mediaSource, setMediaSource] = useState<"article" | "upload" | null>(null);
+  const [isEmergency, setIsEmergency] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const [articleIds, setArticleIds] = useState<number[]>([]);  const [buttons, setButtons] = useState<{ label: string; url: string }[]>([]);
   const [msg, setMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -414,6 +422,12 @@ function CampaignForm({ onCreated }: { onCreated: () => void }) {
       media: { kind: "image" | "video"; key: string; ext?: string }[];
     }[];
   }>("/api/admin/telegram/articles/recent?hours=720");
+
+  // The imported ids grouped by their status, so the admin picks a group.
+  const { data: idGroups } = useFetch<{
+    groups: { status: string; count: number; label: string }[];
+    total: number;
+  }>("/api/admin/telegram/ids/groups");
 
   // The saved message templates, so a sentence can be inserted with one click.
   const { data: templateData } = useFetch<{
@@ -447,26 +461,30 @@ function CampaignForm({ onCreated }: { onCreated: () => void }) {
     [recent, articleIds],
   );
 
-  async function submit() {
+  async function submit(sendNow = false) {
     setBusy(true);
     setError(null);
     setMsg(null);
+    // The emergency button always sends as an emergency campaign, even when the
+    // box was not ticked.
+    const emergency = sendNow || isEmergency;
     try {
       const res = await api<{ campaign: TelegramCampaign }>("/api/admin/telegram/campaigns", {
         body: {
           name: name || "Chiến dịch mới",
           text,
           mediaType,
-          mediaSource: mediaType === "none" ? null : "article",
+          mediaSource: mediaType === "none" ? null : mediaSource,
           mediaKey: mediaType === "none" ? null : mediaKey || null,
           targetType,
           targetIds:
-            targetType === "status"
+            targetType === "status" || targetType === "imported"
               ? targetStatuses
               : targetType === "ids"
                 ? parsedTargetIds
                 : [],
-          schedule,
+          isEmergency: emergency,
+          schedule: sendNow ? "now" : schedule,
           hour: effectiveHour,
           minute: effectiveMinute,
           dayOfWeek: schedule === "weekly" ? dayOfWeek : null,
@@ -480,17 +498,56 @@ function CampaignForm({ onCreated }: { onCreated: () => void }) {
           articleIds,
         },
       });
-      setMsg(`Đã tạo chiến dịch "${res.campaign.name}". Bấm "Gửi ngay" hoặc "Kích hoạt lịch" để chạy.`);
+      // The emergency button sends the campaign right away.
+      if (sendNow) {
+        const sent = await api<{ queued: number; skipped: number }>(
+          `/api/admin/telegram/campaigns/${res.campaign.id}/send`,
+          { method: "POST" },
+        );
+        setMsg(
+          `⚡ Đã gửi khẩn cấp "${res.campaign.name}": ${sent.queued} tin nhắn vào hàng đợi` +
+            (sent.skipped ? `, bỏ qua ${sent.skipped}.` : "."),
+        );
+      } else {
+        setMsg(`Đã tạo chiến dịch "${res.campaign.name}". Bấm "Gửi ngay" hoặc "Kích hoạt lịch" để chạy.`);
+      }
       setName("");
       setText("");
       setButtons([]);
       setArticleIds([]);
       setMediaKey("");
+      setMediaSource(null);
+      setIsEmergency(false);
       onCreated();
     } catch (e) {
       setError(errorMessage(e));
     } finally {
       setBusy(false);
+    }
+  }
+
+  /** Upload a media file for this campaign. */
+  async function uploadMedia(file: File) {
+    setUploading(true);
+    setUploadError(null);
+    try {
+      const body = new FormData();
+      body.append("file", file);
+      const res = await fetch("/api/admin/telegram/campaigns/media", {
+        method: "POST",
+        body,
+        credentials: "include",
+        headers: { "x-requested-with": "ctc" },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error?.message || "Không tải lên được.");
+      setMediaType(data.type);
+      setMediaKey(data.key);
+      setMediaSource("upload");
+    } catch (e) {
+      setUploadError(e instanceof Error ? e.message : "Không tải lên được.");
+    } finally {
+      setUploading(false);
     }
   }
 
@@ -600,14 +657,52 @@ function CampaignForm({ onCreated }: { onCreated: () => void }) {
       <div className="grid gap-4 md:grid-cols-2">
         <div>
           <label className="label">Media đính kèm</label>
-          <select className="input" value={mediaType} onChange={(e) => setMediaType(e.target.value)}>
+          <select
+            className="input"
+            value={mediaType}
+            onChange={(e) => {
+              setMediaType(e.target.value);
+              if (e.target.value === "none") {
+                setMediaKey("");
+                setMediaSource(null);
+              }
+            }}
+          >
             <option value="none">Không kèm media</option>
             <option value="image">Kèm ảnh</option>
             <option value="video">Kèm video</option>
           </select>
           {mediaType !== "none" && (
             <>
+              <label className="mt-2 block text-sm">
+                <span className="mb-1 block text-xs text-muted">
+                  Tải file mới lên (ảnh jpg/png/webp, video mp4/webm/mov)
+                </span>
+                <input
+                  className="input w-full"
+                  type="file"
+                  accept={mediaType === "video" ? "video/mp4,video/webm,video/quicktime" : "image/*"}
+                  disabled={uploading}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) void uploadMedia(file);
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+              {uploading && <p className="mt-1 text-xs text-muted">Đang tải lên…</p>}
+              {uploadError && <p className="mt-1 text-xs text-rose-300">{uploadError}</p>}
+              {mediaKey && (
+                <p className="mt-1 text-xs text-muted">
+                  Đã chọn file <b className="font-mono">{mediaKey}</b>
+                  {mediaSource === "upload" ? " (file tải lên)" : mediaSource === "article" ? " (file của bài viết)" : ""}
+                </p>
+              )}
+
               <div className="mt-2 max-h-56 space-y-2 overflow-y-auto rounded-lg border border-line bg-panel-2 p-2">
+                <div className="px-2 py-1 text-[11px] font-semibold uppercase text-muted">
+                  Hoặc chọn file có sẵn trong bài viết
+                </div>
                 {(recent?.rows ?? []).length === 0 && (
                   <div className="px-1 py-2 text-xs text-muted">Chưa có bài viết nào trong 30 ngày gần đây.</div>
                 )}
@@ -637,7 +732,10 @@ function CampaignForm({ onCreated }: { onCreated: () => void }) {
                               name="media"
                               className="mt-0.5"
                               checked={on}
-                              onChange={() => setMediaKey(value)}
+                              onChange={() => {
+                                setMediaKey(value);
+                                setMediaSource("article");
+                              }}
                             />
                             <span className="font-mono">{m.key}</span>
                             <span className="text-muted">({m.kind === "video" ? m.ext ?? "mp4" : "webp"})</span>
@@ -666,9 +764,55 @@ function CampaignForm({ onCreated }: { onCreated: () => void }) {
             <option value="all_linked">Tất cả người đã liên kết</option>
             <option value="visited">Người đã từng vào web</option>
             <option value="stalled">Hồi sinh (≥14 ngày không vào)</option>
+            <option value="imported">Toàn bộ ID đã nhập (mục Nhập ID)</option>
             <option value="status">Theo trạng thái</option>
             <option value="ids">Danh sách ID cụ thể</option>
           </select>
+
+          {targetType === "imported" && (
+            <div className="mt-2 space-y-2">
+              <div className="rounded-lg border border-line bg-panel-2 p-2">
+                <div className="mb-1 flex items-center justify-between text-xs">
+                  <span className="font-semibold">Chọn nhóm ID gửi tới</span>
+                  <span className="text-muted">Tổng: {idGroups?.total ?? 0} id</span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {(idGroups?.groups ?? []).map((g) => {
+                    const on = targetStatuses.includes(g.status);
+                    return (
+                      <button
+                        type="button"
+                        key={g.status}
+                        className={`rounded-lg border px-3 py-1 text-xs font-semibold ${
+                          on ? "border-brand bg-brand/20 text-brand-2" : "border-line bg-panel text-muted"
+                        }`}
+                        onClick={() =>
+                          setTargetStatuses((prev) => (on ? prev.filter((x) => x !== g.status) : [...prev, g.status]))
+                        }
+                      >
+                        {g.label} ({g.count})
+                      </button>
+                    );
+                  })}
+                  {(idGroups?.groups ?? []).length === 0 && (
+                    <div className="px-1 py-1 text-xs text-muted">Chưa có ID nào trong danh sách.</div>
+                  )}
+                </div>
+                <p className="mt-2 text-xs text-muted">
+                  {targetStatuses.length === 0
+                    ? "Chưa chọn nhóm nào — sẽ gửi cho toàn bộ ID đã nhập."
+                    : `Sẽ gửi cho ${targetStatuses
+                        .map((s) => idGroups?.groups.find((g) => g.status === s)?.count ?? 0)
+                        .reduce((a, b) => a + b, 0)} id thuộc nhóm đã chọn.`}
+                </p>
+                <p className="mt-1 text-xs text-muted">
+                  Lần quét đầu tiên hãy chọn tất cả (không chọn nhóm nào) để biết id nào còn hoạt động. Telegram
+                  báo "không tìm thấy" hoặc "bị chặn" thì id đó được ghi lại ở mục <b>Nhập ID</b> — các lần sau chỉ
+                  chọn nhóm <b>Hoạt động</b>.
+                </p>
+              </div>
+            </div>
+          )}
 
           {targetType === "status" && (
             <div className="mt-2 flex flex-wrap gap-2">
@@ -807,9 +951,38 @@ function CampaignForm({ onCreated }: { onCreated: () => void }) {
         (giờ Việt Nam). Lịch mặc định <b>tạm dừng</b> — phải bấm "Kích hoạt lịch" mới chạy.
       </div>
 
-      <button className="btn-primary" disabled={busy} onClick={() => void submit()}>
-        {busy ? "Đang lưu..." : "Lưu chiến dịch"}
-      </button>
+      <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3">
+        <label className="flex items-start gap-2 text-sm">
+          <input
+            type="checkbox"
+            className="mt-0.5"
+            checked={isEmergency}
+            onChange={(e) => setIsEmergency(e.target.checked)}
+          />
+          <span>
+            <b>⚡ Gửi khẩn cấp</b>
+            <span className="block text-xs text-muted">
+              Bỏ qua mọi luật giới hạn tần suất (1/ngày, 3/tuần, 6 giờ) và khung giờ 08:00–22:00 — tin nhắn đi
+              ngay. Dùng để quét toàn bộ danh sách ID: id nào Telegram báo lỗi sẽ được ghi lại ở mục{" "}
+              <b>Nhập ID</b>.
+            </span>
+          </span>
+        </label>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        <button className="btn-primary" disabled={busy} onClick={() => void submit()}>
+          {busy ? "Đang lưu..." : "Lưu chiến dịch"}
+        </button>
+        <button
+          className="btn bg-amber-500 text-black hover:bg-amber-400 disabled:opacity-50"
+          disabled={busy}
+          title="Tạo và gửi ngay, bỏ qua mọi luật giới hạn tần suất"
+          onClick={() => void submit(true)}
+        >
+          {busy ? "Đang gửi..." : "⚡ Gửi khẩn cấp"}
+        </button>
+      </div>
     </div>
   );
 }
@@ -833,6 +1006,12 @@ export function AdminTelegramImport() {
     }[];
   }>("/api/admin/telegram/imported-ids");
 
+  // The imported ids grouped by their status.
+  const { data: idGroups, reload: reloadGroups } = useFetch<{
+    groups: { status: string; count: number; label: string }[];
+    total: number;
+  }>("/api/admin/telegram/ids/groups");
+
   async function submit() {
     setBusy(true);
     setError(null);
@@ -842,6 +1021,7 @@ export function AdminTelegramImport() {
       setMsg(`Đã nhập ${res.imported} Telegram id.`);
       setContent("");
       reload();
+      reloadGroups();
     } catch (e) {
       setError(errorMessage(e));
     } finally {
@@ -870,6 +1050,35 @@ export function AdminTelegramImport() {
           {busy ? "Đang nhập..." : "Nhập danh sách"}
         </button>
       </div>
+
+      {idGroups && idGroups.groups.length > 0 && (
+        <div className="panel p-4">
+          <h2 className="font-black">Phân loại ID ({idGroups.total} id)</h2>
+          <p className="mt-1 text-sm text-muted">
+            Trạng thái được cập nhật tự động khi chiến dịch gửi tới: Telegram báo lỗi thì id đó chuyển sang nhóm
+            tương ứng. Lần quét đầu tiên hãy gửi cho toàn bộ id, các lần sau chỉ gửi nhóm <b>Hoạt động</b>.
+          </p>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            {idGroups.groups.map((g) => (
+              <div
+                key={g.status}
+                className={`rounded-lg border p-3 ${
+                  g.status === "active"
+                    ? "border-emerald-500/40 bg-emerald-500/10"
+                    : g.status === "blocked"
+                      ? "border-rose-500/40 bg-rose-500/10"
+                      : g.status === "invalid"
+                        ? "border-slate-500/40 bg-slate-500/10"
+                        : "border-line bg-panel-2"
+                }`}
+              >
+                <div className="text-xs text-muted">{g.label}</div>
+                <div className="text-xl font-black">{formatNumber(g.count)}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="panel p-4">
         <div className="mb-2 flex items-center justify-between">

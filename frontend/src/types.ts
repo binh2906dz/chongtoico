@@ -371,8 +371,10 @@ export interface TelegramCampaign {
   mediaNote: string | null;
   buttons: TelegramCampaignButton[];
   articleIds: number[];
-  targetType: "all_linked" | "visited" | "stalled" | "status" | "ids";
+  targetType: "all_linked" | "visited" | "stalled" | "status" | "ids" | "imported";
   targetIds: Array<number | string>;
+  /** An emergency campaign skips every frequency rule and goes out at once. */
+  isEmergency: boolean;
   schedule: "now" | "at" | "daily" | "weekly";
   scheduleStatus: "paused" | "active" | "done";
   scheduledAt: string | null;

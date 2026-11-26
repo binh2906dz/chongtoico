@@ -92,6 +92,13 @@
       "when": 1795709100000,
       "tag": "0012_drop_articles_priority",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1795709200000,
+      "tag": "0013_campaign_emergency",
+      "breakpoints": true
     }
   ]
 }

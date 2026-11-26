@@ -449,4 +449,53 @@ describe("Telegram bridge API", () => {
     assert.equal(res.statusCode, 200, res.body);
     assert.ok(res.json().rows.length >= 5);
   });
+
+  it("groups the imported ids by their status", async () => {
+    const res = await app.inject({ method: "GET", url: "/api/admin/telegram/ids/groups", headers: { ...H, cookie: admin } });
+    assert.equal(res.statusCode, 200, res.body);
+    const body = res.json();
+    assert.ok(body.total >= 2, JSON.stringify(body));
+    // Every group carries a label the admin can read.
+    for (const group of body.groups) {
+      assert.ok(group.label.length > 0);
+      assert.ok(group.count > 0);
+    }
+  });
+
+  it("creates an emergency campaign that targets the imported ids", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/admin/telegram/campaigns",
+      headers: { ...H, cookie: admin },
+      payload: {
+        name: "Quét khẩn cấp",
+        text: "Tin khẩn cấp",
+        mediaType: "none",
+        targetType: "imported",
+        targetIds: [],
+        isEmergency: true,
+        schedule: "now",
+      },
+    });
+    assert.equal(res.statusCode, 200, res.body);
+    const { campaign } = res.json();
+    assert.equal(campaign.isEmergency, true);
+    assert.equal(campaign.targetType, "imported");
+  });
+
+  it("refuses a campaign with an unknown target type", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/admin/telegram/campaigns",
+      headers: { ...H, cookie: admin },
+      payload: {
+        name: "Sai",
+        text: "x",
+        mediaType: "none",
+        targetType: "khong_hop_le",
+        schedule: "now",
+      },
+    });
+    assert.equal(res.statusCode, 400, res.body);
+  });
 });

@@ -128,6 +128,17 @@ export async function resolveTargets(
         .where(or(isNull(telegramLinks.lastSeenAt), lt(telegramLinks.linkedAt, cutoff)));
       return rows;
     }
+    case "imported": {
+      // Every id that was imported into the "Nhập ID" list, no web account
+      // needed. The statuses narrow the list down (empty = everybody).
+      const statuses = targetIds.map((x) => String(x)).filter(Boolean);
+      const rows = await db
+        .select({ telegramId: telegramUsers.telegramId, userId: telegramLinks.userId })
+        .from(telegramUsers)
+        .leftJoin(telegramLinks, eq(telegramLinks.telegramId, telegramUsers.id))
+        .where(statuses.length ? inArray(telegramUsers.status, statuses) : undefined);
+      return rows;
+    }
     case "all_linked":
     default: {
       const rows = await db
@@ -260,6 +271,9 @@ export async function buildPayload(
     // and members-only files must never leave the server.
     let sizeBytes = 0;
     let isPublic = true;
+    // A file the admin uploaded lives in the ads folder; a file of an article
+    // lives with the images of the articles.
+    const isUpload = campaign.mediaSource === "upload";
     if (isVideo) {
       const [row] = await db
         .select({ sizeBytes: articleVideos.sizeBytes, articleId: articleVideos.articleId })
@@ -279,7 +293,7 @@ export async function buildPayload(
 
     media = {
       kind: isVideo ? "video" : "image",
-      url: `${base}/media/${isVideo ? "v" : "a"}/${key}.${ext}`,
+      url: `${base}/media/${isVideo ? "v" : isUpload ? "b" : "a"}/${key}.${ext}`,
       sizeBytes,
       isPublic,
     };
@@ -414,11 +428,14 @@ export async function queueCampaign(campaignId: string, scheduledAt: Date): Prom
       skippedReasons.already_queued = (skippedReasons.already_queued ?? 0) + 1;
       continue;
     }
-    const check = await mayReceive(target.telegramId, campaignId, hash);
-    if (!check.ok) {
-      skipped += 1;
-      skippedReasons[check.reason ?? "unknown"] = (skippedReasons[check.reason ?? "unknown"] ?? 0) + 1;
-      continue;
+    // An emergency campaign skips every frequency rule — it goes out now.
+    if (!campaign.isEmergency) {
+      const check = await mayReceive(target.telegramId, campaignId, hash);
+      if (!check.ok) {
+        skipped += 1;
+        skippedReasons[check.reason ?? "unknown"] = (skippedReasons[check.reason ?? "unknown"] ?? 0) + 1;
+        continue;
+      }
     }
     const bot = pickBot(bots);
     const payload = await buildPayload(campaign, target.telegramId);

@@ -717,9 +717,14 @@ export const telegramCampaigns = pgTable(
     buttons: jsonb("buttons").notNull().default([]),
     /** Article ids linked inside the message body. */
     articleIds: jsonb("article_ids").notNull().default([]),
-    /** "all_linked" | "visited" | "stalled" | "status" | "ids" */
+    /** "all_linked" | "visited" | "stalled" | "status" | "ids" | "imported" */
     targetType: varchar("target_type", { length: 16 }).notNull(),
     targetIds: jsonb("target_ids").notNull().default([]),
+    /**
+     * An emergency campaign skips every frequency rule: it goes out at once,
+     * even to people who received a message today.
+     */
+    isEmergency: boolean("is_emergency").notNull().default(false),
     /** "now" | "at" | "daily" | "weekly" */
     schedule: varchar("schedule", { length: 16 }).notNull().default("now"),
     /** "paused" | "active" | "done" — a schedule never runs until an admin activates it. */
