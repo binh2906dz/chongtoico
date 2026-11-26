@@ -504,6 +504,7 @@ Cài dịch vụ bot Telegram (ngoài Docker — cần token + kết nối Teleg
 7) LỊCH SỬ GIT (oneline — cập nhật sau mỗi lần push)
 --------------------------------------------------------------------------------
 (xem `git log --oneline`; các commit chính)
+84f8e91 docs: ghi nhat ky dat lai mat khau admin (B81-B82)
 a64a299 fix(bot): dung bot.start() de bot nhan message (init() chi goi getMe, khong poll)
 0c12ed7 fix(articles): doi domain nut 'Xem ngay' anonlink.io -> anonlink.co (chi du lieu hien co)
 80662a7 fix(scripts): dung git core.autocrlf=input thay cho sed -i (tranh conflict khi pull)
@@ -1100,6 +1101,26 @@ b22c5f7 feat: scaffold new platform (đã thay thế — xoá ở bản Node.js)
     loi dang nhap.
   - TAI KHOAN HIEN CO (users): admin (admin), test (member), giahung (member,
     source=telegram, telegram_id=5914285286, da lien ket).
+
+[2026-11-26] DOI LINK NUT "KÊNH VIP": nhomchongtoico -> nhomchongtoicoo.
+  - Yêu cầu: chi doi o hien tai, khong luu tinh nang nay cho tuong lai.
+  - Nut "👑 Kênh VIP" lay tu cot articles.vip_link (khong phai description).
+  - SQL chay 1 lan (khong migration):
+      UPDATE articles SET vip_link = replace(vip_link,
+        'https://t.me/nhomchongtoico', 'https://t.me/nhomchongtoicoo')
+      WHERE vip_link LIKE '%nhomchongtoico%';
+  - Kiem tra truoc khi sua: 1.551 bai co vip_link = https://t.me/nhomchongtoico,
+    0 bai co gia tri khac (khong co bien the), 2 bai vip_link rong, description
+    khong chua link nay, telegram_settings (keyboard/slogans) cung khong chua.
+  - Ket qua: 1.551 bai da doi. Sau khi sua: 1.551 nhomchongtoicoo, 0 con
+    link cu, 2 bai rong. watch_link (nut "Xem ngay") KHONG bi dong vao
+    (1546 anonlink.co, 0 sai).
+  - VPS: pg_dump backup /opt/chongtoico-backups/db-20261126-121545.sql.gz (804K)
+    roi UPDATE qua docker compose exec db psql. Local PGlite: script moi
+    server/scripts/fix-vip-link.mjs.
+  - Da kiem tra: /api/articles/166 -> vipLink = https://t.me/nhomchongtoicoo;
+    60/60 bai ngau nhien tra nhomchongtoicoo (0 link cu); xem trinh duyet bai 166
+    - hai nut "▶ Xem ngay" + "👑 Kênh VIP" hien thi dung.
 
 ================================================================================
 Hết — lưu ý: không lưu mật khẩu / token thật trong file này.

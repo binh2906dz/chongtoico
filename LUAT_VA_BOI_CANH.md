@@ -217,6 +217,8 @@ Mỗi dòng: **lỗi / tình huống** → **cách tránh**.
 - **B80 — Token bot trong `.env` có dạng `id:token` (id = uuid trong DB), KHÔNG phải token Telegram thô.** Token Telegram thô = `<bot_id>:<hash>`. Khi kiểm tra bằng `curl https://api.telegram.org/bot<token>/getMe` phải **cắt bỏ phần `id:` đầu tiên**, nếu không sẽ luôn trả 404 và tưởng token hỏng.
 - **B81 — Khi tài liệu và CSDL mâu thuẫn về mật khẩu, hãy kiểm tra bcrypt trực tiếp thay vì đoán.** Chạy `bcrypt.compare(ứng viên, password_hash)` trong container `app` với vài ứng viên → xác nhận chính xác mật khẩu nào khớp, đừng kết luận "chắc là đã đổi".
 - **B82 — Shell script truyền mật khẩu có ký tự `$` (ví dụ `$qCWF5T0rT06`) phải escape hoặc truyền qua file JSON tạm**, nếu không shell sẽ nội suy biến thành chuỗi rỗng và luôn báo "sai mật khẩu" — dễ tưởng tài khoản hỏng.
+- **B83 — Trước khi `UPDATE` link hàng loạt, hãy liệt kê TẤT CẢ giá trị phân biệt trong cột** (`GROUP BY` theo giá trị), đừng chỉ đếm tổng. Ở đây cả 1.551 bài đều dùng **một** URL nên một lệnh `replace` là đủ — nếu có biến thể (ví dụ `?t=`, `www.`) mà không kiểm tra trước thì sẽ sót.
+- **B84 — Khi đổi một cột, phải xác nhận cột liên quan trong cùng bảng không bị đụng.** Ở đây `vip_link` và `watch_link` cùng nằm trong bảng `articles` nhưng là 2 nút khác nhau — kiểm tra lại `watch_link` sau khi sửa.
 
 ## 10. Nhật ký làm việc
 
@@ -847,3 +849,24 @@ Mẫu mỗi mục:
   - **B81 — Khi tài liệu và CSDL mâu thuẫn về mật khẩu, hãy kiểm tra bcrypt trực tiếp thay vì đoán.** Lệnh: `bcrypt.compare(ungvien, password_hash)` trong container `app`. Đừng đoán mật khẩu "có thể đã đổi" — hãy thử và xác nhận.
   - **B82 — Shell script truyền mật khẩu có ký tự `$` (ví dụ `$qCWF5T0rT06`) phải escape hoặc truyền qua file JSON tạm**, nếu không shell sẽ nội suy biến thành chuỗi rỗng và luôn báo "sai mật khẩu" — dễ tưởng là tài khoản hỏng.
 - **File**: `huongdan.txt`, `LUAT_VA_BOI_CANH.md`.
+
+## 2026-11-26 — ĐỔI LINK NÚT "KÊNH VIP": nhomchongtoico → nhomchongtoicoo (chỉ dữ liệu hiện có)
+
+- **Yêu cầu**: "đổi link cho nút kênh vip ở toàn bộ bài viết hiện tại trên trang (chỉ đổi ở hiện tại, không lưu tính năng này cho tương lai); `https://t.me/nhomchongtoico` → `https://t.me/nhomchongtoicoo`".
+- **Nút "👑 Kênh VIP" lấy từ cột `articles.vip_link`** (tương tự nút "▶ Xem ngay" lấy từ `watch_link`). Frontend `ArticleLinkButtons.tsx` dùng thẳng `vipLink` từ API → **không cần sửa mã nguồn**.
+- **SQL chạy 1 lần (KHÔNG tạo migration, KHÔNG thêm logic cho tương lai)**:
+  ```sql
+  UPDATE articles SET vip_link = replace(vip_link,
+    'https://t.me/nhomchongtoico', 'https://t.me/nhomchongtoicoo')
+  WHERE vip_link LIKE '%nhomchongtoico%';
+  ```
+- **Kiểm tra trước khi sửa**: 1.551 bài có `vip_link = https://t.me/nhomchongtoico`; **0 bài có giá trị khác** (không có biến thể nào cần xử lý riêng); 2 bài `vip_link` rỗng; `description` **không** chứa link này; `telegram_settings` (keyboard/slogans) cũng không chứa.
+- **Kết quả**: 1.551 bài đã đổi. Sau khi sửa: 1.551 `nhomchongtoicoo`, **0 còn link cũ**, 2 bài rỗng. `watch_link` (nút "Xem ngay") **không bị đụng** (1.546 `anonlink.co`, 0 sai).
+- **Đã áp dụng 2 nơi**:
+  - VPS `103.63.30.108`: `pg_dump` backup → `/opt/chongtoico-backups/db-20261126-121545.sql.gz` (804K), rồi `UPDATE` qua `docker compose exec db psql`.
+  - Local PGlite: script mới `server/scripts/fix-vip-link.mjs` (chạy bằng `npx tsx`; phải DỪNG server vì PGlite không cho 2 tiến trình mở cùng DB).
+- **Đã kiểm tra**: `/api/articles/166` → `vipLink = https://t.me/nhomchongtoicoo`; **60/60** bài ngẫu nhiên trả `nhomchongtoicoo` (0 link cũ); xem trình duyệt bài 166 — nút "▶ Xem ngay" + "👑 Kênh VIP" hiển thị đúng; `/`, `/api/home`, `/api/articles/1250` → HTTP 200.
+- **Bài học**:
+  - **B83 — Trước khi `UPDATE` link hàng loạt, hãy liệt kê TẤT CẢ giá trị phân biệt trong cột** (`GROUP BY` theo giá trị), đừng chỉ đếm tổng. Ở đây cả 1.551 bài đều dùng **một** URL nên một lệnh `replace` là đủ — nếu có biến thể (ví dụ `?t=` hay link có `www`) mà không kiểm tra trước thì sẽ sót.
+  - **B84 — Khi đổi một cột, phải xác nhận cột liên quan không bị đụng.** Ở đây `vip_link` và `watch_link` nằm cùng bảng `articles` nhưng là 2 nút khác nhau — kiểm tra lại `watch_link` sau khi sửa (`1.546 anonlink.co, 0 sai`).
+- **File**: `server/scripts/fix-vip-link.mjs` (mới), `huongdan.txt`, `LUAT_VA_BOI_CANH.md`.
