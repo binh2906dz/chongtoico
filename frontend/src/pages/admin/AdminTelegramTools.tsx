@@ -1257,6 +1257,12 @@ export function AdminTelegramGreeting() {
 
 export function AdminTelegramIdsManage() {
   const stats = useFetch<{ stats: Record<string, number> }>("/api/admin/telegram/ids/stats");
+  // The imported ids grouped by their status, so the admin can pick a group
+  // as the target of a campaign (the emergency scan uses this list).
+  const groups = useFetch<{
+    groups: { status: string; count: number; label: string }[];
+    total: number;
+  }>("/api/admin/telegram/ids/groups");
   const [notice, setNotice] = useState<{ tone: "ok" | "err"; message: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [fileName, setFileName] = useState<string | null>(null);
@@ -1276,6 +1282,7 @@ export function AdminTelegramIdsManage() {
       });
       setFileName(file.name);
       stats.reload();
+      groups.reload();
     } catch (e) {
       setNotice({ tone: "err", message: errorMessage(e) });
     } finally {
@@ -1345,6 +1352,36 @@ export function AdminTelegramIdsManage() {
           Xoá các ID chưa liên kết
         </button>
       </div>
+
+      {groups.data && groups.data.groups.length > 0 && (
+        <div className="panel space-y-3 p-4">
+          <h2 className="font-black">Phân loại ID ({formatNumber(groups.data.total)} id)</h2>
+          <p className="text-sm text-muted">
+            Trạng thái được cập nhật tự động khi chiến dịch gửi tới: Telegram báo lỗi thì id đó chuyển sang nhóm
+            tương ứng. Lần quét đầu tiên hãy dùng <b>⚡ Gửi khẩn cấp</b> cho toàn bộ id, các lần sau chỉ gửi nhóm{" "}
+            <b>Hoạt động</b>.
+          </p>
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            {groups.data.groups.map((g) => (
+              <div
+                key={g.status}
+                className={`rounded-lg border p-3 ${
+                  g.status === "active"
+                    ? "border-emerald-500/40 bg-emerald-500/10"
+                    : g.status === "blocked"
+                      ? "border-rose-500/40 bg-rose-500/10"
+                      : g.status === "invalid"
+                        ? "border-slate-500/40 bg-slate-500/10"
+                        : "border-line bg-panel-2"
+                }`}
+              >
+                <div className="text-xs text-muted">{g.label}</div>
+                <div className="text-xl font-black">{formatNumber(g.count)}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
