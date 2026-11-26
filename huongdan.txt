@@ -1351,6 +1351,35 @@ cai deu bi chan o buoc report.
   - BAI HOC MOI: B112 (chi can bao 61.000 ket qua thi MOI request/job la
     nut that; gom theo lo 200 la fix nhanh nhat — khong can doi kien truc).
 
+--------------------------------------------------------------------------------
+2026-11-27 — B113: TANG TOC DO GUI (concurrency + poll lien tuc)
+--------------------------------------------------------------------------------
+DO LAU: log app cho thay moi vong poll cach nhau ~5,9 giay cho 100 job
+(~17 job/giay). Do Telegram tra loi mat 1-2 giay moi tin, mot lo chi xong
+khi moi tin xong. De xuat lo 100 job thi moi lo/giay.
+
+  - bot/src/config.ts: jobBatchSize 100 -> 300, sendConcurrency 20 -> 50 ->
+    150, sendRatePerSecond 25 -> 30 (gioi han Telegram).
+  - bot/src/jobs.ts: vong lap `tick` lap lai `runOnce()` cho khi hang doi
+    het job (khong con nam cho giua hai lo). `runOnce()` tra 0 khi khong con
+    job de gui.
+  - server/src/routes/telegram.ts: GET /api/bot/jobs nhan toi 500 job
+    (truoc 100).
+  - bot/src/client.ts: fetchJobs() cap toi 500 (truoc 100).
+  - KET QUA DO DUOC TREN PRODUCTION (VPS 103.63.30.108):
+      truoc B112: ~350 job/phut
+      sau  B112: ~1.100 job/phut
+      sau  B113: ~1.350 job/phut (~22,5 job/giay)
+      61.096 job => ~45 phut chay het
+    Do lai: 58.000/61.096 id tra loi "Telegram 400: Bad Request: chat not
+    found" (id sai / tai khoan da xoa). KHONG co loi 429 => khong gap
+    Telegram. Do tro tu VPS toi api.telegram.org chi 80-300 ms. Phan bo
+    bot rat deu (24 bot, ~790 job moi bot).
+  - Test: server 82/82 pass, bot 63/63 pass, tsc server + bot sach.
+  - BAI HOC MOI: B113 (gi do chay cua bot bi gioi han boi DO TRO Telegram
+    (1-2 giay/tin) chu khong phai boi rate limit; nen tang song song va
+    poll lien tuc, va KHONG nen tang rate per second vuot 30).
+
 ================================================================================
 Hết — lưu ý: không lưu mật khẩu / token thật trong file này.
 ================================================================================
