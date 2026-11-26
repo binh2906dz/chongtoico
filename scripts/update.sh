@@ -19,6 +19,17 @@ echo "==> Build lại và khởi động (migration DB chạy tự động khi a
 docker compose up -d --build
 docker image prune -f >/dev/null
 
+# The bot service runs outside docker, so it has to be built and restarted
+# on its own (B104).
+if [ -d "$APP_DIR/bot" ] && command -v systemctl >/dev/null 2>&1; then
+  echo "==> Build và khởi động lại dịch vụ bot"
+  ( cd "$APP_DIR/bot" && npm install >/dev/null 2>&1 )
+  ( cd "$APP_DIR/bot" && npm run build >/dev/null )
+  systemctl restart chongtoico-bot.service || true
+  sleep 2
+  systemctl is-active chongtoico-bot.service || true
+fi
+
 APP_PORT="$(grep -E '^APP_PORT=' .env | cut -d= -f2- || true)"
 APP_PORT="${APP_PORT:-8090}"
 for _ in $(seq 1 60); do
