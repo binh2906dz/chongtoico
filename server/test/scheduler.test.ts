@@ -303,4 +303,39 @@ describe("Telegram scheduler and frequency limits", () => {
     const jobs = await db.select().from(notificationJobs).where(eq(notificationJobs.campaignId, campaign.id));
     assert.equal(jobs.length, 1201);
   });
+
+  it("leaves out the ids Telegram already refused", async () => {
+    // Telegram said these ids are gone or blocked — a new message would
+    // only be wasted (B106).
+    await db.insert(telegramUsers).values({ telegramId: 800001, status: "invalid" });
+    await db.insert(telegramUsers).values({ telegramId: 800002, status: "blocked" });
+    await db.insert(telegramUsers).values({ telegramId: 800003, status: "active" });
+
+    const adminCookie = await loginAdmin();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/admin/telegram/campaigns",
+      headers: { ...H, cookie: adminCookie },
+      payload: {
+        name: "Chiến dịch bỏ id chết",
+        text: "Chỉ gửi cho người còn dùng được",
+        mediaType: "none",
+        targetType: "imported",
+        targetIds: [],
+        isEmergency: true,
+        schedule: "now",
+      },
+    });
+    assert.equal(res.statusCode, 200, res.body);
+    const { campaign } = res.json();
+
+    const queued = await queueCampaign(campaign.id, new Date());
+    assert.ok((queued.skippedReasons.unusable_id ?? 0) >= 2, JSON.stringify(queued));
+
+    const jobs = await db.select().from(notificationJobs).where(eq(notificationJobs.campaignId, campaign.id));
+    const ids = jobs.map((j) => j.telegramId);
+    assert.ok(!ids.includes(800001), "Id không hợp lệ không được gửi.");
+    assert.ok(!ids.includes(800002), "Id đã bị chặn không được gửi.");
+    assert.ok(ids.includes(800003), "Id còn dùng được vẫn phải được gửi.");
+  });
 });

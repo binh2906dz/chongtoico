@@ -1305,6 +1305,21 @@ export function AdminTelegramIdsManage() {
     }
   }
 
+  async function cleanupJobs() {
+    if (!window.confirm("Bỏ khỏi hàng đợi các job gửi tới ID không hợp lệ hoặc đã bị chặn?")) return;
+    setBusy(true);
+    setNotice(null);
+    try {
+      const res = await api<{ removed: number }>("/api/admin/telegram/ids/cleanup", { method: "POST" });
+      setNotice({ tone: "ok", message: `Đã dọn ${res.removed} job không thể gửi.` });
+      groups.reload();
+    } catch (e) {
+      setNotice({ tone: "err", message: errorMessage(e) });
+    } finally {
+      setBusy(false);
+    }
+  }
+
   if (stats.error) return <ErrorBox message={stats.error} />;
 
   const s = stats.data?.stats;
@@ -1380,6 +1395,18 @@ export function AdminTelegramIdsManage() {
               </div>
             ))}
           </div>
+          <button
+            type="button"
+            className="btn btn-danger"
+            disabled={busy}
+            onClick={cleanupJobs}
+          >
+            🧹 Dọn job của ID không dùng được
+          </button>
+          <p className="text-xs text-muted">
+            Bỏ khỏi hàng đợi những công việc gửi tới các id đã biết là không hợp lệ hoặc đã bị chặn — việc đó không
+            thể gửi được nữa.
+          </p>
         </div>
       )}
     </div>

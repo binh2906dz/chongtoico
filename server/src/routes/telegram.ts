@@ -811,6 +811,41 @@ export default async function telegramRoutes(app: FastifyInstance) {
     return { groups, total };
   });
 
+  /**
+   * Remove the queued jobs of the ids Telegram already refused.
+   *
+   * A long campaign fills the queue with jobs that can never be delivered.
+   * This clears them away so the queue only holds the people that can
+   * really be reached (B106).
+   */
+  app.post("/api/admin/telegram/ids/cleanup", async (req) => {
+    requireAdmin(req);
+    const body = parse(
+      z.object({ campaignId: z.string().trim().max(64).nullish() }),
+      req.body ?? {},
+    );
+    const removed = await db
+      .update(notificationJobs)
+      .set({ status: "skipped", error: "ID không dùng được" })
+      .where(
+        and(
+          eq(notificationJobs.status, "queued"),
+          inArray(
+            notificationJobs.telegramId,
+            db
+              .select({ telegramId: telegramUsers.telegramId })
+              .from(telegramUsers)
+              .where(inArray(telegramUsers.status, ["invalid", "blocked"])),
+          ),
+          body.campaignId
+            ? eq(notificationJobs.campaignId, body.campaignId)
+            : undefined,
+        ),
+      )
+      .returning({ id: notificationJobs.id });
+    return { removed: removed.length };
+  });
+
   app.patch("/api/admin/telegram/campaigns/:id", async (req) => {
     requireAdmin(req);
     const { id } = z.object({ id: z.string().trim().max(64) }).parse(req.params);
