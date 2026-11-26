@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Chong Toi Co">
+  <defs>
+    <linearGradient id="ctc-bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1b0b2e"/>
+      <stop offset="1" stop-color="#08060d"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="512" height="512" fill="url(#ctc-bg)"/>
+
+  <path d="M64 256 C 128 152, 384 152, 448 256" fill="none" stroke="#e9d5ff" stroke-width="30" stroke-linecap="round"/>
+  <path d="M64 256 C 132 356, 380 356, 448 256" fill="none" stroke="#e9d5ff" stroke-width="30" stroke-linecap="round"/>
+
+  <circle cx="256" cy="256" r="86" fill="#a855f7"/>
+
+  <circle cx="256" cy="256" r="38" fill="#0d0416"/>
+
+  <circle cx="235" cy="234" r="13" fill="#ffffff" opacity="0.95"/>
+  <circle cx="278" cy="283" r="6" fill="#ffffff" opacity="0.6"/>
+</svg>

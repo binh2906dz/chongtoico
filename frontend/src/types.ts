@@ -291,6 +291,20 @@ export interface TelegramSlogans {
   items: { text: string; delayAfter: number }[];
 }
 
+/** One greeting the bot can send when somebody presses /start. */
+export interface TelegramGreetingItem {
+  id: string;
+  text: string;
+}
+
+/** The greeting the admin configured on the web. */
+export interface TelegramGreeting {
+  enabled: boolean;
+  /** Keep the buttons of the current /start answer. */
+  keepButtons: boolean;
+  items: TelegramGreetingItem[];
+}
+
 export interface TelegramSchedule {
   enabled: boolean;
   hour: number;
@@ -301,6 +315,7 @@ export interface TelegramSettingsBundle {
   keyboard: TelegramKeyboard;
   templates: TelegramTemplate[];
   slogans: TelegramSlogans;
+  greeting: TelegramGreeting;
   schedule: TelegramSchedule;
 }
 

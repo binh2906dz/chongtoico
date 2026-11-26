@@ -6,6 +6,8 @@ import { useFetch } from "../../useFetch";
 import type {
   TelegramBotIncident,
   TelegramBotStat,
+  TelegramGreeting,
+  TelegramGreetingItem,
   TelegramKeyboard,
   TelegramKeyboardCell,
   TelegramManagedBot,
@@ -778,6 +780,156 @@ export function AdminTelegramSlogans() {
             Lưu slogan
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ * Greeting — the message the bot sends when somebody presses /start
+ * ------------------------------------------------------------------ */
+
+/** The placeholders the admin may use in a greeting. */
+const greetingPlaceholders = [
+  { token: "{{name}}", hint: "Tên người dùng (có thể để trống)" },
+  { token: "{{link}}", hint: "Đường dẫn mở website kèm theo" },
+];
+
+export function AdminTelegramGreeting() {
+  const { data, error, reload } = useFetch<{ greeting: TelegramGreeting }>("/api/admin/telegram/settings");
+  const [greeting, setGreeting] = useState<TelegramGreeting | null>(null);
+  const [notice, setNotice] = useState<{ tone: "ok" | "err"; message: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (data?.greeting) setGreeting(data.greeting);
+  }, [data]);
+
+  async function save(next: TelegramGreeting) {
+    setBusy(true);
+    setNotice(null);
+    try {
+      await api("/api/admin/telegram/settings/greeting", { method: "PUT", body: next });
+      setNotice({ tone: "ok", message: "Đã lưu lời chào." });
+      reload();
+    } catch (e) {
+      setNotice({ tone: "err", message: errorMessage(e) });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (error) return <ErrorBox message={error} />;
+  if (!data || !greeting) return <Spinner />;
+
+  function updateItem(index: number, patch: Partial<TelegramGreetingItem>) {
+    setGreeting((prev) =>
+      prev
+        ? { ...prev, items: prev.items.map((item, i) => (i === index ? { ...item, ...patch } : item)) }
+        : prev,
+    );
+  }
+
+  function addItem() {
+    const next: TelegramGreeting = {
+      ...greeting!,
+      items: [
+        ...greeting!.items,
+        { id: `g${Date.now()}`, text: "👋 Chào mừng {{name}} đến Chống Tối Cổ!\n\n{{link}}" },
+      ],
+    };
+    setGreeting(next);
+    void save(next);
+  }
+
+  function removeItem(index: number) {
+    const next: TelegramGreeting = { ...greeting!, items: greeting!.items.filter((_, i) => i !== index) };
+    setGreeting(next);
+    void save(next);
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="panel p-4 text-sm text-muted">
+        Lời chào được bot gửi khi người dùng bấm <b>/start</b>. Viết nhiều câu thì bot sẽ <b>chọn ngẫu nhiên</b> một
+        câu mỗi lần, nên mỗi người thấy lời chào khác nhau. Nội dung hỗ trợ HTML (xuống dòng, in đậm, in nghiêng, link)
+        và hai biến <b>{"{{name}}"}</b> (tên người dùng) và <b>{"{{link}}"}</b> (đường dẫn mở website kèm theo).
+      </div>
+      {notice && <Notice tone={notice.tone} message={notice.message} />}
+
+      <div className="panel space-y-3 p-4">
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={greeting.enabled}
+            onChange={(e) => setGreeting({ ...greeting, enabled: e.target.checked })}
+          />
+          <span>Bật lời chào</span>
+        </label>
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={greeting.keepButtons}
+            onChange={(e) => setGreeting({ ...greeting, keepButtons: e.target.checked })}
+          />
+          <span>Giữ nút bấm bên dưới lời chào (Mở website, Nhận thông báo…)</span>
+        </label>
+        <div className="flex flex-wrap gap-2 text-xs text-muted">
+          <span className="font-semibold">Biến dùng được:</span>
+          {greetingPlaceholders.map((p) => (
+            <button
+              key={p.token}
+              type="button"
+              className="btn btn-sm"
+              title={p.hint}
+              onClick={() =>
+                setGreeting({
+                  ...greeting,
+                  items: greeting.items.map((item, i) =>
+                    i === greeting.items.length - 1 ? { ...item, text: `${item.text} ${p.token}` } : item,
+                  ),
+                })
+              }
+            >
+              {p.token}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {greeting.items.length === 0 ? (
+        <div className="panel p-8 text-center text-sm text-muted">
+          Chưa có câu chào nào. Bấm <b>+ Thêm lời chào</b> để bắt đầu.
+        </div>
+      ) : (
+        greeting.items.map((item, index) => (
+          <div key={item.id || index} className="panel space-y-3 p-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold">Câu chào {index + 1}</h3>
+              <button type="button" className="btn btn-sm btn-danger" onClick={() => removeItem(index)}>
+                Xoá
+              </button>
+            </div>
+            <textarea
+              className="input w-full font-mono text-xs"
+              rows={5}
+              value={item.text}
+              onChange={(e) => updateItem(index, { text: e.target.value })}
+              maxLength={2000}
+              placeholder="👋 Chào mừng {{name}} đến Chống Tối Cổ!"
+            />
+            <p className="text-xs text-muted">{item.text.length}/2000 ký tự</p>
+          </div>
+        ))
+      )}
+
+      <div className="flex gap-2">
+        <button type="button" className="btn" onClick={addItem}>
+          + Thêm lời chào
+        </button>
+        <button type="button" className="btn btn-accent" disabled={busy} onClick={() => save(greeting)}>
+          {busy ? "Đang lưu…" : "Lưu lời chào"}
+        </button>
       </div>
     </div>
   );

@@ -7,6 +7,8 @@
 
 import { config } from "./config.js";
 import { fetchUserState, reportLink, reportOptOut, reportStart } from "./client.js";
+import type { GreetingConfig } from "./client.js";
+import { fillGreeting, pickGreeting } from "./greeting.js";
 import type { BotRegistry } from "./registry.js";
 
 export interface CommandContext {
@@ -39,7 +41,11 @@ export function openWebUrl(ctx: CommandContext, src: string): string {
 }
 
 /** Handle /start, with or without a link code. */
-export async function handleStart(ctx: CommandContext, registry: BotRegistry): Promise<CommandReply> {
+export async function handleStart(
+  ctx: CommandContext,
+  registry: BotRegistry,
+  greeting?: GreetingConfig | null,
+): Promise<CommandReply> {
   const code = ctx.argument?.trim();
 
   if (code) {
@@ -93,6 +99,16 @@ export async function handleStart(ctx: CommandContext, registry: BotRegistry): P
   if (notifyEnabled) {
     buttons.push({ label: NOTIFY_LABEL, url: openWebUrl(ctx, "notify_on") });
     buttons.push({ label: UNNOTIFY_LABEL, url: openWebUrl(ctx, "stop") });
+  }
+
+  // The admin may write their own greeting; one of the texts is picked at
+  // random so the same person does not always get the same wording.
+  const chosen = pickGreeting(greeting);
+  if (chosen) {
+    const link = openWebUrl(ctx, "start");
+    const text = fillGreeting(chosen.text, ctx.firstName, link);
+    // The buttons stay unless the admin asked for a text-only greeting.
+    return { text, buttons: greeting?.keepButtons === false ? [] : buttons };
   }
 
   const body = linked

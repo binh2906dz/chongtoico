@@ -134,6 +134,27 @@ const importIdsBody = z.object({
   filename: z.string().trim().max(200).optional(),
 });
 
+/**
+ * The greeting the bot sends when somebody presses /start.
+ *
+ * The admin writes the texts on the web; the bot picks one of them at random.
+ * The texts may use HTML and the placeholders {{name}} and {{link}}.
+ */
+const greetingBody = z.object({
+  enabled: z.boolean(),
+  /** Keep the buttons of the current /start answer. */
+  keepButtons: z.boolean(),
+  items: z
+    .array(
+      z.object({
+        id: z.string().trim().max(64).optional(),
+        text: z.string().trim().min(1, "Cần nhập nội dung lời chào.").max(2000),
+      }),
+    )
+    .max(50)
+    .default([]),
+});
+
 /** One bot of the migration payload. */
 const importBotBody = z.object({
   /** The id the old system used — kept so the links of the past stay readable. */
@@ -528,27 +549,30 @@ export default async function telegramAdminRoutes(app: FastifyInstance) {
   /** The whole settings block of the Telegram side. */
   app.get("/api/admin/telegram/settings", async (req) => {
     requireAdmin(req);
-    const [keyboard, templates, slogans, schedule] = await Promise.all([
+    const [keyboard, templates, slogans, schedule, greeting] = await Promise.all([
       readSetting("keyboard", { enabled: false, prompt: "", rows: [] as unknown[] }),
       readSetting("templates", [] as unknown[]),
       readSetting("slogans", { enabled: false, items: [] as unknown[] }),
       readSetting("schedule", { hour: 9, minute: 0, enabled: false }),
+      readSetting("greeting", { enabled: false, keepButtons: true, items: [] as unknown[] }),
     ]);
-    return { keyboard, templates, slogans, schedule };
+    return { keyboard, templates, slogans, schedule, greeting };
   });
 
   /**
    * The settings the bot service needs.
    *
-   * The bot reads this to build its reply keyboard and to send the slogan.
+   * The bot reads this to build its reply keyboard, to send the slogan and to
+   * greet the people who press /start.
    * Only the internal secret is accepted, never an admin session.
    */
   app.get("/api/bot/settings", { preHandler: requireBotSecret }, async () => {
-    const [keyboard, slogans] = await Promise.all([
+    const [keyboard, slogans, greeting] = await Promise.all([
       readSetting("keyboard", { enabled: false, prompt: "", rows: [] as unknown[] }),
       readSetting("slogans", { enabled: false, items: [] as unknown[] }),
+      readSetting("greeting", { enabled: false, keepButtons: true, items: [] as unknown[] }),
     ]);
-    return { keyboard, slogans };
+    return { keyboard, slogans, greeting };
   });
 
   /** Save the reply keyboard of the bot. */
@@ -601,6 +625,22 @@ export default async function telegramAdminRoutes(app: FastifyInstance) {
     };
     await writeSetting("slogans", clean);
     return { slogans: clean };
+  });
+
+  /** Save the greeting the bot sends when somebody presses /start. */
+  app.put("/api/admin/telegram/settings/greeting", async (req) => {
+    requireAdmin(req);
+    const body = parse(greetingBody, req.body);
+    const clean = {
+      enabled: body.enabled,
+      keepButtons: body.keepButtons,
+      items: body.items.map((item, index) => ({
+        id: item.id ?? `g${index + 1}`,
+        text: item.text.slice(0, 2000),
+      })),
+    };
+    await writeSetting("greeting", clean);
+    return { greeting: clean };
   });
 
   /** Save the daily send hour (Vietnam time). */

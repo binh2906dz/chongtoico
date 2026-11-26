@@ -119,10 +119,25 @@ export interface SloganConfig {
   items: { text: string; delayAfter: number }[];
 }
 
+/** One greeting the bot can send when somebody presses /start. */
+export interface GreetingItem {
+  id: string;
+  text: string;
+}
+
+/** The greeting the admin configured on the web. */
+export interface GreetingConfig {
+  enabled: boolean;
+  /** Keep the buttons of the current /start answer. */
+  keepButtons: boolean;
+  items: GreetingItem[];
+}
+
 /** The settings the bot needs to build its reply keyboard. */
 export interface BotSettings {
   keyboard: KeyboardConfig;
   slogans: SloganConfig;
+  greeting: GreetingConfig;
 }
 
 /** Read the reply keyboard and the slogans from the web app. */

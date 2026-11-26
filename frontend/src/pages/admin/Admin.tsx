@@ -17,6 +17,7 @@ import {
 } from "./AdminTelegram";
 import {
   AdminTelegramBotsManage,
+  AdminTelegramGreeting,
   AdminTelegramIdsManage,
   AdminTelegramKeyboard,
   AdminTelegramSlogans,
@@ -428,6 +429,7 @@ const TG_TABS = [
   "nguoi-dung",
   "bot",
   "ban-phim",
+  "loi-chao",
   "mau-tin-nhan",
   "cau-hinh",
   "nhap-id",
@@ -444,6 +446,7 @@ function AdminTelegram() {
           { id: "nguoi-dung", label: "Người Telegram" },
           { id: "bot", label: "Bot" },
           { id: "ban-phim", label: "Bàn phím" },
+          { id: "loi-chao", label: "Lời chào" },
           { id: "mau-tin-nhan", label: "Mẫu tin nhắn" },
           { id: "cau-hinh", label: "Cấu hình" },
           { id: "nhap-id", label: "Nhập ID" },
@@ -456,6 +459,7 @@ function AdminTelegram() {
       {sub === "nguoi-dung" && <AdminTelegramUsers />}
       {sub === "bot" && <AdminTelegramBotsManage />}
       {sub === "ban-phim" && <AdminTelegramKeyboard />}
+      {sub === "loi-chao" && <AdminTelegramGreeting />}
       {sub === "mau-tin-nhan" && <AdminTelegramTemplates />}
       {sub === "cau-hinh" && <AdminTelegramSlogans />}
       {sub === "nhap-id" && <AdminTelegramIdsManage />}

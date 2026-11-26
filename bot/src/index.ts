@@ -10,7 +10,9 @@
 import { Bot, GrammyError } from "grammy";
 import { config } from "./config.js";
 import { fetchSettings } from "./client.js";
+import type { GreetingConfig } from "./client.js";
 import { handleHelp, handleStart, handleStop, openWebUrl, type CommandContext, type CommandReply } from "./commands.js";
+import { loadGreeting } from "./greeting.js";
 import { startVerifyServer } from "./internal-server.js";
 import { startJobLoop } from "./jobs.js";
 import { answerForLabel, buildReplyKeyboard, keyboardPrompt, loadKeyboard } from "./keyboard.js";
@@ -59,10 +61,11 @@ export async function answerCommand(
   text: string,
   ctx: CommandContext,
   registry: BotRegistry,
+  greeting?: GreetingConfig | null,
 ): Promise<CommandReply | null> {
   const parsed = parseCommand(text);
   if (!parsed) return null;
-  if (parsed.name === "start") return handleStart({ ...ctx, argument: parsed.argument }, registry);
+  if (parsed.name === "start") return handleStart({ ...ctx, argument: parsed.argument }, registry, greeting);
   if (parsed.name === "stop") return handleStop(ctx);
   return handleHelp(ctx);
 }
@@ -119,7 +122,9 @@ export async function main(): Promise<void> {
         }
       }
 
-      const reply = await answerCommand(text, commandCtx, registry);
+      // The greeting is only needed for /start, so it is read lazily.
+      const greeting = await loadGreeting(fetchSettings).catch(() => null);
+      const reply = await answerCommand(text, commandCtx, registry, greeting);
       if (!reply) return;
 
       const rows = reply.buttons.map((b) => [{ text: b.label, url: b.url }]);

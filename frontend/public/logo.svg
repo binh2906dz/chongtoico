@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 320" role="img" aria-label="Chong Toi Co">
+  <defs>
+    <linearGradient id="ctc-grad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#a855f7"/>
+      <stop offset="0.55" stop-color="#e879f9"/>
+      <stop offset="1" stop-color="#ff2d55"/>
+    </linearGradient>
+    <radialGradient id="ctc-glow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#c084fc" stop-opacity="0.55"/>
+      <stop offset="0.55" stop-color="#7c3aed" stop-opacity="0.18"/>
+      <stop offset="1" stop-color="#7c3aed" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="ctc-iris" cx="0.42" cy="0.38" r="0.62">
+      <stop offset="0" stop-color="#fff0fb"/>
+      <stop offset="0.18" stop-color="#f5d0fe"/>
+      <stop offset="0.52" stop-color="#e879f9"/>
+      <stop offset="1" stop-color="#7c3aed"/>
+    </radialGradient>
+    <linearGradient id="ctc-lid" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f5d0fe"/>
+      <stop offset="1" stop-color="#a855f7"/>
+    </linearGradient>
+    <filter id="ctc-soft" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="10"/>
+    </filter>
+  </defs>
+
+  <rect width="320" height="320" rx="72" fill="#08060d"/>
+  <circle cx="160" cy="160" r="132" fill="url(#ctc-glow)"/>
+
+  <g opacity="0.5" filter="url(#ctc-soft)">
+    <ellipse cx="160" cy="160" rx="96" ry="52" fill="none" stroke="url(#ctc-grad)" stroke-width="10"/>
+  </g>
+
+  <path d="M64 160 C 100 92, 220 92, 256 160" fill="none" stroke="url(#ctc-grad)" stroke-width="15" stroke-linecap="round"/>
+  <path d="M64 160 C 104 224, 216 224, 256 160" fill="none" stroke="url(#ctc-grad)" stroke-width="15" stroke-linecap="round"/>
+
+  <circle cx="160" cy="160" r="52" fill="url(#ctc-iris)"/>
+  <circle cx="160" cy="160" r="52" fill="none" stroke="#2a0b3d" stroke-width="3" opacity="0.55"/>
+
+  <circle cx="160" cy="160" r="23" fill="#12041d"/>
+  <circle cx="160" cy="160" r="23" fill="none" stroke="url(#ctc-lid)" stroke-width="2" opacity="0.8"/>
+
+  <circle cx="148" cy="147" r="8" fill="#ffffff" opacity="0.92"/>
+  <circle cx="173" cy="176" r="3.5" fill="#ffffff" opacity="0.55"/>
+
+  <g stroke="url(#ctc-grad)" stroke-width="6" stroke-linecap="round" opacity="0.85">
+    <line x1="92" y1="118" x2="80" y2="98"/>
+    <line x1="228" y1="118" x2="240" y2="98"/>
+  </g>
+</svg>
