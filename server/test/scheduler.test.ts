@@ -272,4 +272,35 @@ describe("Telegram scheduler and frequency limits", () => {
     assert.equal(jobs.length, 1);
     assert.equal(jobs[0].telegramId, 500001);
   });
+
+  it("queues a big list of recipients in small batches", async () => {
+    // More ids than one INSERT can take — the rows go in in batches so the
+    // SQL builder does not run out of stack (B101).
+    const many = Array.from({ length: 1200 }, (_, i) => ({ telegramId: 700000 + i, status: "active" }));
+    for (const row of many) await db.insert(telegramUsers).values(row);
+
+    const adminCookie = await loginAdmin();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/admin/telegram/campaigns",
+      headers: { ...H, cookie: adminCookie },
+      payload: {
+        name: "Chiến dịch đông",
+        text: "Nội dung tới nhiều người",
+        mediaType: "none",
+        targetType: "imported",
+        targetIds: ["active"],
+        isEmergency: true,
+        schedule: "now",
+      },
+    });
+    assert.equal(res.statusCode, 200, res.body);
+    const { campaign } = res.json();
+
+    const queued = await queueCampaign(campaign.id, new Date());
+    assert.equal(queued.queued, 1201, JSON.stringify(queued));
+
+    const jobs = await db.select().from(notificationJobs).where(eq(notificationJobs.campaignId, campaign.id));
+    assert.equal(jobs.length, 1201);
+  });
 });

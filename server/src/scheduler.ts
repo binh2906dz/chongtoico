@@ -30,6 +30,13 @@ export const MIN_HOURS_BETWEEN = 6;
 export const SEND_HOUR_START = 8;
 export const SEND_HOUR_END = 22;
 
+/**
+ * How many jobs go into the database in one INSERT.
+ * A big list of rows makes the SQL builder recurse too deep, so the rows are
+ * written in small batches instead.
+ */
+export const INSERT_BATCH_SIZE = 500;
+
 /** Vietnam is UTC+7 all year. */
 const VN_OFFSET_MINUTES = 7 * 60;
 
@@ -243,19 +250,19 @@ export async function buildPayload(
   campaign: typeof telegramCampaigns.$inferSelect,
   telegramId: number,
 ): Promise<CampaignPayload> {
-  const base = config.siteUrl;
-  const rawButtons = (campaign.buttons ?? []) as { label: string; url: string }[];
-  const buttons = rawButtons.map((b) => ({
-    label: escapeHtml(String(b.label)).slice(0, 40),
-    url: String(b.url),
-  }));
-  // The standard buttons every message carries.
-  const allButtons = [
-    { label: "🌐 Mở Website", url: `${base}/?ref=bot&cid=${campaign.id}&tid=${telegramId}&src=push` },
-    { label: "🔕 Từ chối nhận", url: `${base}/tg/stop?tid=${telegramId}&cid=${campaign.id}` },
-    ...buttons,
-  ];
+  return buildPayloadWithMedia(campaign, telegramId, await mediaOfCampaign(campaign));
+}
 
+/**
+ * The media of a campaign, resolved once.
+ *
+ * The file size and the "members only" flag are the same for every
+ * recipient, so they are looked up one time instead of once per person.
+ */
+async function mediaOfCampaign(
+  campaign: typeof telegramCampaigns.$inferSelect,
+): Promise<CampaignPayload["media"]> {
+  const base = config.siteUrl;
   let media: CampaignPayload["media"] = null;
   if (campaign.mediaType && campaign.mediaKey) {
     // mediaKey format: "<kind>:<fileKey>" or "<kind>:<fileKey>.<ext>" for videos.
@@ -298,9 +305,31 @@ export async function buildPayload(
       isPublic,
     };
   }
+  return media;
+}
+
+/** Build the payload when the media of the campaign is already known. */
+async function buildPayloadWithMedia(
+  campaign: typeof telegramCampaigns.$inferSelect,
+  telegramId: number,
+  media: CampaignPayload["media"],
+  text?: string,
+): Promise<CampaignPayload> {
+  const base = config.siteUrl;
+  const rawButtons = (campaign.buttons ?? []) as { label: string; url: string }[];
+  const buttons = rawButtons.map((b) => ({
+    label: escapeHtml(String(b.label)).slice(0, 40),
+    url: String(b.url),
+  }));
+  // The standard buttons every message carries.
+  const allButtons = [
+    { label: "🌐 Mở Website", url: `${base}/?ref=bot&cid=${campaign.id}&tid=${telegramId}&src=push` },
+    { label: "🔕 Từ chối nhận", url: `${base}/tg/stop?tid=${telegramId}&cid=${campaign.id}` },
+    ...buttons,
+  ];
 
   return {
-    text: await buildMessageText(campaign, base),
+    text: text ?? (await buildMessageText(campaign, base)),
     parseMode: "HTML",
     buttons: allButtons,
     webUrl: `${base}/?ref=bot&cid=${campaign.id}&tid=${telegramId}&src=push`,
@@ -409,6 +438,12 @@ export async function queueCampaign(campaignId: string, scheduledAt: Date): Prom
   let queued = 0;
   const rows: (typeof notificationJobs.$inferInsert)[] = [];
 
+  // The media of the campaign is the same for every person, so it is looked
+  // up once instead of once per recipient (B102).
+  const media = await mediaOfCampaign(campaign);
+  // The message body is the same for every person too (B102).
+  const messageText = await buildMessageText(campaign, config.siteUrl);
+
   // A job that already exists for this campaign and person blocks a second one,
   // even when the first one has not been delivered yet.
   const existingJobs = await db
@@ -438,7 +473,7 @@ export async function queueCampaign(campaignId: string, scheduledAt: Date): Prom
       }
     }
     const bot = pickBot(bots);
-    const payload = await buildPayload(campaign, target.telegramId);
+    const payload = await buildPayloadWithMedia(campaign, target.telegramId, media, messageText);
     rows.push({
       campaignId,
       telegramId: target.telegramId,
@@ -450,8 +485,13 @@ export async function queueCampaign(campaignId: string, scheduledAt: Date): Prom
     queued += 1;
   }
 
+  // Insert the jobs in small batches. One INSERT with tens of thousands of
+  // rows makes the SQL builder recurse too deep and the whole tick dies with
+  // "Maximum call stack size exceeded" (B101).
   if (rows.length) {
-    await db.insert(notificationJobs).values(rows);
+    for (let i = 0; i < rows.length; i += INSERT_BATCH_SIZE) {
+      await db.insert(notificationJobs).values(rows.slice(i, i + INSERT_BATCH_SIZE));
+    }
   }
 
   await db
