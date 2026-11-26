@@ -173,9 +173,13 @@ async function resolveGreeting(stored: StoredGreeting) {
         const image = imageRows.find((row) => row.fileKey === key);
         const ownerId = video?.articleId ?? image?.articleId;
         const ownerVisibility = ownerId ? ownerVisibilityById.get(ownerId) : undefined;
+        // A file the admin uploaded lives in the ads folder; a file of an
+        // article lives with the images of the articles.
+        const isUpload = item.media?.source === "upload";
+        const folder = isVideo ? "v" : isUpload ? "b" : "a";
         media = {
           kind: isVideo ? "video" : "image",
-          url: `${base}/media/${isVideo ? "v" : "a"}/${key}.${ext}`,
+          url: `${base}/media/${folder}/${key}.${ext}`,
           sizeBytes: video?.sizeBytes ?? 0,
           isPublic: ownerVisibility !== "members",
         };

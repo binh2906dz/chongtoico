@@ -176,7 +176,8 @@ describe("Telegram management panel", () => {
     // The media of a file that belongs to no article is still public.
     assert.equal(greeting.items[0].media.kind, "image");
     assert.equal(greeting.items[0].media.isPublic, true);
-    assert.ok(greeting.items[0].media.url.endsWith("/media/a/abc123.webp"));
+    // A file the admin uploaded lives in the ads folder.
+    assert.ok(greeting.items[0].media.url.endsWith("/media/b/abc123.webp"), greeting.items[0].media.url);
   });
 
   it("refuses a greeting without a text", async () => {
@@ -187,6 +188,36 @@ describe("Telegram management panel", () => {
       payload: { enabled: true, keepButtons: true, items: [{ text: "   " }] },
     });
     assert.equal(res.statusCode, 400, res.body);
+  });
+
+  it("keeps a file of an article in the folder of the article images", async () => {
+    // The media of an article lives with the images of the articles.
+    await app.inject({
+      method: "PUT",
+      url: "/api/admin/telegram/settings/greeting",
+      headers: { ...H, cookie: admin },
+      payload: {
+        enabled: true,
+        keepButtons: true,
+        items: [
+          {
+            id: "g2",
+            text: "Chào {{name}}",
+            media: { type: "image", key: "image:fromarticle", source: "article" },
+            buttons: [],
+            link: { articleId: null, url: null },
+          },
+        ],
+      },
+    });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/bot/settings",
+      headers: { "x-bot-secret": "test-bot-secret" },
+    });
+    assert.equal(res.statusCode, 200, res.body);
+    const greeting = res.json().greeting;
+    assert.ok(greeting.items[0].media.url.endsWith("/media/a/fromarticle.webp"), greeting.items[0].media.url);
   });
 
   it("keeps the greeting endpoints behind the admin role", async () => {

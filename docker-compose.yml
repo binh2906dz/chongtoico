@@ -26,6 +26,9 @@ services:
       MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-15}
       MAX_VIDEO_MB: ${MAX_VIDEO_MB:-2048}
       BOT_API_SECRET: ${BOT_API_SECRET:-}
+      # The public address of the site. The links inside the Telegram messages
+      # are built from it, so it must be the real domain and not localhost.
+      SITE_URL: ${SITE_URL:-http://127.0.0.1:8090}
       # Encrypts the Telegram bot tokens stored in the database.
       TOKEN_ENCRYPTION_KEY: ${TOKEN_ENCRYPTION_KEY:-}
       BACKUP_DIR: /data/backups
