@@ -504,7 +504,9 @@ Cài dịch vụ bot Telegram (ngoài Docker — cần token + kết nối Teleg
 7) LỊCH SỬ GIT (oneline — cập nhật sau mỗi lần push)
 --------------------------------------------------------------------------------
 (xem `git log --oneline`; các commit chính)
+39d4f64 feat(telegram): them o dem nhom trang thai ID vao tab Nhap ID
 5416460 feat(telegram): chien dich gui media, che do khan cap va nhom ID da nhap
+e43b911 docs: ghi nhat ky chien dich media + khan cap + nhom ID da nhap (B93-B95)
 b38f2e8 fix(telegram): media upload dung thu muc ads + truyen SITE_URL vao container
 8734e44 feat(telegram): lời chào /start có media, nút bấm và link tuỳ chỉnh
 ed42f94 docs: ghi nhat ky tinh nang loi chao /start (B85-B88)
@@ -1240,7 +1242,23 @@ b22c5f7 feat: scaffold new platform (đã thay thế — xoá ở bản Node.js)
     "Toan bo ID da nhap" kem chip chon nhom trang thai, checkbox
     "⚡ Gui khan cap", o dem so ID theo nhom trong tab Nhap ID.
   - Test: server 72/72 pass (them 3 test), bot 60/60 pass, tsc server+bot+
-    frontend sach. CHUA chay thu end-to-end tren VPS sau khi deploy.
+    frontend sach. Smoke test moi: server/scripts/smoke-campaign.mjs
+    (BASE, ADMIN_USER, ADMIN_PASS) — 18/18 DAT tren production.
+  - DA KIEM TRA production (VPS 103.63.30.108): migration da chay (cot
+    is_emergency ton tai); 61.094 id (active 10.454 / blocked 21.755 /
+    invalid 28.883 / unknown 2); bot 27 live + 30 ban; ids/groups tra dung
+    4 nhom + tong; upload media multipart -> /media/b/... GET 200; chien dich
+    khan cap nhom active -> queued 10454, skipped 0, scheduled_at = dung luc
+    gui (khong bi doi sang 08:00-22:00); bot gui that, 298 loi "chat not
+    found" -> id tu chuyen sang nhom invalid (blocked 21.755 -> 21.758).
+  - Bai hoc moi: B93 (migration moi PHAI them entry vao
+    server/drizzle/meta/_journal.json), B94 (quet danh sach ID lay tu
+    telegram_users chu khong phai nguoi da lien ket bot), B95 (test can ham
+    loginAdmin() dung chung), B96 (hai component "Nhap ID" trung chuc nang,
+    chi mot cai duoc dung that), B97 (file shell gui tu Windows bi CRLF ->
+    sed -i 's/\r$//' tren VPS), B98 (upload media nhan multipart, JSON
+    base64 tra 406), B99 (container chay tu /app, phai docker cp de chay
+    script), B100 (ADMIN_PASSWORD trong .env khong dung sau khi doi mat khau).
 
 ================================================================================
 Hết — lưu ý: không lưu mật khẩu / token thật trong file này.
