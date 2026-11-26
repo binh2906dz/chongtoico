@@ -55,10 +55,12 @@ export const config = {
   jobBatchSize: int(process.env.BOT_JOB_BATCH_SIZE, 100),
   /** How often the bot reports its health, in milliseconds. */
   heartbeatIntervalMs: int(process.env.BOT_HEARTBEAT_INTERVAL_MS, 300_000),
-  /** Messages sent per second, per bot. */
-  sendRatePerSecond: int(process.env.BOT_SEND_RATE, 2),
+  /** Messages sent per second, per bot. Telegram allows about 30. */
+  sendRatePerSecond: int(process.env.BOT_SEND_RATE, 25),
   /** A bot that failed with 429 is skipped for this many minutes. */
   cooldownAfter429Minutes: int(process.env.BOT_429_COOLDOWN_MINUTES, 60),
+  /** The longest wait a bot takes after a 429, in seconds. */
+  maxCooldownAfter429Seconds: int(process.env.BOT_MAX_429_COOLDOWN_SECONDS, 300),
   /** How long a cached bot token list stays valid, in milliseconds. */
   tokenCacheMs: int(process.env.BOT_TOKEN_CACHE_MS, 300_000),
   logLevel: process.env.LOG_LEVEL || "info",

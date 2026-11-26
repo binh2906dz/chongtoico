@@ -384,6 +384,28 @@ export function telegramFailureReason(
   return null;
 }
 
+/**
+ * Whether a failed send can be tried again later.
+ *
+ * A flood wait, a timeout or a broken connection has to be retried; the
+ * message itself was never refused.
+ */
+export function isTemporaryFailure(error: string): boolean {
+  const text = error.toLowerCase();
+  return (
+    text.includes("429") ||
+    text.includes("too many requests") ||
+    text.includes("timeout") ||
+    text.includes("timed out") ||
+    text.includes("econnreset") ||
+    text.includes("econnrefused") ||
+    text.includes("etimedout") ||
+    text.includes("socket hang up") ||
+    text.includes("network") ||
+    text.includes("fetch failed")
+  );
+}
+
 /* ------------------------------------------------------------------ *
  * Targeting helpers
  * ------------------------------------------------------------------ */

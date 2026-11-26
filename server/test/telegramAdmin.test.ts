@@ -522,5 +522,9 @@ describe("Telegram management panel", () => {
 
     const [row] = await db.select().from(telegramUsers).where(eq(telegramUsers.telegramId, 900003));
     assert.equal(row.status, "active", "A flood wait says nothing about the id.");
+
+    // The job goes back into the queue so it is tried again (B105).
+    const [after] = await db.select().from(notificationJobs).where(eq(notificationJobs.id, job.id));
+    assert.equal(after.status, "queued", "A temporary failure must be tried again.");
   });
 });

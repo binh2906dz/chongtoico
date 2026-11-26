@@ -34,6 +34,7 @@ import {
   INIT_DATA_MAX_AGE_SEC,
   isInitDataFresh,
   isValidBotSecret,
+  isTemporaryFailure,
   liveBots,
   randomLiveBot,
   recordBotStart,
@@ -49,6 +50,9 @@ import {
 
 /** One megabyte in bytes. */
 const MB = 1024 * 1024;
+
+/** How long a job waits before it is tried again after a temporary failure. */
+const RETRY_DELAY_MS = 60_000;
 
 const initDataBody = z.object({ initData: z.string().min(1).max(8000) });
 
@@ -452,6 +456,18 @@ export default async function telegramRoutes(app: FastifyInstance) {
     if (body.status === "failed" && body.error) {
       const reason = telegramFailureReason(body.error);
       if (reason) await setTelegramStatus(job.telegramId, reason);
+      // A flood wait or a broken network says nothing about the id, so the
+      // job is put back into the queue instead of being lost (B105).
+      if (!reason && isTemporaryFailure(body.error)) {
+        await db
+          .update(notificationJobs)
+          .set({
+            status: "queued",
+            scheduledAt: new Date(Date.now() + RETRY_DELAY_MS),
+            error: body.error,
+          })
+          .where(eq(notificationJobs.id, body.jobId));
+      }
     }
     return { ok: true };
   });

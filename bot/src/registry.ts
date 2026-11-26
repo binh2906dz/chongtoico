@@ -135,9 +135,11 @@ export class BotRegistry {
   markRateLimited(id: string, retryAfterSeconds: number): void {
     const bot = this.bots.get(id);
     if (!bot) return;
-    const cooldownMs = Math.max(retryAfterSeconds, config.cooldownAfter429Minutes * 60) * 1000;
-    bot.cooldownUntil = Date.now() + cooldownMs;
-    bot.lastError = `429: chờ ${Math.round(cooldownMs / 60000)} phút`;
+    // Telegram tells us how long to wait. The old code always waited a full
+    // hour, which stopped the bot for the rest of the campaign (B105).
+    const wait = Math.max(5, Math.min(retryAfterSeconds, config.maxCooldownAfter429Seconds));
+    bot.cooldownUntil = Date.now() + wait * 1000;
+    bot.lastError = `429: chờ ${wait} giây`;
   }
 
   /** Mark a bot as banned by Telegram. */
