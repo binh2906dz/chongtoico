@@ -836,41 +836,65 @@ export default async function telegramRoutes(app: FastifyInstance) {
   );
 
   /**
-   * Remove the queued jobs of the ids Telegram already refused.
+   * Put the finished jobs back into the queue.
    *
-   * A long campaign fills the queue with jobs that can never be delivered.
-   * This clears them away so the queue only holds the people that can
-   * really be reached (B106).
+   * The admin wants the campaign to reach every id, so a job that failed or
+   * was skipped is put back into the queue instead of being thrown away.
+   * The ids keep their status — the report still says which ids are alive.
    */
   app.post(
-    "/api/admin/telegram/ids/cleanup",
+    "/api/admin/telegram/ids/requeue",
     { config: { rateLimit: { max: 20, timeWindow: "1 minute" } } },
     async (req) => {
       requireAdmin(req);
       const body = parse(
-        z.object({ campaignId: z.string().trim().max(64).nullish() }),
+        z.object({
+          campaignId: z.string().trim().max(64).nullish(),
+          // Only the ids that never got the message. When it is false the
+          // whole list is sent again, including the ids that got it.
+          onlyUndelivered: z.boolean().optional(),
+        }),
         req.body ?? {},
       );
+      const statuses = body.onlyUndelivered
+        ? ["failed", "skipped"]
+        : ["failed", "skipped", "sent", "blocked", "cancelled"];
+      // The finished jobs are removed first. A second job for the same id
+      // would send the message twice, and the queue only knows the first one.
       const removed = await db
-        .update(notificationJobs)
-        .set({ status: "skipped", error: "ID không dùng được" })
+        .delete(notificationJobs)
         .where(
           and(
-            eq(notificationJobs.status, "queued"),
-            inArray(
-              notificationJobs.telegramId,
-              db
-                .select({ telegramId: telegramUsers.telegramId })
-                .from(telegramUsers)
-                .where(inArray(telegramUsers.status, ["invalid", "blocked"])),
-            ),
+            inArray(notificationJobs.status, statuses),
             body.campaignId
               ? eq(notificationJobs.campaignId, body.campaignId)
               : undefined,
           ),
         )
-        .returning({ id: notificationJobs.id });
-      return { removed: removed.length };
+        .returning({
+          id: notificationJobs.id,
+          telegramId: notificationJobs.telegramId,
+          campaignId: notificationJobs.campaignId,
+          payload: notificationJobs.payload,
+          botId: notificationJobs.botId,
+        });
+
+      // One new job for every id, with the same message as before, so the
+      // whole list is sent again from scratch.
+      const jobs = removed.map((r) => ({
+        campaignId: r.campaignId,
+        telegramId: r.telegramId,
+        botId: r.botId,
+        payload: r.payload,
+        status: "queued",
+        scheduledAt: new Date(),
+      }));
+      let requeued = 0;
+      for (let i = 0; i < jobs.length; i += 500) {
+        await db.insert(notificationJobs).values(jobs.slice(i, i + 500));
+        requeued += Math.min(500, jobs.length - i);
+      }
+      return { requeued };
     },
   );
 

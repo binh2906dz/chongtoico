@@ -1281,6 +1281,43 @@ b22c5f7 feat: scaffold new platform (đã thay thế — xoá ở bản Node.js)
     base64 tra 406), B99 (container chay tu /app, phai docker cp de chay
     script), B100 (ADMIN_PASSWORD trong .env khong dung sau khi doi mat khau).
 
+--------------------------------------------------------------------------------
+2026-11-27 — B111: CHIEN DICH GUI TOI TOAN BO ID (khong bo qua ID nao)
+--------------------------------------------------------------------------------
+YEU CAU: admin muon moi chien dich gui toi TOAN BO danh sach ID da nhap
+(61.092 id), KHONG bo qua ID nao — ke ca ID da bi Telegram danh dau invalid
+hay blocked. Logic "bo qua ID khong dung duoc" (unusableIds) da lam chi
+10.454/61.092 id duoc gui va cac lan sau khong con ID nao de gui.
+
+  - server/src/scheduler.ts: BO HET unusableIds() va khoi block
+    `if (unusable.has(...))` trong queueCampaign(). Bay moi chi con 2 ly do
+    bo qua: job da queued/sending cho cung chien dich (already_queued) va
+    luat tan suat (chi ap dung khi KHONG bat ⚡ Gui khan cap).
+  - Kiem tra thuc te (pglite local, 61.092 id):
+      queue result: { queued: 61092, skipped: 0, skippedReasons: {} }
+      jobs: [{ status: 'queued', n: 61092 }]  (61092 job = 61092 id)
+      jobs for refused ids (invalid+blocked): 50638
+      thoi gian queue: 5,8 giay
+    => khong ID nao bi bo qua, ca nhom invalid/blocked deu vao hang doi.
+  - server/src/routes/telegram.ts: THAY endpoint /ids/cleanup (xoá job cua
+    ID invalid/blocked) bang /ids/requeue — xoá job da xong (failed/skipped/
+    sent/blocked/cancelled) roi TAO LAI job moi voi DUNG payload cu, status
+    'queued' -> gui lai tu dau. Query param `onlyUndelivered: true` chi
+    lay lai nhom failed/skipped (id chua nhan duoc); mac dinh lay lai tat ca
+    (ke ca id da nhan tin roi).
+  - frontend/src/pages/admin/AdminTelegramTools.tsx: nut "🧹 Dọn job" ->
+    2 nut: "🔁 Gửi lại id chưa nhận được" + "♻️ Gửi lại TOÀN BỘ id".
+  - frontend/src/pages/admin/AdminTelegram.tsx: chip "Lọc theo nhóm (bỏ
+    trống = gửi tất cả)", mo ta "khong chon nhom nao + bat ⚡ Gui khan cap"
+    -> gui toi tat ca id.
+  - Test: server 80/80 pass (them 2 test: "sends to every id, even the ones
+    Telegram refused before" + "puts the finished jobs back into the queue" +
+    "sends the whole list again when every id is asked for"), tsc server +
+    frontend sach, frontend build thanh cong.
+  - BAI HOC MOI: B111 (trang thai ID chi de THONG KE, khong bao gio loai ID
+    khoi danh sach gui; khi can gui lai thi xoa job cu + tao job moi giu
+    nguyen payload, vi bang payload rong se gui tin rong).
+
 ================================================================================
 Hết — lưu ý: không lưu mật khẩu / token thật trong file này.
 ================================================================================

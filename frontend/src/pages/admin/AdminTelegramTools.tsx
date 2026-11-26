@@ -1305,13 +1305,19 @@ export function AdminTelegramIdsManage() {
     }
   }
 
-  async function cleanupJobs() {
-    if (!window.confirm("Bỏ khỏi hàng đợi các job gửi tới ID không hợp lệ hoặc đã bị chặn?")) return;
+  async function requeueAll(onlyUndelivered: boolean) {
+    const message = onlyUndelivered
+      ? "Gửi lại tới những id chưa nhận được tin (thất bại hoặc bị bỏ qua)?"
+      : "Gửi lại tới TOÀN BỘ id trong danh sách, kể cả id đã nhận tin rồi?";
+    if (!window.confirm(message)) return;
     setBusy(true);
     setNotice(null);
     try {
-      const res = await api<{ removed: number }>("/api/admin/telegram/ids/cleanup", { method: "POST" });
-      setNotice({ tone: "ok", message: `Đã dọn ${res.removed} job không thể gửi.` });
+      const res = await api<{ requeued: number }>("/api/admin/telegram/ids/requeue", {
+        method: "POST",
+        body: { onlyUndelivered },
+      });
+      setNotice({ tone: "ok", message: `Đã đưa ${res.requeued} id về hàng đợi để gửi lại.` });
       groups.reload();
     } catch (e) {
       setNotice({ tone: "err", message: errorMessage(e) });
@@ -1373,8 +1379,9 @@ export function AdminTelegramIdsManage() {
           <h2 className="font-black">Phân loại ID ({formatNumber(groups.data.total)} id)</h2>
           <p className="text-sm text-muted">
             Trạng thái được cập nhật tự động khi chiến dịch gửi tới: Telegram báo lỗi thì id đó chuyển sang nhóm
-            tương ứng. Lần quét đầu tiên hãy dùng <b>⚡ Gửi khẩn cấp</b> cho toàn bộ id, các lần sau chỉ gửi nhóm{" "}
-            <b>Hoạt động</b>.
+            tương ứng. Đây chỉ là <b>thống kê</b> để bạn biết id nào còn dùng được — chiến dịch vẫn gửi tới{" "}
+            <b>toàn bộ id</b> trong danh sách này. Muốn gửi tới tất cả thì dùng <b>⚡ Gửi khẩn cấp</b> và{" "}
+            <b>không chọn nhóm nào</b>.
           </p>
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
             {groups.data.groups.map((g) => (
@@ -1395,17 +1402,17 @@ export function AdminTelegramIdsManage() {
               </div>
             ))}
           </div>
-          <button
-            type="button"
-            className="btn btn-danger"
-            disabled={busy}
-            onClick={cleanupJobs}
-          >
-            🧹 Dọn job của ID không dùng được
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" className="btn" disabled={busy} onClick={() => void requeueAll(true)}>
+              🔁 Gửi lại id chưa nhận được
+            </button>
+            <button type="button" className="btn btn-danger" disabled={busy} onClick={() => void requeueAll(false)}>
+              ♻️ Gửi lại TOÀN BỘ id
+            </button>
+          </div>
           <p className="text-xs text-muted">
-            Bỏ khỏi hàng đợi những công việc gửi tới các id đã biết là không hợp lệ hoặc đã bị chặn — việc đó không
-            thể gửi được nữa.
+            Đưa lại id về hàng đợi để các bot gửi lại. <b>Gửi lại TOÀN BỘ id</b> gửi lại cả những id đã nhận tin
+            rồi; <b>id chưa nhận được</b> chỉ gửi lại phần chưa tới.
           </p>
         </div>
       )}

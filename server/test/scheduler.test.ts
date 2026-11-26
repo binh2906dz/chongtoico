@@ -304,9 +304,9 @@ describe("Telegram scheduler and frequency limits", () => {
     assert.equal(jobs.length, 1201);
   });
 
-  it("leaves out the ids Telegram already refused", async () => {
-    // Telegram said these ids are gone or blocked — a new message would
-    // only be wasted (B106).
+  it("sends to every id, even the ones Telegram refused before", async () => {
+    // The admin wants the campaign to reach every id of the list — the
+    // status only says which ids are alive, it never removes one (B111).
     await db.insert(telegramUsers).values({ telegramId: 800001, status: "invalid" });
     await db.insert(telegramUsers).values({ telegramId: 800002, status: "blocked" });
     await db.insert(telegramUsers).values({ telegramId: 800003, status: "active" });
@@ -317,8 +317,8 @@ describe("Telegram scheduler and frequency limits", () => {
       url: "/api/admin/telegram/campaigns",
       headers: { ...H, cookie: adminCookie },
       payload: {
-        name: "Chiến dịch bỏ id chết",
-        text: "Chỉ gửi cho người còn dùng được",
+        name: "Chiến dịch gửi tất cả",
+        text: "Gửi tới mọi id trong danh sách",
         mediaType: "none",
         targetType: "imported",
         targetIds: [],
@@ -330,12 +330,74 @@ describe("Telegram scheduler and frequency limits", () => {
     const { campaign } = res.json();
 
     const queued = await queueCampaign(campaign.id, new Date());
-    assert.ok((queued.skippedReasons.unusable_id ?? 0) >= 2, JSON.stringify(queued));
+    assert.equal(queued.skippedReasons.unusable_id ?? 0, 0, JSON.stringify(queued));
 
     const jobs = await db.select().from(notificationJobs).where(eq(notificationJobs.campaignId, campaign.id));
     const ids = jobs.map((j) => j.telegramId);
-    assert.ok(!ids.includes(800001), "Id không hợp lệ không được gửi.");
-    assert.ok(!ids.includes(800002), "Id đã bị chặn không được gửi.");
-    assert.ok(ids.includes(800003), "Id còn dùng được vẫn phải được gửi.");
+    assert.ok(ids.includes(800001), "Id không hợp lệ vẫn phải được gửi.");
+    assert.ok(ids.includes(800002), "Id đã bị chặn vẫn phải được gửi.");
+    assert.ok(ids.includes(800003), "Id còn dùng được cũng phải được gửi.");
+  });
+
+  it("puts the finished jobs back into the queue", async () => {
+    const { db } = await import("../src/db/index.js");
+    const { notificationJobs, telegramCampaigns } = await import("../src/db/schema.js");
+    await db
+      .insert(telegramCampaigns)
+      .values({ id: "cid-requeue", name: "Chiến dịch gửi lại", text: "x", targetType: "imported" })
+      .onConflictDoNothing();
+    await db
+      .insert(notificationJobs)
+      .values([
+        { campaignId: "cid-requeue", telegramId: 810001, status: "failed", payload: { text: "x" } },
+        { campaignId: "cid-requeue", telegramId: 810002, status: "skipped", payload: { text: "x" } },
+      ])
+      .onConflictDoNothing();
+
+    const adminCookie = await loginAdmin();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/admin/telegram/ids/requeue",
+      headers: { ...H, cookie: adminCookie },
+      payload: { campaignId: "cid-requeue", onlyUndelivered: true },
+    });
+    assert.equal(res.statusCode, 200, res.body);
+    assert.equal(res.json().requeued, 2, res.body);
+
+    const jobs = await db.select().from(notificationJobs).where(eq(notificationJobs.campaignId, "cid-requeue"));
+    assert.ok(jobs.every((j) => j.status === "queued"), "Mọi job phải về hàng đợi để gửi lại.");
+    // The message of the old job is kept.
+    assert.equal(jobs[0].payload.text, "x");
+  });
+
+  it("sends the whole list again when every id is asked for", async () => {
+    const { db } = await import("../src/db/index.js");
+    const { notificationJobs, telegramCampaigns } = await import("../src/db/schema.js");
+    await db
+      .insert(telegramCampaigns)
+      .values({ id: "cid-requeue-all", name: "Chiến dịch gửi lại tất cả", text: "x", targetType: "imported" })
+      .onConflictDoNothing();
+    await db
+      .insert(notificationJobs)
+      .values([
+        { campaignId: "cid-requeue-all", telegramId: 820001, status: "failed", payload: { text: "x" } },
+        { campaignId: "cid-requeue-all", telegramId: 820002, status: "sent", payload: { text: "x" } },
+      ])
+      .onConflictDoNothing();
+
+    const adminCookie = await loginAdmin();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/admin/telegram/ids/requeue",
+      headers: { ...H, cookie: adminCookie },
+      payload: { campaignId: "cid-requeue-all" },
+    });
+    assert.equal(res.statusCode, 200, res.body);
+    // Both ids go back into the queue — even the one that got the message.
+    assert.equal(res.json().requeued, 2, res.body);
+
+    const jobs = await db.select().from(notificationJobs).where(eq(notificationJobs.campaignId, "cid-requeue-all"));
+    assert.equal(jobs.length, 2);
+    assert.ok(jobs.every((j) => j.status === "queued"));
   });
 });

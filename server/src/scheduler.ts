@@ -457,19 +457,10 @@ export async function queueCampaign(campaignId: string, scheduledAt: Date): Prom
     );
   const alreadyQueued = new Set(existingJobs.map((j) => j.telegramId));
 
-  // The people Telegram already refused are left out. Their id is known to
-  // be invalid or blocked, so a new message would only waste time (B106).
-  const unusable = await unusableIds(targets.map((t) => t.telegramId));
-
   for (const target of targets) {
     if (alreadyQueued.has(target.telegramId)) {
       skipped += 1;
       skippedReasons.already_queued = (skippedReasons.already_queued ?? 0) + 1;
-      continue;
-    }
-    if (unusable.has(target.telegramId)) {
-      skipped += 1;
-      skippedReasons.unusable_id = (skippedReasons.unusable_id ?? 0) + 1;
       continue;
     }
     // An emergency campaign skips every frequency rule — it goes out now.
@@ -509,32 +500,6 @@ export async function queueCampaign(campaignId: string, scheduledAt: Date): Prom
     .where(eq(telegramCampaigns.id, campaignId));
 
   return { queued, skipped, skippedReasons };
-}
-
-/**
- * The ids Telegram already refused.
- *
- * An id that was reported as invalid or blocked must not be used again, so
- * it is left out of a new campaign.
- */
-async function unusableIds(telegramIds: number[]): Promise<Set<number>> {
-  const ids = telegramIds.filter((id) => Number.isInteger(id) && id > 0);
-  if (!ids.length) return new Set();
-  const out = new Set<number>();
-  // The list can be very long, so it is read in parts.
-  for (let i = 0; i < ids.length; i += 1000) {
-    const rows = await db
-      .select({ telegramId: telegramUsers.telegramId })
-      .from(telegramUsers)
-      .where(
-        and(
-          inArray(telegramUsers.telegramId, ids.slice(i, i + 1000)),
-          inArray(telegramUsers.status, ["invalid", "blocked"]),
-        ),
-      );
-    for (const row of rows) out.add(row.telegramId);
-  }
-  return out;
 }
 
 /* ------------------------------------------------------------------ *

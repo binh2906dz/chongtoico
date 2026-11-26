@@ -773,7 +773,7 @@ function CampaignForm({ onCreated }: { onCreated: () => void }) {
             <div className="mt-2 space-y-2">
               <div className="rounded-lg border border-line bg-panel-2 p-2">
                 <div className="mb-1 flex items-center justify-between text-xs">
-                  <span className="font-semibold">Chọn nhóm ID gửi tới</span>
+                  <span className="font-semibold">Lọc theo nhóm (bỏ trống = gửi tất cả)</span>
                   <span className="text-muted">Tổng: {idGroups?.total ?? 0} id</span>
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -806,9 +806,10 @@ function CampaignForm({ onCreated }: { onCreated: () => void }) {
                         .reduce((a, b) => a + b, 0)} id thuộc nhóm đã chọn.`}
                 </p>
                 <p className="mt-1 text-xs text-muted">
-                  Lần quét đầu tiên hãy chọn tất cả (không chọn nhóm nào) để biết id nào còn hoạt động. Telegram
-                  báo "không tìm thấy" hoặc "bị chặn" thì id đó được ghi lại ở mục <b>Nhập ID</b> — các lần sau chỉ
-                  chọn nhóm <b>Hoạt động</b>.
+                  Để gửi tới <b>toàn bộ ID</b> thì <b>không chọn nhóm nào</b> và bật <b>⚡ Gửi khẩn cấp</b> — mọi id
+                  trong danh sách đều được gửi, kể cả id Telegram báo lỗi trước đó. Các nhóm chỉ là thống kê cho biết
+                  id nào còn dùng được; Telegram báo "không tìm thấy" hoặc "bị chặn" thì id đó được ghi lại ở mục{" "}
+                  <b>Nhập ID</b>.
                 </p>
               </div>
             </div>
