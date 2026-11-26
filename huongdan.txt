@@ -504,6 +504,7 @@ Cài dịch vụ bot Telegram (ngoài Docker — cần token + kết nối Teleg
 7) LỊCH SỬ GIT (oneline — cập nhật sau mỗi lần push)
 --------------------------------------------------------------------------------
 (xem `git log --oneline`; các commit chính)
+5416460 feat(telegram): chien dich gui media, che do khan cap va nhom ID da nhap
 b38f2e8 fix(telegram): media upload dung thu muc ads + truyen SITE_URL vao container
 8734e44 feat(telegram): lời chào /start có media, nút bấm và link tuỳ chỉnh
 ed42f94 docs: ghi nhat ky tinh nang loi chao /start (B85-B88)
@@ -1219,6 +1220,27 @@ b22c5f7 feat: scaffold new platform (đã thay thế — xoá ở bản Node.js)
   - Bai hoc moi: B89 (media 2 thu muc khac nhau), B90 (SITE_URL phai truyen
     vao container), B91 (kiem tra URL phuc vu sau khi deploy), B92 (test fail
     sau khi doi logic — doc loi, cap nhat test theo hanh vi moi).
+[2026-11-26] CHIEN DICH: media + giu khan cap + nhom ID da nhap (commit 5416460)
+  - Migration 0013_campaign_emergency.sql: them cot
+    telegram_campaigns.is_emergency (boolean, default false).
+    LUU Y: file .sql moi PHAI them entry tuong ung vao
+    server/drizzle/meta/_journal.json, neu khong Drizzle khong chay file do
+    (bai hoc B93).
+  - Chien dich co media: POST /api/admin/telegram/campaigns/media (anh ->
+    ads /media/b/, video -> /media/v/) hoac chon media bai viet (/media/a/).
+    Truong mediaSource luu nguon de buildPayload() dung dung URL.
+  - isEmergency = true: queueCampaign() BO QUA moi luat tan suat (1/ngay,
+    3/tuan, cach nhau 6 gio) va khung gio gui (08:00-22:00) -> gui ngay.
+    POST /campaigns/:id/send dung new Date() thay vi nextAllowedTime().
+  - targetType = "imported": lay tat ca dong trong telegram_users, loc theo
+    nhom trang thai (active/blocked/invalid/unknown) trong targetIds. Dung de
+    quet toan bo danh sach ID da nhap va phan loai bot/nguoi con song.
+  - GET /api/admin/telegram/ids/groups: breakdown so luong theo nhom + tong.
+  - Giao dien (AdminTelegram.tsx): nut tai media + chon media bai viet, o chon
+    "Toan bo ID da nhap" kem chip chon nhom trang thai, checkbox
+    "⚡ Gui khan cap", o dem so ID theo nhom trong tab Nhap ID.
+  - Test: server 72/72 pass (them 3 test), bot 60/60 pass, tsc server+bot+
+    frontend sach. CHUA chay thu end-to-end tren VPS sau khi deploy.
 
 ================================================================================
 Hết — lưu ý: không lưu mật khẩu / token thật trong file này.
