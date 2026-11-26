@@ -27,6 +27,7 @@ import { config } from "../config.js";
 import { looksLikeVideo, storeImage, VIDEO_DIR, videoExtFromName } from "../media.js";
 import { nextAllowedTime, queueCampaign } from "../scheduler.js";
 import {
+  applyBotResult,
   consumeLinkCode,
   createLinkCode,
   ensureTelegramUser,
@@ -34,13 +35,10 @@ import {
   INIT_DATA_MAX_AGE_SEC,
   isInitDataFresh,
   isValidBotSecret,
-  isTemporaryFailure,
   liveBots,
   randomLiveBot,
   recordBotStart,
   setOptOut,
-  setTelegramStatus,
-  telegramFailureReason,
   verifyInitData,
 } from "../telegram.js";
 
@@ -50,9 +48,6 @@ import {
 
 /** One megabyte in bytes. */
 const MB = 1024 * 1024;
-
-/** How long a job waits before it is tried again after a temporary failure. */
-const RETRY_DELAY_MS = 60_000;
 
 const initDataBody = z.object({ initData: z.string().min(1).max(8000) });
 
@@ -437,58 +432,59 @@ export default async function telegramRoutes(app: FastifyInstance) {
     },
     async (req) => {
     const body = parse(botResultBody, req.body);
-    const [job] = await db.select().from(notificationJobs).where(eq(notificationJobs.id, body.jobId)).limit(1);
+    // A job that does not exist is a mistake of the bot, so the caller is
+    // told about it. The batch route skips such a job instead.
+    const [job] = await db
+      .select({ id: notificationJobs.id })
+      .from(notificationJobs)
+      .where(eq(notificationJobs.id, body.jobId))
+      .limit(1);
     if (!job) throw notFound("Không tìm thấy công việc.");
-    const payload = job.payload as { text?: string; contentHash?: string } | null;
-    await db
-      .update(notificationJobs)
-      .set({
-        status: body.status,
-        sentAt: body.status === "sent" ? new Date() : null,
-        error: body.error ?? null,
-      })
-      .where(eq(notificationJobs.id, body.jobId));
-    // The delivery log is the guard against sending the same campaign twice.
-    await db
-      .insert(deliveryLog)
-      .values({
-        campaignId: job.campaignId,
-        telegramId: job.telegramId,
-        botId: body.botId ?? job.botId ?? null,
-        status: body.status,
-        error: payload?.contentHash ?? (payload?.text ? contentHash(payload.text) : null),
-      })
-      .onConflictDoNothing();
-    if (body.status === "blocked") {
-      await setTelegramStatus(job.telegramId, "blocked");
-    }
-    // A message that went through proves the id is still usable, so it
-    // belongs to the "active" group. Without this the group would stay
-    // empty and the admin could not pick the living ids (B110).
-    if (body.status === "sent") {
-      await setTelegramStatus(job.telegramId, "active");
-    }
-    // A failed job tells us the id is not usable any more. Telegram answers
-    // "chat not found" when the id is wrong or the account was deleted, and
-    // "bot was blocked by the user" when the person blocked the bot — both
-    // mean the id must not be used again (B103).
-    if (body.status === "failed" && body.error) {
-      const reason = telegramFailureReason(body.error);
-      if (reason) await setTelegramStatus(job.telegramId, reason);
-      // A flood wait or a broken network says nothing about the id, so the
-      // job is put back into the queue instead of being lost (B105).
-      if (!reason && isTemporaryFailure(body.error)) {
-        await db
-          .update(notificationJobs)
-          .set({
-            status: "queued",
-            scheduledAt: new Date(Date.now() + RETRY_DELAY_MS),
-            error: body.error,
-          })
-          .where(eq(notificationJobs.id, body.jobId));
-      }
-    }
+    await applyBotResult(body.jobId, body.status, body.error ?? null, body.botId ?? null);
     return { ok: true };
+    },
+  );
+
+  /**
+   * The bot reports many outcomes at once.
+   *
+   * A campaign of 61.000 ids produces 61.000 calls when every result is
+   * reported on its own, and the round trip is what slows the whole send
+   * down (B112). One request with a list of results is much faster.
+   */
+  app.post(
+    "/api/bot/results",
+    {
+      preHandler: requireBotSecret,
+      config: { rateLimit: { max: 1200, timeWindow: "1 minute" } },
+    },
+    async (req) => {
+      const body = parse(
+        z.object({
+          results: z
+            .array(
+              z.object({
+                jobId: z.number().int(),
+                status: z.enum(["sent", "failed", "blocked", "skipped"]),
+                error: z.string().max(500).nullish(),
+                botId: z.string().max(64).nullish(),
+              }),
+            )
+            .min(1)
+            .max(500),
+        }),
+        req.body ?? {},
+      );
+      let done = 0;
+      for (const item of body.results) {
+        try {
+          const ok = await applyBotResult(item.jobId, item.status, item.error ?? null, item.botId ?? null);
+          if (ok) done += 1;
+        } catch {
+          // One bad result must not lose the others.
+        }
+      }
+      return { ok: true, done };
     },
   );
 

@@ -4,6 +4,7 @@ import { config } from "./config.js";
 import { db } from "./db/index.js";
 import {
   deliveryLog,
+  notificationJobs,
   telegramBots,
   telegramLinkCodes,
   telegramLinks,
@@ -404,6 +405,84 @@ export function isTemporaryFailure(error: string): boolean {
     text.includes("network") ||
     text.includes("fetch failed")
   );
+}
+
+/* ------------------------------------------------------------------ *
+ * The result of a job
+ * ------------------------------------------------------------------ */
+
+/** Hash of the message text — used to detect repeated content within 7 days. */
+function hashOfText(text: string): string {
+  return createHash("sha256").update(text.trim()).digest("hex").slice(0, 32);
+}
+
+/**
+ * Write the outcome of one job into the database.
+ *
+ * The same function is used by the single result route and by the batch
+ * route, so both behave exactly the same (B112).
+ */
+export async function applyBotResult(
+  jobId: number,
+  status: "sent" | "failed" | "blocked" | "skipped",
+  error: string | null,
+  botId: string | null,
+): Promise<boolean> {
+  const [job] = await db.select().from(notificationJobs).where(eq(notificationJobs.id, jobId)).limit(1);
+  if (!job) return false;
+  const payload = job.payload as { text?: string; contentHash?: string } | null;
+
+  await db
+    .update(notificationJobs)
+    .set({
+      status,
+      sentAt: status === "sent" ? new Date() : null,
+      error,
+    })
+    .where(eq(notificationJobs.id, jobId));
+
+  // The delivery log is the guard against sending the same campaign twice.
+  await db
+    .insert(deliveryLog)
+    .values({
+      campaignId: job.campaignId,
+      telegramId: job.telegramId,
+      botId: botId ?? job.botId ?? null,
+      status,
+      error: payload?.contentHash ?? (payload?.text ? hashOfText(payload.text) : null),
+    })
+    .onConflictDoNothing();
+
+  if (status === "blocked") {
+    await setTelegramStatus(job.telegramId, "blocked");
+  }
+  // A message that went through proves the id is still usable, so it belongs
+  // to the "active" group. Without this the group would stay empty and the
+  // admin could not pick the living ids (B110).
+  if (status === "sent") {
+    await setTelegramStatus(job.telegramId, "active");
+  }
+  // A failed job tells us the id is not usable any more. Telegram answers
+  // "chat not found" when the id is wrong or the account was deleted, and
+  // "bot was blocked by the user" when the person blocked the bot — both
+  // mean the id must not be used again (B103).
+  if (status === "failed" && error) {
+    const reason = telegramFailureReason(error);
+    if (reason) await setTelegramStatus(job.telegramId, reason);
+    // A flood wait or a broken network says nothing about the id, so the job
+    // is put back into the queue instead of being lost (B105).
+    if (!reason && isTemporaryFailure(error)) {
+      await db
+        .update(notificationJobs)
+        .set({
+          status: "queued",
+          scheduledAt: new Date(Date.now() + 60_000),
+          error,
+        })
+        .where(eq(notificationJobs.id, jobId));
+    }
+  }
+  return true;
 }
 
 /* ------------------------------------------------------------------ *

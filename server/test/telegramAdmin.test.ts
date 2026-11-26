@@ -552,4 +552,59 @@ describe("Telegram management panel", () => {
     const [after] = await db.select().from(notificationJobs).where(eq(notificationJobs.id, job.id));
     assert.equal(after.status, "queued", "A temporary failure must be tried again.");
   });
+
+  it("records many outcomes in one request", async () => {
+    // A campaign of 61.000 ids sends 61.000 outcomes. Reporting them one by
+    // one is what slows the send down, so they travel together (B112).
+    const { db } = await import("../src/db/index.js");
+    const { telegramUsers, notificationJobs, telegramCampaigns } = await import("../src/db/schema.js");
+    await db.insert(telegramUsers).values([
+      { telegramId: 900010, status: "unknown" },
+      { telegramId: 900011, status: "unknown" },
+    ]).onConflictDoNothing();
+    const [campaign] = await db
+      .insert(telegramCampaigns)
+      .values({ id: "cid-batch", name: "Chiến dịch batch", text: "x", targetType: "imported" })
+      .returning();
+    const jobs = await db
+      .insert(notificationJobs)
+      .values([
+        { campaignId: campaign.id, telegramId: 900010, status: "sending", payload: { text: "x" } },
+        { campaignId: campaign.id, telegramId: 900011, status: "sending", payload: { text: "x" } },
+      ])
+      .returning();
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/bot/results",
+      headers: { "x-bot-secret": "test-bot-secret" },
+      payload: {
+        results: [
+          { jobId: jobs[0].id, status: "sent" },
+          { jobId: jobs[1].id, status: "failed", error: "Telegram 400: Bad Request: chat not found" },
+        ],
+      },
+    });
+    assert.equal(res.statusCode, 200, res.body);
+    assert.equal(res.json().done, 2, res.body);
+
+    const rows = await db.select().from(notificationJobs).where(eq(notificationJobs.campaignId, campaign.id));
+    assert.equal(rows.find((r) => r.id === jobs[0].id)?.status, "sent");
+    assert.equal(rows.find((r) => r.id === jobs[1].id)?.status, "failed");
+
+    const users = await db.select().from(telegramUsers);
+    assert.equal(users.find((u) => u.telegramId === 900010)?.status, "active");
+    assert.equal(users.find((u) => u.telegramId === 900011)?.status, "invalid");
+  });
+
+  it("skips a job that does not exist in a batch", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/bot/results",
+      headers: { "x-bot-secret": "test-bot-secret" },
+      payload: { results: [{ jobId: 99999999, status: "sent" }] },
+    });
+    assert.equal(res.statusCode, 200, res.body);
+    assert.equal(res.json().done, 0, "Một job sai không được làm hỏng cả lô.");
+  });
 });

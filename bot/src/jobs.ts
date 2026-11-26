@@ -6,7 +6,7 @@
  */
 
 import { GrammyError } from "grammy";
-import { fetchJobs, reportResult, type Job } from "./client.js";
+import { fetchJobs, reportResults, type Job, type JobResult } from "./client.js";
 import { config } from "./config.js";
 import type { BotRegistry } from "./registry.js";
 
@@ -146,19 +146,21 @@ export async function runOnce(registry: BotRegistry, limiter: RateLimiter): Prom
   // The jobs are sent in parallel — one after the other would need the whole
   // round time for a single message and a big campaign would take days (B104).
   let next = 0;
+  // The outcomes are collected and reported in one request. One call per job
+  // means one round trip per job, and that is what slows a big campaign
+  // down the most (B112).
+  const results: JobResult[] = [];
   const worker = async (): Promise<void> => {
     while (next < list.length) {
       const job = list[next++];
       if (!job) return;
       const outcome = await sendJob(job, registry, limiter);
-      try {
-        await reportResult(job.jobId, outcome.status, {
-          error: outcome.error,
-          botId: job.botId ?? undefined,
-        });
-      } catch {
-        // The web app will pick the job up again after the stuck job sweep.
-      }
+      results.push({
+        jobId: job.jobId,
+        status: outcome.status,
+        error: outcome.error,
+        botId: job.botId ?? undefined,
+      });
     }
   };
   const workers = Array.from(
@@ -166,6 +168,17 @@ export async function runOnce(registry: BotRegistry, limiter: RateLimiter): Prom
     () => worker(),
   );
   await Promise.all(workers);
+
+  // The results travel in a few batches, so a round of 100 jobs needs one
+  // or two requests instead of a hundred.
+  const batchSize = 200;
+  for (let i = 0; i < results.length; i += batchSize) {
+    try {
+      await reportResults(results.slice(i, i + batchSize));
+    } catch {
+      // The web app picks the job up again after the stuck job sweep.
+    }
+  }
   return list.length;
 }
 

@@ -1318,6 +1318,39 @@ hay blocked. Logic "bo qua ID khong dung duoc" (unusableIds) da lam chi
     khoi danh sach gui; khi can gui lai thi xoa job cu + tao job moi giu
     nguyen payload, vi bang payload rong se gui tin rong).
 
+--------------------------------------------------------------------------------
+2026-11-27 — B112: GOM KET QUA GUI TINH (batch) + TANG TOC DO GUI
+--------------------------------------------------------------------------------
+VAN DE: sau khi bo "bo qua ID" (B111), 61.096 job da vao hang doi tren
+production nhung bot chi gui ~350 job/phut => 61.096 job se mat ~39 gio.
+LOG app cho thay nguyen nhan: MOI job duoc bao loi bang MOT request
+POST /api/bot/result (6-10 ms moi cai) => 61.096 round trip. Worker 20
+cai deu bi chan o buoc report.
+
+  - server/src/telegram.ts: tach logic ghi ket qua ra ham `applyBotResult(
+    jobId, status, error, botId)` tra ve boolean (false = job khong ton tai).
+    Ham nay giu nguyen toan bo logic cu: update notification_jobs, ghi
+    delivery_log, danh dau active/blocked/invalid, va day job loi tam thoi
+    (429/mang) ve lai hang doi sau 60 giay. Hash text dung ham rieng
+    `hashOfText` de tranh vong import voi scheduler.ts (scheduler.ts import
+    tu telegram.ts, nguoc lai se loi).
+  - server/src/routes/telegram.ts:
+      - POST /api/bot/result: giu nguyen, tra 404 khi job khong ton tai.
+      - POST /api/bot/results (MOI): nhan mang ket qua toi da 500 job,
+        tra { ok, done }. Job sai duoc bo qua, khong lam hong ca lot.
+      - Da xoa ham RETRY_DELAY_MS o file nay (chuyen sang telegram.ts).
+  - bot/src/client.ts: them `reportResults(results: JobResult[])` goi
+    POST /api/bot/results, gom ket qua vao mot request.
+  - bot/src/jobs.ts: `runOnce()` gom ket qua vao mang `results[]` roi gui
+    theo lo 200 job/request thay vi 1 request/job.
+  - bot/src/config.ts: sendConcurrency mac dinh 20 -> 50.
+  - Test: server 82/82 pass (them 2 test: "records many outcomes in one
+    request" + "skips a job that does not exist in a batch"), bot 63/63 pass
+    (them bot/test/results.test.ts: "sends many outcomes in one request" +
+    "still reports a single outcome on its own"), tsc server + bot sach.
+  - BAI HOC MOI: B112 (chi can bao 61.000 ket qua thi MOI request/job la
+    nut that; gom theo lo 200 la fix nhanh nhat — khong can doi kien truc).
+
 ================================================================================
 Hết — lưu ý: không lưu mật khẩu / token thật trong file này.
 ================================================================================

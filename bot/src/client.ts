@@ -178,6 +178,34 @@ export function reportResult(
   });
 }
 
+/** One outcome of a job, waiting to be reported. */
+export interface JobResult {
+  jobId: number;
+  status: "sent" | "failed" | "blocked" | "skipped";
+  error?: string;
+  botId?: string;
+}
+
+/**
+ * Report many outcomes in one request.
+ *
+ * A campaign of 61.000 ids means 61.000 jobs. One request per job is the
+ * thing that slows the send down, so the results travel together (B112).
+ */
+export function reportResults(results: JobResult[]): Promise<{ ok: boolean; done: number }> {
+  return callWebApi("/api/bot/results", {
+    method: "POST",
+    body: {
+      results: results.map((r) => ({
+        jobId: r.jobId,
+        status: r.status,
+        error: r.error ?? null,
+        botId: r.botId ?? null,
+      })),
+    },
+  });
+}
+
 /** Register this bot with the web app. */
 export function registerBot(botId: string, username: string, displayName: string): Promise<unknown> {
   return callWebApi("/api/bot/register", { method: "POST", body: { botId, username, displayName } });
