@@ -392,7 +392,12 @@ export default async function telegramRoutes(app: FastifyInstance) {
    */
   app.get(
     "/api/bot/jobs",
-    { preHandler: requireBotSecret, config: { rateLimit: { max: 120, timeWindow: "1 minute" } } },
+    {
+      preHandler: requireBotSecret,
+      // The bot polls the queue in a tight loop while there is a lot of work,
+      // so it needs a bigger limit than the global one (B104).
+      config: { rateLimit: { max: 1200, timeWindow: "1 minute" } },
+    },
     async (req) => {
       const query = z.object({ limit: z.coerce.number().int().min(1).max(100).default(50) }).parse(req.query ?? {});
       const due = await db
@@ -422,7 +427,15 @@ export default async function telegramRoutes(app: FastifyInstance) {
   );
 
   /** The bot reports the outcome of a job. */
-  app.post("/api/bot/result", { preHandler: requireBotSecret }, async (req) => {
+  app.post(
+    "/api/bot/result",
+    {
+      preHandler: requireBotSecret,
+      // Every finished job is reported here, so a big campaign produces a lot
+      // of calls (B104).
+      config: { rateLimit: { max: 1200, timeWindow: "1 minute" } },
+    },
+    async (req) => {
     const body = parse(botResultBody, req.body);
     const [job] = await db.select().from(notificationJobs).where(eq(notificationJobs.id, body.jobId)).limit(1);
     if (!job) throw notFound("Không tìm thấy công việc.");
@@ -470,7 +483,8 @@ export default async function telegramRoutes(app: FastifyInstance) {
       }
     }
     return { ok: true };
-  });
+    },
+  );
 
   /** The person pressed /start (optionally with a link code). */
   app.post("/api/bot/start", { preHandler: requireBotSecret }, async (req) => {
@@ -790,26 +804,30 @@ export default async function telegramRoutes(app: FastifyInstance) {
    * This is the list the admin picks from: the first emergency scan goes to
    * everybody, the later ones only to the ids that turned out to be alive.
    */
-  app.get("/api/admin/telegram/ids/groups", async (req) => {
-    requireAdmin(req);
-    const rows = await db
-      .select({ status: telegramUsers.status, n: count() })
-      .from(telegramUsers)
-      .groupBy(telegramUsers.status);
-    const groups: { status: string; count: number; label: string }[] = [];
-    const labels: Record<string, string> = {
-      active: "Hoạt động (bot đã bắt được)",
-      blocked: "Đã bị chặn (Telegram chặn bot)",
-      invalid: "Không hợp lệ (id sai / không tồn tại)",
-      unknown: "Chưa gửi lần nào",
-    };
-    for (const row of rows) {
-      const status = row.status ?? "unknown";
-      groups.push({ status, count: row.n, label: labels[status] ?? status });
-    }
-    const total = groups.reduce((sum, g) => sum + g.count, 0);
-    return { groups, total };
-  });
+  app.get(
+    "/api/admin/telegram/ids/groups",
+    { config: { rateLimit: { max: 60, timeWindow: "1 minute" } } },
+    async (req) => {
+      requireAdmin(req);
+      const rows = await db
+        .select({ status: telegramUsers.status, n: count() })
+        .from(telegramUsers)
+        .groupBy(telegramUsers.status);
+      const groups: { status: string; count: number; label: string }[] = [];
+      const labels: Record<string, string> = {
+        active: "Hoạt động (bot đã bắt được)",
+        blocked: "Đã bị chặn (Telegram chặn bot)",
+        invalid: "Không hợp lệ (id sai / không tồn tại)",
+        unknown: "Chưa gửi lần nào",
+      };
+      for (const row of rows) {
+        const status = row.status ?? "unknown";
+        groups.push({ status, count: row.n, label: labels[status] ?? status });
+      }
+      const total = groups.reduce((sum, g) => sum + g.count, 0);
+      return { groups, total };
+    },
+  );
 
   /**
    * Remove the queued jobs of the ids Telegram already refused.
@@ -818,33 +836,37 @@ export default async function telegramRoutes(app: FastifyInstance) {
    * This clears them away so the queue only holds the people that can
    * really be reached (B106).
    */
-  app.post("/api/admin/telegram/ids/cleanup", async (req) => {
-    requireAdmin(req);
-    const body = parse(
-      z.object({ campaignId: z.string().trim().max(64).nullish() }),
-      req.body ?? {},
-    );
-    const removed = await db
-      .update(notificationJobs)
-      .set({ status: "skipped", error: "ID không dùng được" })
-      .where(
-        and(
-          eq(notificationJobs.status, "queued"),
-          inArray(
-            notificationJobs.telegramId,
-            db
-              .select({ telegramId: telegramUsers.telegramId })
-              .from(telegramUsers)
-              .where(inArray(telegramUsers.status, ["invalid", "blocked"])),
+  app.post(
+    "/api/admin/telegram/ids/cleanup",
+    { config: { rateLimit: { max: 20, timeWindow: "1 minute" } } },
+    async (req) => {
+      requireAdmin(req);
+      const body = parse(
+        z.object({ campaignId: z.string().trim().max(64).nullish() }),
+        req.body ?? {},
+      );
+      const removed = await db
+        .update(notificationJobs)
+        .set({ status: "skipped", error: "ID không dùng được" })
+        .where(
+          and(
+            eq(notificationJobs.status, "queued"),
+            inArray(
+              notificationJobs.telegramId,
+              db
+                .select({ telegramId: telegramUsers.telegramId })
+                .from(telegramUsers)
+                .where(inArray(telegramUsers.status, ["invalid", "blocked"])),
+            ),
+            body.campaignId
+              ? eq(notificationJobs.campaignId, body.campaignId)
+              : undefined,
           ),
-          body.campaignId
-            ? eq(notificationJobs.campaignId, body.campaignId)
-            : undefined,
-        ),
-      )
-      .returning({ id: notificationJobs.id });
-    return { removed: removed.length };
-  });
+        )
+        .returning({ id: notificationJobs.id });
+      return { removed: removed.length };
+    },
+  );
 
   app.patch("/api/admin/telegram/campaigns/:id", async (req) => {
     requireAdmin(req);
