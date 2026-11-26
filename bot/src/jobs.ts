@@ -142,18 +142,31 @@ export async function sendJob(job: Job, registry: BotRegistry, limiter: RateLimi
 /** One round of the loop: fetch the due jobs, send them and report the result. */
 export async function runOnce(registry: BotRegistry, limiter: RateLimiter): Promise<number> {
   const { jobs } = await fetchJobs(config.jobBatchSize);
-  for (const job of jobs ?? []) {
-    const outcome = await sendJob(job, registry, limiter);
-    try {
-      await reportResult(job.jobId, outcome.status, {
-        error: outcome.error,
-        botId: job.botId ?? undefined,
-      });
-    } catch {
-      // The web app will pick the job up again after the stuck job sweep.
+  const list = jobs ?? [];
+  // The jobs are sent in parallel — one after the other would need the whole
+  // round time for a single message and a big campaign would take days (B104).
+  let next = 0;
+  const worker = async (): Promise<void> => {
+    while (next < list.length) {
+      const job = list[next++];
+      if (!job) return;
+      const outcome = await sendJob(job, registry, limiter);
+      try {
+        await reportResult(job.jobId, outcome.status, {
+          error: outcome.error,
+          botId: job.botId ?? undefined,
+        });
+      } catch {
+        // The web app will pick the job up again after the stuck job sweep.
+      }
     }
-  }
-  return jobs?.length ?? 0;
+  };
+  const workers = Array.from(
+    { length: Math.min(config.sendConcurrency, list.length) },
+    () => worker(),
+  );
+  await Promise.all(workers);
+  return list.length;
 }
 
 /** Run the loop until the process stops. */

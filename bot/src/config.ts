@@ -53,6 +53,8 @@ export const config = {
   busyPollIntervalMs: int(process.env.BOT_BUSY_POLL_INTERVAL_MS, 300),
   /** How many jobs are taken from the queue in one round. */
   jobBatchSize: int(process.env.BOT_JOB_BATCH_SIZE, 100),
+  /** How many jobs are sent at the same time. */
+  sendConcurrency: int(process.env.BOT_SEND_CONCURRENCY, 20),
   /** How often the bot reports its health, in milliseconds. */
   heartbeatIntervalMs: int(process.env.BOT_HEARTBEAT_INTERVAL_MS, 300_000),
   /** Messages sent per second, per bot. Telegram allows about 30. */
