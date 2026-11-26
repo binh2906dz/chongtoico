@@ -462,6 +462,12 @@ export default async function telegramRoutes(app: FastifyInstance) {
     if (body.status === "blocked") {
       await setTelegramStatus(job.telegramId, "blocked");
     }
+    // A message that went through proves the id is still usable, so it
+    // belongs to the "active" group. Without this the group would stay
+    // empty and the admin could not pick the living ids (B110).
+    if (body.status === "sent") {
+      await setTelegramStatus(job.telegramId, "active");
+    }
     // A failed job tells us the id is not usable any more. Telegram answers
     // "chat not found" when the id is wrong or the account was deleted, and
     // "bot was blocked by the user" when the person blocked the bot — both

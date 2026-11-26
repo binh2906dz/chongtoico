@@ -495,6 +495,31 @@ describe("Telegram management panel", () => {
     assert.equal(row.status, "blocked", "The id must be marked as blocked.");
   });
 
+  it("marks an id as active when the message went through", async () => {
+    const { db } = await import("../src/db/index.js");
+    const { telegramUsers, notificationJobs, telegramCampaigns } = await import("../src/db/schema.js");
+    await db.insert(telegramUsers).values({ telegramId: 900004, status: "unknown" }).onConflictDoNothing();
+    const [campaign] = await db
+      .insert(telegramCampaigns)
+      .values({ id: "cid-sent", name: "Chiến dịch thành công", text: "x", targetType: "imported" })
+      .returning();
+    const [job] = await db
+      .insert(notificationJobs)
+      .values({ campaignId: campaign.id, telegramId: 900004, status: "sending", payload: { text: "x" } })
+      .returning();
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/bot/result",
+      headers: { "x-bot-secret": "test-bot-secret" },
+      payload: { jobId: job.id, status: "sent" },
+    });
+    assert.equal(res.statusCode, 200, res.body);
+
+    const [row] = await db.select().from(telegramUsers).where(eq(telegramUsers.telegramId, 900004));
+    assert.equal(row.status, "active", "Id gửi được phải thuộc nhóm hoạt động.");
+  });
+
   it("keeps the status of an id when the failure says nothing about it", async () => {
     const { db } = await import("../src/db/index.js");
     const { telegramUsers, notificationJobs, telegramCampaigns } = await import("../src/db/schema.js");
