@@ -119,10 +119,24 @@ export interface SloganConfig {
   items: { text: string; delayAfter: number }[];
 }
 
+/** The media a greeting can carry. */
+export interface GreetingMedia {
+  kind: "image" | "video";
+  url: string;
+  sizeBytes: number;
+  isPublic: boolean;
+}
+
 /** One greeting the bot can send when somebody presses /start. */
 export interface GreetingItem {
   id: string;
   text: string;
+  /** The link the admin chose for this greeting. */
+  linkUrl: string | null;
+  /** The inline buttons of this greeting. */
+  buttons: { label: string; url: string }[];
+  /** The media sent together with the text. */
+  media: GreetingMedia | null;
 }
 
 /** The greeting the admin configured on the web. */

@@ -7,7 +7,7 @@
 
 import { config } from "./config.js";
 import { fetchUserState, reportLink, reportOptOut, reportStart } from "./client.js";
-import type { GreetingConfig } from "./client.js";
+import type { GreetingConfig, GreetingMedia } from "./client.js";
 import { fillGreeting, pickGreeting } from "./greeting.js";
 import type { BotRegistry } from "./registry.js";
 
@@ -27,6 +27,8 @@ export interface CommandReply {
   text: string;
   /** The inline keyboard buttons, as a flat list of label/url pairs. */
   buttons: { label: string; url: string }[];
+  /** The media sent together with the text, when the admin chose one. */
+  media?: GreetingMedia | null;
 }
 
 const OPEN_WEB_LABEL = "🌐 Mở Website";
@@ -105,10 +107,18 @@ export async function handleStart(
   // random so the same person does not always get the same wording.
   const chosen = pickGreeting(greeting);
   if (chosen) {
-    const link = openWebUrl(ctx, "start");
+    // The link of the greeting wins over the default one; the placeholder
+    // {{link}} always points at it.
+    const link = chosen.linkUrl?.trim() || openWebUrl(ctx, "start");
     const text = fillGreeting(chosen.text, ctx.firstName, link);
-    // The buttons stay unless the admin asked for a text-only greeting.
-    return { text, buttons: greeting?.keepButtons === false ? [] : buttons };
+    // The buttons of the admin come first; the standard ones follow when the
+    // admin wants to keep them.
+    const allButtons = [...chosen.buttons, ...(greeting?.keepButtons === false ? [] : buttons)];
+    return {
+      text,
+      buttons: allButtons.filter((button) => button.label && button.url),
+      media: chosen.media ?? null,
+    };
   }
 
   const body = linked

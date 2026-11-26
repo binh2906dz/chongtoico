@@ -1,4 +1,8 @@
-import { randomUUID } from "node:crypto";
+import { randomUUID, randomBytes } from "node:crypto";
+import { createWriteStream } from "node:fs";
+import { mkdir, open, rename, rm, stat } from "node:fs/promises";
+import path from "node:path";
+import { pipeline } from "node:stream/promises";
 import { and, count, desc, eq, inArray, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
@@ -6,6 +10,9 @@ import { requireAdmin } from "../auth.js";
 import { db } from "../db/index.js";
 import { isValidBotSecret } from "../telegram.js";
 import {
+  articleImages,
+  articles,
+  articleVideos,
   deliveryLog,
   telegramBotIncidents,
   telegramBots,
@@ -17,6 +24,7 @@ import {
 import { badRequest, HttpError, notFound, parse } from "../http.js";
 import { config } from "../config.js";
 import { decryptToken, encryptToken, maskToken, tokenStorageEnabled } from "../crypto.js";
+import { looksLikeVideo, storeImage, VIDEO_DIR, videoExtFromName } from "../media.js";
 /**
  * Management endpoints of the Telegram side that the old Python dashboard had:
  * bots, the reply keyboard, the message templates, the imported id list and
@@ -26,6 +34,9 @@ import { decryptToken, encryptToken, maskToken, tokenStorageEnabled } from "../c
 /* ------------------------------------------------------------------ *
  * Helpers
  * ------------------------------------------------------------------ */
+
+/** One megabyte in bytes. */
+const MB = 1024 * 1024;
 
 /** Read one setting of the Telegram side. */
 async function readSetting<T>(key: string, fallback: T): Promise<T> {
@@ -42,6 +53,143 @@ async function writeSetting(key: string, value: unknown): Promise<void> {
       target: telegramSettings.key,
       set: { value: value as never, updatedAt: new Date() },
     });
+}
+
+/** The base URL of the site, without a trailing slash. */
+function siteBase(): string {
+  return (config.siteUrl || "http://127.0.0.1:8090").replace(/\/+$/, "");
+}
+
+/**
+ * The shape of the greeting as it is stored in the settings.
+ */
+interface StoredGreetingItem {
+  id?: string;
+  text: string;
+  media?: { type?: string; key?: string | null; source?: string | null };
+  buttons?: { label: string; url: string }[];
+  link?: { articleId?: number | null; url?: string | null };
+}
+
+interface StoredGreeting {
+  enabled?: boolean;
+  keepButtons?: boolean;
+  items?: StoredGreetingItem[];
+}
+
+/**
+ * Turn the stored greeting into the shape the bot needs.
+ *
+ * The article links become real URLs, and the media is described the same way
+ * the campaigns describe it, so the bot can send the file straight away.
+ */
+async function resolveGreeting(stored: StoredGreeting) {
+  const items = stored.items ?? [];
+
+  // The articles the greetings point at.
+  const articleIds = [
+    ...new Set(
+      items
+        .map((item) => item.link?.articleId)
+        .filter((id): id is number => typeof id === "number" && id > 0),
+    ),
+  ];
+  const articleRows = articleIds.length
+    ? await db
+        .select({ id: articles.id, title: articles.title, visibility: articles.visibility })
+        .from(articles)
+        .where(inArray(articles.id, articleIds))
+    : [];
+  const articleById = new Map(articleRows.map((row) => [row.id, row]));
+
+  // The media files of the greetings, so a members-only file is never sent.
+  const mediaKeys = items
+    .map((item) => item.media?.key)
+    .filter((key): key is string => typeof key === "string" && key.length > 0)
+    .map((key) => {
+      const sep = key.indexOf(":");
+      return sep === -1 ? key : key.slice(sep + 1).replace(/\.[a-z0-9]+$/i, "");
+    });
+  const uniqueMediaKeys = [...new Set(mediaKeys)];
+  const imageRows = uniqueMediaKeys.length
+    ? await db
+        .select({ fileKey: articleImages.fileKey, articleId: articleImages.articleId })
+        .from(articleImages)
+        .where(inArray(articleImages.fileKey, uniqueMediaKeys))
+    : [];
+  const videoRows = uniqueMediaKeys.length
+    ? await db
+        .select({
+          fileKey: articleVideos.fileKey,
+          ext: articleVideos.ext,
+          articleId: articleVideos.articleId,
+          sizeBytes: articleVideos.sizeBytes,
+        })
+        .from(articleVideos)
+        .where(inArray(articleVideos.fileKey, uniqueMediaKeys))
+    : [];
+
+  const base = siteBase();
+
+  // The visibility of every file that is sent, so a members-only file is
+  // never uploaded to Telegram.
+  const ownerIds = [
+    ...new Set([...videoRows, ...imageRows].map((row) => row.articleId).filter((id) => id > 0)),
+  ];
+  const ownerVisibilityById = new Map<number, string>();
+  if (ownerIds.length) {
+    const owners = await db
+      .select({ id: articles.id, visibility: articles.visibility })
+      .from(articles)
+      .where(inArray(articles.id, ownerIds));
+    for (const owner of owners) ownerVisibilityById.set(owner.id, owner.visibility);
+  }
+
+  return {
+    enabled: stored.enabled ?? false,
+    keepButtons: stored.keepButtons ?? true,
+    items: items.map((item) => {
+      const article = item.link?.articleId ? articleById.get(item.link.articleId) : undefined;
+      // A hand written URL wins; otherwise the article becomes a link.
+      const linkUrl = item.link?.url?.trim()
+        ? item.link.url.trim()
+        : article
+          ? `${base}/bai-viet/${article.id}`
+          : null;
+
+      let media: { kind: string; url: string; sizeBytes: number; isPublic: boolean } | null = null;
+      const rawKey = item.media?.key ?? "";
+      const type = item.media?.type ?? "none";
+      if (type !== "none" && rawKey) {
+        const sep = rawKey.indexOf(":");
+        const kind = sep === -1 ? type : rawKey.slice(0, sep);
+        const file = sep === -1 ? rawKey : rawKey.slice(sep + 1);
+        const isVideo = kind === "video" || type === "video";
+        const ext = file.includes(".") ? (file.split(".").pop() as string) : isVideo ? "mp4" : "webp";
+        const key = file.replace(/\.[a-z0-9]+$/i, "");
+
+        // The size decides whether Telegram accepts the file.
+        const video = videoRows.find((row) => row.fileKey === key);
+        const image = imageRows.find((row) => row.fileKey === key);
+        const ownerId = video?.articleId ?? image?.articleId;
+        const ownerVisibility = ownerId ? ownerVisibilityById.get(ownerId) : undefined;
+        media = {
+          kind: isVideo ? "video" : "image",
+          url: `${base}/media/${isVideo ? "v" : "a"}/${key}.${ext}`,
+          sizeBytes: video?.sizeBytes ?? 0,
+          isPublic: ownerVisibility !== "members",
+        };
+      }
+
+      return {
+        id: item.id ?? "",
+        text: item.text ?? "",
+        linkUrl,
+        buttons: (item.buttons ?? []).map((button) => ({ label: button.label, url: button.url })),
+        media,
+      };
+    }),
+  };
 }
 
 /**
@@ -139,7 +287,24 @@ const importIdsBody = z.object({
  *
  * The admin writes the texts on the web; the bot picks one of them at random.
  * The texts may use HTML and the placeholders {{name}} and {{link}}.
+ *
+ * Every greeting can carry its own media (an image or a video), its own inline
+ * buttons and its own link, so the admin decides what the message leads to.
  */
+const greetingButtonBody = z.object({
+  label: z.string().trim().min(1, "Cần nhập nhãn nút.").max(64),
+  url: z.string().trim().min(1, "Cần nhập địa chỉ nút.").max(500),
+});
+
+const greetingMediaBody = z.object({
+  /** "none" | "image" | "video" */
+  type: z.enum(["none", "image", "video"]),
+  /** "<kind>:<fileKey>" — the same shape the campaigns use. */
+  key: z.string().trim().max(64).nullish(),
+  /** "article" | "upload" — where the file comes from. */
+  source: z.enum(["article", "upload"]).nullish(),
+});
+
 const greetingBody = z.object({
   enabled: z.boolean(),
   /** Keep the buttons of the current /start answer. */
@@ -149,6 +314,19 @@ const greetingBody = z.object({
       z.object({
         id: z.string().trim().max(64).optional(),
         text: z.string().trim().min(1, "Cần nhập nội dung lời chào.").max(2000),
+        /** The media sent together with the text. */
+        media: greetingMediaBody.optional(),
+        /** The inline buttons of this greeting. */
+        buttons: z.array(greetingButtonBody).max(10).default([]),
+        /** A link the admin chose from the articles, or typed by hand. */
+        link: z
+          .object({
+            /** The article the link points at. */
+            articleId: z.number().int().positive().nullish(),
+            /** A hand written URL. */
+            url: z.string().trim().max(500).nullish(),
+          })
+          .optional(),
       }),
     )
     .max(50)
@@ -554,7 +732,7 @@ export default async function telegramAdminRoutes(app: FastifyInstance) {
       readSetting("templates", [] as unknown[]),
       readSetting("slogans", { enabled: false, items: [] as unknown[] }),
       readSetting("schedule", { hour: 9, minute: 0, enabled: false }),
-      readSetting("greeting", { enabled: false, keepButtons: true, items: [] as unknown[] }),
+      readSetting<StoredGreeting>("greeting", { enabled: false, keepButtons: true, items: [] }),
     ]);
     return { keyboard, templates, slogans, schedule, greeting };
   });
@@ -570,9 +748,9 @@ export default async function telegramAdminRoutes(app: FastifyInstance) {
     const [keyboard, slogans, greeting] = await Promise.all([
       readSetting("keyboard", { enabled: false, prompt: "", rows: [] as unknown[] }),
       readSetting("slogans", { enabled: false, items: [] as unknown[] }),
-      readSetting("greeting", { enabled: false, keepButtons: true, items: [] as unknown[] }),
+      readSetting<StoredGreeting>("greeting", { enabled: false, keepButtons: true, items: [] }),
     ]);
-    return { keyboard, slogans, greeting };
+    return { keyboard, slogans, greeting: await resolveGreeting(greeting) };
   });
 
   /** Save the reply keyboard of the bot. */
@@ -637,11 +815,103 @@ export default async function telegramAdminRoutes(app: FastifyInstance) {
       items: body.items.map((item, index) => ({
         id: item.id ?? `g${index + 1}`,
         text: item.text.slice(0, 2000),
+        media: {
+          type: item.media?.type ?? "none",
+          key: item.media?.key?.slice(0, 64) || null,
+          source: item.media?.source ?? null,
+        },
+        buttons: item.buttons.map((button) => ({
+          label: button.label.slice(0, 64),
+          url: button.url.slice(0, 500),
+        })),
+        link: {
+          articleId: item.link?.articleId ?? null,
+          url: item.link?.url?.slice(0, 500) || null,
+        },
       })),
     };
     await writeSetting("greeting", clean);
     return { greeting: clean };
   });
+
+  /**
+   * Upload a media file for a greeting.
+   *
+   * The file is stored in the media folder of the site and described the same
+   * way the campaigns describe their media, so the bot can send it as it is.
+   */
+  app.post(
+    "/api/admin/telegram/settings/greeting/media",
+    { config: { rateLimit: { max: 30, timeWindow: "10 minutes" } } },
+    async (req) => {
+      requireAdmin(req);
+      const parts = req.parts({ limits: { fileSize: config.maxVideoMb * MB, files: 1, fields: 4 } });
+      for await (const part of parts) {
+        if (part.type === "field") continue;
+        const filename = part.filename ?? "";
+        const isVideo = /\.(mp4|webm|mov)$/i.test(filename);
+
+        if (isVideo) {
+          const ext = videoExtFromName(filename);
+          if (!ext) {
+            part.file.resume();
+            throw badRequest("Chỉ nhận video định dạng mp4, webm hoặc mov.");
+          }
+          const dir = VIDEO_DIR();
+          await mkdir(dir, { recursive: true });
+          const key = randomBytes(16).toString("hex");
+          const tmp = path.join(dir, `${key}.${ext}.part`);
+          try {
+            await pipeline(part.file, createWriteStream(tmp));
+          } catch (err) {
+            await rm(tmp, { force: true });
+            if ((err as { statusCode?: number }).statusCode === 413) {
+              throw new HttpError(413, `Video quá lớn (tối đa ${config.maxVideoMb} MB).`);
+            }
+            throw err;
+          }
+          if (part.file.truncated) {
+            await rm(tmp, { force: true });
+            throw new HttpError(413, `Video quá lớn (tối đa ${config.maxVideoMb} MB).`);
+          }
+          const head = Buffer.alloc(16);
+          const fh = await open(tmp, "r");
+          try {
+            await fh.read(head, 0, 16, 0);
+          } finally {
+            await fh.close();
+          }
+          if (!looksLikeVideo(head, ext)) {
+            await rm(tmp, { force: true });
+            throw badRequest("File không phải video hợp lệ.");
+          }
+          const sizeBytes = (await stat(tmp)).size;
+          await rename(tmp, path.join(dir, `${key}.${ext}`));
+          return {
+            type: "video",
+            key: `video:${key}.${ext}`,
+            source: "upload",
+            url: `/media/v/${key}.${ext}`,
+            sizeBytes,
+          };
+        }
+
+        // An image.
+        const buffer = await part.toBuffer();
+        if (!buffer.length) throw badRequest("Chưa chọn ảnh.");
+        const stored = await storeImage("ads", buffer);
+        return {
+          type: "image",
+          key: `image:${stored.key}`,
+          source: "upload",
+          url: `/media/b/${stored.key}.webp`,
+          width: stored.width,
+          height: stored.height,
+        };
+      }
+      throw badRequest("Chưa chọn file.");
+    },
+  );
 
   /** Save the daily send hour (Vietnam time). */
   app.put("/api/admin/telegram/settings/schedule", async (req) => {

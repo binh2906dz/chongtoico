@@ -7,6 +7,7 @@ import type {
   TelegramBotIncident,
   TelegramBotStat,
   TelegramGreeting,
+  TelegramGreetingButton,
   TelegramGreetingItem,
   TelegramKeyboard,
   TelegramKeyboardCell,
@@ -792,8 +793,347 @@ export function AdminTelegramSlogans() {
 /** The placeholders the admin may use in a greeting. */
 const greetingPlaceholders = [
   { token: "{{name}}", hint: "Tên người dùng (có thể để trống)" },
-  { token: "{{link}}", hint: "Đường dẫn mở website kèm theo" },
+  { token: "{{link}}", hint: "Đường dẫn của câu chào này" },
 ];
+
+/** The buttons the bot offers out of the box. */
+const standardGreetingButtons = [
+  { label: "🌐 Mở Website", url: "" },
+  { label: "👑 Kênh VIP", url: "" },
+  { label: "🔥 Bài mới", url: "" },
+  { label: "💬 CSKH", url: "" },
+];
+
+/** One article the admin can link a greeting to. */
+interface GreetingArticle {
+  id: number;
+  title: string;
+  visibility?: string;
+  media: { kind: string; key: string; ext?: string }[];
+}
+
+/**
+ * The editor of one greeting.
+ *
+ * Every greeting can carry its own media, its own buttons and its own link,
+ * so the admin decides what the message leads to.
+ */
+function GreetingEditor({
+  index,
+  item,
+  onChange,
+  onRemove,
+}: {
+  index: number;
+  item: TelegramGreetingItem;
+  onChange: (patch: Partial<TelegramGreetingItem>) => void;
+  onRemove: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [articles, setArticles] = useState<GreetingArticle[]>([]);
+
+  // The list of articles is only needed when the admin picks a link.
+  useEffect(() => {
+    if (!open || articles.length) return;
+    let alive = true;
+    fetch("/api/admin/telegram/articles/recent?hours=720", { credentials: "include" })
+      .then((res) => (res.ok ? res.json() : { rows: [] }))
+      .then((data: { rows?: { id: number; title: string; visibility?: string; media: { kind: string; key: string; ext?: string }[] }[] }) => {
+        if (!alive) return;
+        setArticles(data.rows ?? []);
+      })
+      .catch(() => {
+        if (alive) setArticles([]);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [open, articles.length]);
+
+  const media = item.media ?? { type: "none" as const, key: null, source: null };
+
+  /** Upload a file and use it as the media of this greeting. */
+  async function upload(file: File) {
+    setBusy(true);
+    setUploadError(null);
+    try {
+      const body = new FormData();
+      body.append("file", file);
+      const res = await fetch("/api/admin/telegram/settings/greeting/media", {
+        method: "POST",
+        body,
+        credentials: "include",
+        headers: { "x-requested-with": "ctc" },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error?.message || "Không tải lên được.");
+      onChange({
+        media: {
+          type: data.type,
+          key: data.key,
+          source: "upload",
+        },
+      });
+    } catch (e) {
+      setUploadError(e instanceof Error ? e.message : "Không tải lên được.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function setButton(indexOfButton: number, patch: Partial<TelegramGreetingButton>) {
+    const buttons = (item.buttons ?? []).map((button, i) => (i === indexOfButton ? { ...button, ...patch } : button));
+    onChange({ buttons });
+  }
+
+  return (
+    <div className="panel space-y-3 p-4">
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="text-sm font-bold">Câu chào {index + 1}</h3>
+        <div className="flex gap-2">
+          <button type="button" className="btn btn-sm" onClick={() => setOpen((v) => !v)}>
+            {open ? "Ẩn tuỳ chọn" : "⚙️ Ảnh, nút & link"}
+          </button>
+          <button type="button" className="btn btn-sm btn-danger" onClick={onRemove}>
+            Xoá
+          </button>
+        </div>
+      </div>
+
+      <textarea
+        className="input w-full font-mono text-xs"
+        rows={5}
+        value={item.text}
+        onChange={(e) => onChange({ text: e.target.value })}
+        maxLength={2000}
+        placeholder="👋 Chào mừng {{name}} đến Chống Tối Cổ!"
+      />
+      <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
+        <span className="font-semibold">Biến dùng được:</span>
+        {greetingPlaceholders.map((p) => (
+          <button
+            key={p.token}
+            type="button"
+            className="btn btn-sm"
+            title={p.hint}
+            onClick={() => onChange({ text: `${item.text} ${p.token}` })}
+          >
+            {p.token}
+          </button>
+        ))}
+        <span className="ml-auto">{item.text.length}/2000 ký tự</span>
+      </div>
+
+      {open && (
+        <div className="space-y-4 border-t border-line pt-4">
+          {/* ---------------- media ---------------- */}
+          <div className="space-y-2">
+            <h4 className="text-xs font-bold uppercase text-muted">Ảnh / video đính kèm</h4>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                className={`btn btn-sm ${media.type === "none" ? "btn-accent" : ""}`}
+                onClick={() => onChange({ media: { type: "none", key: null, source: null } })}
+              >
+                Không kèm
+              </button>
+              <button
+                type="button"
+                className={`btn btn-sm ${media.type === "image" ? "btn-accent" : ""}`}
+                onClick={() => onChange({ media: { type: "image", key: media.key, source: media.source } })}
+              >
+                🖼️ Ảnh
+              </button>
+              <button
+                type="button"
+                className={`btn btn-sm ${media.type === "video" ? "btn-accent" : ""}`}
+                onClick={() => onChange({ media: { type: "video", key: media.key, source: media.source } })}
+              >
+                🎬 Video
+              </button>
+            </div>
+
+            {media.type !== "none" && (
+              <>
+                <label className="block text-sm">
+                  <span className="mb-1 block text-xs text-muted">
+                    Tải file mới lên (ảnh jpg/png/webp, video mp4/webm/mov)
+                  </span>
+                  <input
+                    className="input w-full"
+                    type="file"
+                    accept={media.type === "video" ? "video/mp4,video/webm,video/quicktime" : "image/*"}
+                    disabled={busy}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) void upload(file);
+                      e.target.value = "";
+                    }}
+                  />
+                </label>
+                {busy && <p className="text-xs text-muted">Đang tải lên…</p>}
+                {uploadError && <p className="text-xs text-rose-300">{uploadError}</p>}
+
+                <label className="block text-sm">
+                  <span className="mb-1 block text-xs text-muted">Hoặc chọn file có sẵn trong bài viết</span>
+                  <select
+                    className="input w-full"
+                    value={media.key ?? ""}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      if (!value) {
+                        onChange({ media: { type: media.type, key: null, source: null } });
+                        return;
+                      }
+                      onChange({ media: { type: media.type, key: value, source: "article" } });
+                    }}
+                  >
+                    <option value="">— Chọn file —</option>
+                    {greetingMediaOptions(media.type, articles).map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                {media.key && (
+                  <p className="text-xs text-muted">
+                    Đã chọn: <b className="font-mono">{media.key}</b>
+                    {media.source === "upload" ? " (file tải lên)" : " (file của bài viết)"}
+                  </p>
+                )}
+                <p className="text-xs text-muted">
+                  File của bài "chỉ thành viên" sẽ không được gửi đi — hãy dùng file công khai.
+                </p>
+              </>
+            )}
+          </div>
+
+          {/* ---------------- link ---------------- */}
+          <div className="space-y-2">
+            <h4 className="text-xs font-bold uppercase text-muted">Link của câu chào này</h4>
+            <label className="block text-sm">
+              <span className="mb-1 block text-xs text-muted">Chọn bài viết (biến {"{{link}}"} sẽ trỏ tới bài này)</span>
+              <select
+                className="input w-full"
+                value={item.link?.articleId ?? ""}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  onChange({
+                    link: {
+                      articleId: value ? Number(value) : null,
+                      url: value ? null : (item.link?.url ?? null),
+                    },
+                  });
+                }}
+              >
+                <option value="">— Không chọn bài (dùng link bên dưới) —</option>
+                {articles.map((article) => (
+                  <option key={article.id} value={article.id}>
+                    {article.title}
+                    {article.visibility === "members" ? " (chỉ thành viên)" : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block text-sm">
+              <span className="mb-1 block text-xs text-muted">Hoặc tự nhập địa chỉ</span>
+              <input
+                className="input w-full"
+                value={item.link?.url ?? ""}
+                onChange={(e) =>
+                  onChange({
+                    link: { articleId: null, url: e.target.value || null },
+                  })
+                }
+                maxLength={500}
+                placeholder="https://t.me/kenvip"
+              />
+            </label>
+            <p className="text-xs text-muted">
+              Nếu không chọn gì, biến {"{{link}}"} sẽ trỏ tới trang chủ của website (có gắn mã đo lượt truy cập).
+            </p>
+          </div>
+
+          {/* ---------------- buttons ---------------- */}
+          <div className="space-y-2">
+            <h4 className="text-xs font-bold uppercase text-muted">Nút bấm của câu chào này</h4>
+            <div className="flex flex-wrap gap-2">
+              {standardGreetingButtons.map((preset) => (
+                <button
+                  key={preset.label}
+                  type="button"
+                  className="btn btn-sm"
+                  onClick={() =>
+                    onChange({
+                      buttons: [...(item.buttons ?? []), { label: preset.label, url: preset.url }],
+                    })
+                  }
+                >
+                  + {preset.label}
+                </button>
+              ))}
+            </div>
+
+            {(item.buttons ?? []).length === 0 ? (
+              <p className="text-xs text-muted">Chưa có nút nào. Bấm vào các nút mẫu ở trên để thêm.</p>
+            ) : (
+              <div className="space-y-2">
+                {(item.buttons ?? []).map((button, i) => (
+                  <div key={i} className="flex flex-wrap items-center gap-2">
+                    <input
+                      className="input w-44"
+                      value={button.label}
+                      onChange={(e) => setButton(i, { label: e.target.value })}
+                      maxLength={64}
+                      placeholder="Nhãn nút"
+                    />
+                    <input
+                      className="input flex-1"
+                      value={button.url}
+                      onChange={(e) => setButton(i, { url: e.target.value })}
+                      maxLength={500}
+                      placeholder="https://..."
+                    />
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-danger"
+                      onClick={() =>
+                        onChange({ buttons: (item.buttons ?? []).filter((_, bi) => bi !== i) })
+                      }
+                    >
+                      Xoá
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** The files of the recent articles, ready to be picked. */
+function greetingMediaOptions(
+  kind: "image" | "video",
+  rows: { id: number; title: string; visibility?: string; media: { kind: string; key: string; ext?: string }[] }[],
+): { value: string; label: string }[] {
+  const options: { value: string; label: string }[] = [];
+  for (const row of rows) {
+    for (const file of row.media ?? []) {
+      if (file.kind !== kind) continue;
+      const value = kind === "video" ? `video:${file.key}.${file.ext ?? "mp4"}` : `image:${file.key}`;
+      const lock = row.visibility === "members" ? " 🔒" : "";
+      options.push({ value, label: `${row.title} — ${file.key}${lock}` });
+    }
+  }
+  return options;
+}
 
 export function AdminTelegramGreeting() {
   const { data, error, reload } = useFetch<{ greeting: TelegramGreeting }>("/api/admin/telegram/settings");
@@ -835,7 +1175,13 @@ export function AdminTelegramGreeting() {
       ...greeting!,
       items: [
         ...greeting!.items,
-        { id: `g${Date.now()}`, text: "👋 Chào mừng {{name}} đến Chống Tối Cổ!\n\n{{link}}" },
+        {
+          id: `g${Date.now()}`,
+          text: "👋 Chào mừng {{name}} đến Chống Tối Cổ!\n\n{{link}}",
+          media: { type: "none", key: null, source: null },
+          buttons: [],
+          link: { articleId: null, url: null },
+        },
       ],
     };
     setGreeting(next);
@@ -852,8 +1198,9 @@ export function AdminTelegramGreeting() {
     <div className="space-y-4">
       <div className="panel p-4 text-sm text-muted">
         Lời chào được bot gửi khi người dùng bấm <b>/start</b>. Viết nhiều câu thì bot sẽ <b>chọn ngẫu nhiên</b> một
-        câu mỗi lần, nên mỗi người thấy lời chào khác nhau. Nội dung hỗ trợ HTML (xuống dòng, in đậm, in nghiêng, link)
-        và hai biến <b>{"{{name}}"}</b> (tên người dùng) và <b>{"{{link}}"}</b> (đường dẫn mở website kèm theo).
+        câu mỗi lần, nên mỗi người thấy lời chào khác nhau. Mỗi câu chào có thể có <b>ảnh/video riêng</b>, <b>nút bấm
+        riêng</b> và <b>link riêng</b>. Nội dung hỗ trợ HTML (xuống dòng, in đậm, in nghiêng, link) và hai biến{" "}
+        <b>{"{{name}}"}</b> (tên người dùng) và <b>{"{{link}}"}</b> (link của câu chào này).
       </div>
       {notice && <Notice tone={notice.tone} message={notice.message} />}
 
@@ -872,29 +1219,8 @@ export function AdminTelegramGreeting() {
             checked={greeting.keepButtons}
             onChange={(e) => setGreeting({ ...greeting, keepButtons: e.target.checked })}
           />
-          <span>Giữ nút bấm bên dưới lời chào (Mở website, Nhận thông báo…)</span>
+          <span>Giữ nút bấm mặc định của bot (Mở website, Nhận thông báo…)</span>
         </label>
-        <div className="flex flex-wrap gap-2 text-xs text-muted">
-          <span className="font-semibold">Biến dùng được:</span>
-          {greetingPlaceholders.map((p) => (
-            <button
-              key={p.token}
-              type="button"
-              className="btn btn-sm"
-              title={p.hint}
-              onClick={() =>
-                setGreeting({
-                  ...greeting,
-                  items: greeting.items.map((item, i) =>
-                    i === greeting.items.length - 1 ? { ...item, text: `${item.text} ${p.token}` } : item,
-                  ),
-                })
-              }
-            >
-              {p.token}
-            </button>
-          ))}
-        </div>
       </div>
 
       {greeting.items.length === 0 ? (
@@ -903,23 +1229,13 @@ export function AdminTelegramGreeting() {
         </div>
       ) : (
         greeting.items.map((item, index) => (
-          <div key={item.id || index} className="panel space-y-3 p-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold">Câu chào {index + 1}</h3>
-              <button type="button" className="btn btn-sm btn-danger" onClick={() => removeItem(index)}>
-                Xoá
-              </button>
-            </div>
-            <textarea
-              className="input w-full font-mono text-xs"
-              rows={5}
-              value={item.text}
-              onChange={(e) => updateItem(index, { text: e.target.value })}
-              maxLength={2000}
-              placeholder="👋 Chào mừng {{name}} đến Chống Tối Cổ!"
-            />
-            <p className="text-xs text-muted">{item.text.length}/2000 ký tự</p>
-          </div>
+          <GreetingEditor
+            key={item.id || index}
+            index={index}
+            item={item}
+            onChange={(patch) => updateItem(index, patch)}
+            onRemove={() => removeItem(index)}
+          />
         ))
       )}
 

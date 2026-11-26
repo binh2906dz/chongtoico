@@ -133,6 +133,79 @@ describe("Telegram management panel", () => {
     assert.equal(res.statusCode, 400, res.body);
   });
 
+  it("stores a greeting with its media, its buttons and its link", async () => {
+    const res = await app.inject({
+      method: "PUT",
+      url: "/api/admin/telegram/settings/greeting",
+      headers: { ...H, cookie: admin },
+      payload: {
+        enabled: true,
+        keepButtons: false,
+        items: [
+          {
+            id: "g1",
+            text: "👋 Chào {{name}}\n\n{{link}}",
+            media: { type: "image", key: "image:abc123", source: "upload" },
+            buttons: [{ label: "👑 Kênh VIP", url: "https://t.me/kenvip" }],
+            link: { articleId: null, url: "https://t.me/kenvip" },
+          },
+        ],
+      },
+    });
+    assert.equal(res.statusCode, 200, res.body);
+    const saved = res.json().greeting;
+    assert.equal(saved.enabled, true);
+    assert.equal(saved.keepButtons, false);
+    assert.equal(saved.items[0].media.type, "image");
+    assert.equal(saved.items[0].media.key, "image:abc123");
+    assert.equal(saved.items[0].buttons[0].label, "👑 Kênh VIP");
+    assert.equal(saved.items[0].link.url, "https://t.me/kenvip");
+  });
+
+  it("gives the bot the greeting with the resolved link and the media", async () => {
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/bot/settings",
+      headers: { "x-bot-secret": "test-bot-secret" },
+    });
+    assert.equal(res.statusCode, 200, res.body);
+    const greeting = res.json().greeting;
+    assert.equal(greeting.enabled, true);
+    assert.equal(greeting.items[0].linkUrl, "https://t.me/kenvip");
+    assert.equal(greeting.items[0].buttons.length, 1);
+    // The media of a file that belongs to no article is still public.
+    assert.equal(greeting.items[0].media.kind, "image");
+    assert.equal(greeting.items[0].media.isPublic, true);
+    assert.ok(greeting.items[0].media.url.endsWith("/media/a/abc123.webp"));
+  });
+
+  it("refuses a greeting without a text", async () => {
+    const res = await app.inject({
+      method: "PUT",
+      url: "/api/admin/telegram/settings/greeting",
+      headers: { ...H, cookie: admin },
+      payload: { enabled: true, keepButtons: true, items: [{ text: "   " }] },
+    });
+    assert.equal(res.statusCode, 400, res.body);
+  });
+
+  it("keeps the greeting endpoints behind the admin role", async () => {
+    let res = await app.inject({
+      method: "PUT",
+      url: "/api/admin/telegram/settings/greeting",
+      headers: H,
+      payload: { enabled: true, keepButtons: true, items: [] },
+    });
+    assert.equal(res.statusCode, 401);
+
+    res = await app.inject({
+      method: "POST",
+      url: "/api/admin/telegram/settings/greeting/media",
+      headers: H,
+    });
+    assert.equal(res.statusCode, 401);
+  });
+
   it("imports ids out of a csv file and counts them by status", async () => {
     const content = "name,id\nAlpha,111222333\nBeta,444555666\nGamma,777888999\nAlpha again,111222333\n";
     let res = await app.inject({

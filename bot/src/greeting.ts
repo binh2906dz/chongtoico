@@ -4,9 +4,13 @@
  * The admin writes the texts on the web; the bot picks one of them at random
  * so the same person does not always get the same wording. The texts may use
  * HTML and the placeholders `{{name}}` and `{{link}}`.
+ *
+ * A greeting can carry a media file (an image or a video), its own inline
+ * buttons and a link of its own, so the admin decides what the message leads
+ * to.
  */
 
-import { GreetingConfig, GreetingItem } from "./client.js";
+import { GreetingConfig, GreetingItem, GreetingMedia } from "./client.js";
 
 /** The placeholders the admin may use in a greeting. */
 export const GREETING_PLACEHOLDERS = [
@@ -78,4 +82,56 @@ function escapeHtml(value: string): string {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+/** The biggest image Telegram accepts without asking for a bigger limit. */
+export const MAX_GREETING_IMAGE_BYTES = 10 * 1024 * 1024;
+
+/** The biggest video Telegram accepts. */
+export const MAX_GREETING_VIDEO_BYTES = 50 * 1024 * 1024;
+
+/**
+ * Decide how the media of a greeting has to be sent.
+ *
+ * A file that is too big, or that belongs to an article only members can see,
+ * is never uploaded — the message is sent as text instead.
+ */
+export function planGreetingMedia(
+  media: GreetingMedia | null | undefined,
+): { sendFile: boolean; reason?: string } {
+  if (!media) return { sendFile: false };
+  if (!media.isPublic) return { sendFile: false, reason: "media_not_public" };
+  if (media.kind === "video" && media.sizeBytes > MAX_GREETING_VIDEO_BYTES) {
+    return { sendFile: false, reason: "media_too_large" };
+  }
+  if (media.kind === "image" && media.sizeBytes > MAX_GREETING_IMAGE_BYTES) {
+    return { sendFile: false, reason: "media_too_large" };
+  }
+  return { sendFile: true };
+}
+
+/**
+ * Build the inline keyboard of a greeting.
+ *
+ * The buttons of the admin come first; the standard buttons of the bot follow
+ * when the admin wants to keep them.
+ */
+export function buildGreetingKeyboard(
+  chosen: GreetingItem | null,
+  standardButtons: { label: string; url: string }[],
+  keepButtons: boolean,
+): { text: string; url: string }[][] {
+  const rows: { text: string; url: string }[][] = [];
+  for (const button of chosen?.buttons ?? []) {
+    const label = (button.label ?? "").trim();
+    const url = (button.url ?? "").trim();
+    if (label && url) rows.push([{ text: label, url }]);
+  }
+  if (keepButtons) {
+    for (const button of standardButtons) {
+      if (!button?.label || !button?.url) continue;
+      rows.push([{ text: button.label, url: button.url }]);
+    }
+  }
+  return rows;
 }

@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-const { fillGreeting, pickGreeting, clearGreetingCache, loadGreeting } = await import("../src/greeting.js");
+const { fillGreeting, pickGreeting, clearGreetingCache, loadGreeting, planGreetingMedia, buildGreetingKeyboard } = await import(
+  "../src/greeting.js"
+);
 
 const CONFIG = {
   enabled: true,
@@ -72,5 +74,78 @@ describe("The greeting of the bot", () => {
     assert.equal(result.enabled, false);
     assert.deepEqual(result.items, []);
     clearGreetingCache();
+  });
+});
+
+describe("The media of a greeting", () => {
+  it("sends the file when it is small enough and public", () => {
+    const media = { kind: "image" as const, url: "https://example.com/a.webp", sizeBytes: 1000, isPublic: true };
+    assert.deepEqual(planGreetingMedia(media), { sendFile: true });
+  });
+
+  it("sends no file when there is no media", () => {
+    assert.deepEqual(planGreetingMedia(null), { sendFile: false });
+    assert.deepEqual(planGreetingMedia(undefined), { sendFile: false });
+  });
+
+  it("never sends a file of a members-only article", () => {
+    const media = { kind: "image" as const, url: "https://example.com/a.webp", sizeBytes: 1000, isPublic: false };
+    const plan = planGreetingMedia(media);
+    assert.equal(plan.sendFile, false);
+    assert.equal(plan.reason, "media_not_public");
+  });
+
+  it("never sends a file that is too big", () => {
+    const image = { kind: "image" as const, url: "https://example.com/a.webp", sizeBytes: 20 * 1024 * 1024, isPublic: true };
+    assert.equal(planGreetingMedia(image).sendFile, false);
+    const video = { kind: "video" as const, url: "https://example.com/v.mp4", sizeBytes: 80 * 1024 * 1024, isPublic: true };
+    assert.equal(planGreetingMedia(video).sendFile, false);
+  });
+});
+
+describe("The buttons of a greeting", () => {
+  const STANDARD = [
+    { label: "🌐 Mở Website", url: "https://example.com/" },
+    { label: "🔕 Từ chối nhận", url: "https://example.com/stop" },
+  ];
+
+  it("puts the buttons of the admin before the standard ones", () => {
+    const chosen = {
+      id: "g1",
+      text: "Chào",
+      linkUrl: null,
+      media: null,
+      buttons: [{ label: "👑 Kênh VIP", url: "https://t.me/kenvip" }],
+    };
+    const rows = buildGreetingKeyboard(chosen, STANDARD, true);
+    assert.equal(rows.length, 3);
+    assert.deepEqual(rows[0], [{ text: "👑 Kênh VIP", url: "https://t.me/kenvip" }]);
+    assert.deepEqual(rows[1], [{ text: "🌐 Mở Website", url: "https://example.com/" }]);
+  });
+
+  it("leaves out the standard buttons when the admin does not want them", () => {
+    const chosen = {
+      id: "g1",
+      text: "Chào",
+      linkUrl: null,
+      media: null,
+      buttons: [{ label: "👑 Kênh VIP", url: "https://t.me/kenvip" }],
+    };
+    const rows = buildGreetingKeyboard(chosen, STANDARD, false);
+    assert.equal(rows.length, 1);
+  });
+
+  it("skips a button without a label or without a link", () => {
+    const chosen = {
+      id: "g1",
+      text: "Chào",
+      linkUrl: null,
+      media: null,
+      buttons: [
+        { label: "", url: "https://example.com/" },
+        { label: "Không có link", url: "" },
+      ],
+    };
+    assert.equal(buildGreetingKeyboard(chosen, [], true).length, 0);
   });
 });

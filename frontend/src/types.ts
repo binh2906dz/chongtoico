@@ -291,10 +291,33 @@ export interface TelegramSlogans {
   items: { text: string; delayAfter: number }[];
 }
 
+/** One inline button of a greeting. */
+export interface TelegramGreetingButton {
+  label: string;
+  url: string;
+}
+
+/** The media a greeting can carry. */
+export interface TelegramGreetingMedia {
+  type: "none" | "image" | "video";
+  /** "<kind>:<fileKey>" — the same shape the campaigns use. */
+  key: string | null;
+  source: "article" | "upload" | null;
+}
+
+/** The link a greeting leads to. */
+export interface TelegramGreetingLink {
+  articleId: number | null;
+  url: string | null;
+}
+
 /** One greeting the bot can send when somebody presses /start. */
 export interface TelegramGreetingItem {
   id: string;
   text: string;
+  media: TelegramGreetingMedia;
+  buttons: TelegramGreetingButton[];
+  link: TelegramGreetingLink;
 }
 
 /** The greeting the admin configured on the web. */

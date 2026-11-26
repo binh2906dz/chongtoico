@@ -12,7 +12,7 @@ import { config } from "./config.js";
 import { fetchSettings } from "./client.js";
 import type { GreetingConfig } from "./client.js";
 import { handleHelp, handleStart, handleStop, openWebUrl, type CommandContext, type CommandReply } from "./commands.js";
-import { loadGreeting } from "./greeting.js";
+import { loadGreeting, planGreetingMedia } from "./greeting.js";
 import { startVerifyServer } from "./internal-server.js";
 import { startJobLoop } from "./jobs.js";
 import { answerForLabel, buildReplyKeyboard, keyboardPrompt, loadKeyboard } from "./keyboard.js";
@@ -133,15 +133,36 @@ export async function main(): Promise<void> {
       const keyboardCfg = await loadKeyboard(fetchSettings);
       const replyKeyboard = buildReplyKeyboard(keyboardCfg);
       const prompt = keyboardCfg?.enabled ? `\n\n${keyboardPrompt(keyboardCfg)}` : "";
+      const body = `${reply.text}${prompt}`;
+      const markup = replyKeyboard
+        ? replyKeyboard
+        : rows.length
+          ? { inline_keyboard: rows }
+          : undefined;
       try {
-        await ctx.reply(`${reply.text}${prompt}`, {
-          parse_mode: "HTML",
-          reply_markup: replyKeyboard
-            ? replyKeyboard
-            : rows.length
-              ? { inline_keyboard: rows }
-              : undefined,
-        });
+        // A greeting can carry an image or a video the admin chose.
+        const plan = planGreetingMedia(reply.media);
+        if (plan.sendFile && reply.media) {
+          const media = reply.media;
+          if (media.kind === "video") {
+            await ctx.replyWithVideo(media.url, {
+              caption: body,
+              parse_mode: "HTML",
+              reply_markup: markup,
+            });
+          } else {
+            await ctx.replyWithPhoto(media.url, {
+              caption: body,
+              parse_mode: "HTML",
+              reply_markup: markup,
+            });
+          }
+        } else {
+          await ctx.reply(body, {
+            parse_mode: "HTML",
+            reply_markup: markup,
+          });
+        }
       } catch (err) {
         log("warn", `Không gửi được câu trả lời: ${err instanceof Error ? err.message : "lỗi"}`);
       }
