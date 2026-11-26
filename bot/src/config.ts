@@ -52,13 +52,19 @@ export const config = {
   /** How often the queue is polled while there is a lot of work, in milliseconds. */
   busyPollIntervalMs: int(process.env.BOT_BUSY_POLL_INTERVAL_MS, 300),
   /** How many jobs are taken from the queue in one round. */
-  jobBatchSize: int(process.env.BOT_JOB_BATCH_SIZE, 100),
-  /** How many jobs are sent at the same time. */
-  sendConcurrency: int(process.env.BOT_SEND_CONCURRENCY, 50),
+  jobBatchSize: int(process.env.BOT_JOB_BATCH_SIZE, 300),
+  /**
+   * How many jobs are sent at the same time.
+   *
+   * The Telegram answer takes a second or two, so the round only gets faster
+   * when more jobs travel at the same time. 150 keeps every bot under its
+   * 30 messages per second, because a bot only gets the jobs it was given.
+   */
+  sendConcurrency: int(process.env.BOT_SEND_CONCURRENCY, 150),
   /** How often the bot reports its health, in milliseconds. */
   heartbeatIntervalMs: int(process.env.BOT_HEARTBEAT_INTERVAL_MS, 300_000),
   /** Messages sent per second, per bot. Telegram allows about 30. */
-  sendRatePerSecond: int(process.env.BOT_SEND_RATE, 25),
+  sendRatePerSecond: int(process.env.BOT_SEND_RATE, 30),
   /** A bot that failed with 429 is skipped for this many minutes. */
   cooldownAfter429Minutes: int(process.env.BOT_429_COOLDOWN_MINUTES, 60),
   /** The longest wait a bot takes after a 429, in seconds. */

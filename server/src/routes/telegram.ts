@@ -394,7 +394,7 @@ export default async function telegramRoutes(app: FastifyInstance) {
       config: { rateLimit: { max: 1200, timeWindow: "1 minute" } },
     },
     async (req) => {
-      const query = z.object({ limit: z.coerce.number().int().min(1).max(100).default(50) }).parse(req.query ?? {});
+      const query = z.object({ limit: z.coerce.number().int().min(1).max(500).default(50) }).parse(req.query ?? {});
       const due = await db
         .select()
         .from(notificationJobs)

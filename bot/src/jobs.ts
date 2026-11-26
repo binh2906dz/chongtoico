@@ -139,12 +139,16 @@ export async function sendJob(job: Job, registry: BotRegistry, limiter: RateLimi
   }
 }
 
-/** One round of the loop: fetch the due jobs, send them and report the result. */
+/**
+ * One round of the loop: fetch the due jobs, send them and report the result.
+ *
+ * A round keeps taking new batches while the queue still has work, so the
+ * bot does not sit idle between two batches (B113).
+ */
 export async function runOnce(registry: BotRegistry, limiter: RateLimiter): Promise<number> {
   const { jobs } = await fetchJobs(config.jobBatchSize);
   const list = jobs ?? [];
-  // The jobs are sent in parallel — one after the other would need the whole
-  // round time for a single message and a big campaign would take days (B104).
+  if (!list.length) return 0;
   let next = 0;
   // The outcomes are collected and reported in one request. One call per job
   // means one round trip per job, and that is what slows a big campaign
@@ -169,8 +173,8 @@ export async function runOnce(registry: BotRegistry, limiter: RateLimiter): Prom
   );
   await Promise.all(workers);
 
-  // The results travel in a few batches, so a round of 100 jobs needs one
-  // or two requests instead of a hundred.
+  // The results travel in a few batches, so a round of 300 jobs needs two
+  // requests instead of three hundred.
   const batchSize = 200;
   for (let i = 0; i < results.length; i += batchSize) {
     try {
@@ -192,17 +196,17 @@ export function startJobLoop(registry: BotRegistry): () => void {
     if (stopped) return;
     let handled = 0;
     try {
-      handled = await runOnce(registry, limiter);
+      // The loop keeps fetching while the queue has work. Waiting for the
+      // poll interval between two full batches would leave the bots idle
+      // for most of the time (B113).
+      do {
+        handled = await runOnce(registry, limiter);
+      } while (!stopped && handled > 0);
     } catch {
       // A failing round must never stop the loop.
     }
-    // When the queue is full the bot keeps working instead of waiting the
-    // full poll interval — a campaign of 60.000 ids would take hours
-    // otherwise (B104).
-    const wait =
-      handled >= config.jobBatchSize
-        ? config.busyPollIntervalMs
-        : config.pollIntervalMs;
+    // When the queue is empty the bot waits for the next poll.
+    const wait = config.pollIntervalMs;
     if (!stopped) timer = setTimeout(tick, wait);
   };
 
