@@ -49,6 +49,10 @@ export const config = {
   adminChatId: process.env.ADMIN_CHAT_ID || "",
   /** How often the job queue is polled, in milliseconds. */
   pollIntervalMs: int(process.env.BOT_POLL_INTERVAL_MS, 4000),
+  /** How often the queue is polled while there is a lot of work, in milliseconds. */
+  busyPollIntervalMs: int(process.env.BOT_BUSY_POLL_INTERVAL_MS, 300),
+  /** How many jobs are taken from the queue in one round. */
+  jobBatchSize: int(process.env.BOT_JOB_BATCH_SIZE, 100),
   /** How often the bot reports its health, in milliseconds. */
   heartbeatIntervalMs: int(process.env.BOT_HEARTBEAT_INTERVAL_MS, 300_000),
   /** Messages sent per second, per bot. */

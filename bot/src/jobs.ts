@@ -48,25 +48,34 @@ export function buildKeyboard(job: Job): { text: string; url: string }[][] {
   return rows;
 }
 
-/** A tiny rate limiter so one bot never floods Telegram. */
+/**
+ * A tiny rate limiter so one bot never floods Telegram.
+ *
+ * The limit is kept per bot: Telegram counts the messages of every bot on its
+ * own, so a bot may send its share while the others send theirs (B104).
+ */
 export class RateLimiter {
-  private queue: Promise<void> = Promise.resolve();
-  private last = 0;
+  private readonly last = new Map<string, number>();
+  private readonly chains = new Map<string, Promise<void>>();
 
   constructor(private readonly perSecond: number) {}
 
-  /** Run a task, waiting at most `perSecond` tasks per second. */
-  async run<T>(task: () => Promise<T>): Promise<T> {
-    const result = this.queue.then(async () => {
-      const wait = 1000 / this.perSecond - (Date.now() - this.last);
+  /** Run a task, waiting at most `perSecond` tasks per second for that bot. */
+  async run<T>(key: string, task: () => Promise<T>): Promise<T> {
+    const chain = this.chains.get(key) ?? Promise.resolve();
+    const result = chain.then(async () => {
+      const wait = 1000 / this.perSecond - (Date.now() - (this.last.get(key) ?? 0));
       if (wait > 0) await new Promise((r) => setTimeout(r, wait));
-      this.last = Date.now();
+      this.last.set(key, Date.now());
       return task();
     });
     // Keep the chain alive even when a task fails.
-    this.queue = result.then(
-      () => undefined,
-      () => undefined,
+    this.chains.set(
+      key,
+      result.then(
+        () => undefined,
+        () => undefined,
+      ),
     );
     return result;
   }
@@ -86,7 +95,7 @@ export async function sendJob(job: Job, registry: BotRegistry, limiter: RateLimi
   const keyboard = buildKeyboard(job);
 
   try {
-    await limiter.run(async () => {
+    await limiter.run(bot.id, async () => {
       if (plan.sendFile && job.payload.media) {
         const media = job.payload.media;
         const file = media.url;
@@ -132,7 +141,7 @@ export async function sendJob(job: Job, registry: BotRegistry, limiter: RateLimi
 
 /** One round of the loop: fetch the due jobs, send them and report the result. */
 export async function runOnce(registry: BotRegistry, limiter: RateLimiter): Promise<number> {
-  const { jobs } = await fetchJobs(20);
+  const { jobs } = await fetchJobs(config.jobBatchSize);
   for (const job of jobs ?? []) {
     const outcome = await sendJob(job, registry, limiter);
     try {
@@ -155,12 +164,20 @@ export function startJobLoop(registry: BotRegistry): () => void {
 
   const tick = async () => {
     if (stopped) return;
+    let handled = 0;
     try {
-      await runOnce(registry, limiter);
+      handled = await runOnce(registry, limiter);
     } catch {
       // A failing round must never stop the loop.
     }
-    if (!stopped) timer = setTimeout(tick, config.pollIntervalMs);
+    // When the queue is full the bot keeps working instead of waiting the
+    // full poll interval — a campaign of 60.000 ids would take hours
+    // otherwise (B104).
+    const wait =
+      handled >= config.jobBatchSize
+        ? config.busyPollIntervalMs
+        : config.pollIntervalMs;
+    if (!stopped) timer = setTimeout(tick, wait);
   };
 
   timer = setTimeout(tick, 1000);

@@ -241,18 +241,30 @@ describe("The rate limiter", () => {
   it("keeps the tasks apart in time", async () => {
     const limiter = new RateLimiter(50);
     const start = Date.now();
-    await limiter.run(async () => undefined);
-    await limiter.run(async () => undefined);
+    await limiter.run("bot-a", async () => undefined);
+    await limiter.run("bot-a", async () => undefined);
     assert.ok(Date.now() - start >= 15);
   });
 
   it("keeps running after a task fails", async () => {
     const limiter = new RateLimiter(1000);
     await assert.rejects(
-      limiter.run(async () => {
+      limiter.run("bot-a", async () => {
         throw new Error("lỗi");
       }),
     );
-    assert.equal(await limiter.run(async () => 42), 42);
+    assert.equal(await limiter.run("bot-a", async () => 42), 42);
+  });
+
+  it("lets two bots send at the same time", async () => {
+    // Every bot has its own quota at Telegram, so a second bot must not
+    // wait for the first one (B104).
+    const limiter = new RateLimiter(2);
+    const start = Date.now();
+    await Promise.all([
+      limiter.run("bot-a", async () => undefined),
+      limiter.run("bot-b", async () => undefined),
+    ]);
+    assert.ok(Date.now() - start < 400, "Hai bot khong nen cho nhau.");
   });
 });

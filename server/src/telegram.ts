@@ -345,6 +345,45 @@ export async function setTelegramStatus(telegramId: TelegramId, status: "unknown
     .where(eq(telegramUsers.telegramId, telegramId));
 }
 
+/**
+ * Read the Telegram error of a failed send and decide what it means for the id.
+ *
+ * Telegram answers with a few different messages, and they lead to different
+ * decisions:
+ *  - "chat not found" — the id is wrong or the account is gone → invalid
+ *  - "bot was blocked by the user" / "user is blocked" → blocked
+ *  - "bot was kicked" → blocked
+ *  - "chat not found" with "deactivated" → invalid
+ *
+ * Anything else (a network error, a flood wait) says nothing about the id and
+ * returns null so the id keeps its status.
+ */
+export function telegramFailureReason(
+  error: string,
+): "blocked" | "invalid" | null {
+  const text = error.toLowerCase();
+  if (
+    text.includes("bot was blocked by the user") ||
+    text.includes("user is blocked") ||
+    text.includes("bot was kicked") ||
+    text.includes("user_deactivated") ||
+    text.includes("bot can't initiate conversation") ||
+    text.includes("forbidden: bot was blocked")
+  ) {
+    return "blocked";
+  }
+  if (
+    text.includes("chat not found") ||
+    text.includes("chat_invalid") ||
+    text.includes("peer_id_invalid") ||
+    text.includes("user not found") ||
+    text.includes("deactivated")
+  ) {
+    return "invalid";
+  }
+  return null;
+}
+
 /* ------------------------------------------------------------------ *
  * Targeting helpers
  * ------------------------------------------------------------------ */

@@ -39,6 +39,7 @@ import {
   recordBotStart,
   setOptOut,
   setTelegramStatus,
+  telegramFailureReason,
   verifyInitData,
 } from "../telegram.js";
 
@@ -443,6 +444,14 @@ export default async function telegramRoutes(app: FastifyInstance) {
       .onConflictDoNothing();
     if (body.status === "blocked") {
       await setTelegramStatus(job.telegramId, "blocked");
+    }
+    // A failed job tells us the id is not usable any more. Telegram answers
+    // "chat not found" when the id is wrong or the account was deleted, and
+    // "bot was blocked by the user" when the person blocked the bot — both
+    // mean the id must not be used again (B103).
+    if (body.status === "failed" && body.error) {
+      const reason = telegramFailureReason(body.error);
+      if (reason) await setTelegramStatus(job.telegramId, reason);
     }
     return { ok: true };
   });

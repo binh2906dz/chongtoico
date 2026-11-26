@@ -161,7 +161,9 @@ export function fetchSettings(): Promise<BotSettings> {
 
 /** Fetch the jobs that are due right now. */
 export function fetchJobs(limit = 20): Promise<{ jobs: Job[] }> {
-  return callWebApi<{ jobs: Job[] }>(`/api/bot/jobs?limit=${limit}`);
+  // The web app refuses a limit above 100.
+  const safe = Math.max(1, Math.min(100, Math.floor(limit)));
+  return callWebApi<{ jobs: Job[] }>(`/api/bot/jobs?limit=${safe}`);
 }
 
 /** Report the outcome of a job. */
