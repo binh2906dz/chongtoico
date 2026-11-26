@@ -461,17 +461,18 @@ Cài dịch vụ bot Telegram (ngoài Docker — cần token + kết nối Teleg
 --------------------------------------------------------------------------------
 6) VIỆC CÒN LẠI / KẾ HOẠCH
 --------------------------------------------------------------------------------
-- [2026-11-26] **Chiến dịch khẩn cấp tới toàn bộ 61.094 ID đã chạy được** (xem mục
-  1B và LUAT_VA_BOI_CANH.md B101–B106). Đã sửa: chia lô insert job, cache
+- [2026-11-26] **Chiến dịch khẩn cấp tới toàn bộ 61.094 ID đã chạy xong** (xem mục
+  1B và LUAT_VA_BOI_CANH.md B101–B110). Đã sửa: chia lô insert job, cache
   media/text, phân loại trạng thái ID theo lỗi Telegram, bot gửi song song.
-  Trên VPS: chiến dịch `d4af5a28-0593-49f2-9651-085970c9fc28` đã queue
-  61.094 job, dọn 97.985 job của ID không dùng được, còn ~16.000 job trong hàng
-  đợi và đang gửi tiếp. Phân loại hiện tại: active ~9.370 / blocked ~19.765 /
-  invalid ~31.957 / unknown 2.
+  **Kết quả quét thật**: chỉ **36 / 61.094 ID** còn tồn tại (gửi thành công);
+  41.349 ID báo "chat not found" (không hợp lệ), 19.711 ID đã bị chặn.
+  → Danh sách ID nhập tay gần như không còn dùng được. Muốn gửi được phải lấy
+  ID từ người đã bấm /start, không phải từ danh sách nhập tay.
   Việc còn lại:
-    - Đợi hàng đợi chạy nốt (bot gửi ~9 job/giây), theo dõi `docker compose
-      logs app | grep "scheduler tick failed"` — phải luôn rỗng.
-    - Sau khi quét xong lần 1: các chiến dịch sau chỉ nhắm nhóm **active**.
+    - Quét tiếp lần 2 chỉ nhắm nhóm **active** (36 ID) — hoặc bỏ nếu danh sách
+      nhập tay không còn giá trị.
+    - Nếu chủ dự án có danh sách ID mới, nhập vào tab Nhập ID rồi quét lại.
+    - Theo dõi `docker compose logs app | grep "scheduler tick failed"` — luôn rỗng.
     - Cân nhắc tăng BOT_SEND_RATE nếu Telegram không báo 429 (giờ 25/giây/bot).
 - [2026-11-24] **Telegram Bridge GĐ0–GĐ5 đã xong** (xem mục 1B). Đã chạy thử:
   server build + 40/40 test, giao diện build, bot build + 20/20 test.
@@ -516,6 +517,7 @@ Cài dịch vụ bot Telegram (ngoài Docker — cần token + kết nối Teleg
 7) LỊCH SỬ GIT (oneline — cập nhật sau mỗi lần push)
 --------------------------------------------------------------------------------
 (xem `git log --oneline`; các commit chính)
+7295b86 fix(telegram): danh dau ID gui thanh cong la nhom active
 29a5efe fix(api): rate limit rieng cho endpoint bot va quan ly ID de khong chan nhau
 8f588d8 feat(telegram): bo qua ID da bi Telegram tu choi + nut don job trong trang quan ly
 bbd01cd perf(bot): gui nhieu job song song thay vi tung job mot

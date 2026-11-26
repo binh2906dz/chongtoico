@@ -1030,6 +1030,14 @@ Mẫu mỗi mục:
   - **B107 — Rate limit global của Fastify sẽ chặn chính trang quản trị khi bot chạy.** Bot poll mỗi 300ms từ cùng IP với trình duyệt → hết hạn mức 300/phút → API admin trả 429. Endpoint bot phải có `rateLimit` riêng cao hơn.
   - **B108 — `scripts/update.sh` phải build cả phần chạy ngoài docker.** `docker compose up --build` không đụng tới `bot/` (service systemd) → code mới không bao giờ chạy. Đã thêm `npm install && npm run build && systemctl restart chongtoico-bot.service`.
   - **B109 — VPS có file sửa tay sẽ chặn `git pull`.** `git checkout -- scripts/` trước khi pull (luật B74): `update.sh` trên VPS từng bị sửa tay → `error: Your local changes would be overwritten by merge`.
-- **File**: `server/src/scheduler.ts`, `server/src/routes/telegram.ts`, `server/src/telegram.ts`, `server/test/scheduler.test.ts`, `server/test/telegramAdmin.test.ts`, `bot/src/jobs.ts`, `bot/src/config.ts`, `bot/src/client.ts`, `bot/src/registry.ts`, `bot/test/bot.test.ts`, `frontend/src/pages/admin/AdminTelegramTools.tsx`, `scripts/update.sh` — commit `4c5259d`, `8597a51`, `5f079e1`, `bbd01cd`, `8f588d8`, `29a5efe`.
+  - **B110 — Tin gửi thành công cũng phải cập nhật trạng thái ID, không chỉ lỗi.** Route `/api/bot/result` chỉ xử lý `blocked` và `failed`; job `sent` không đụng tới `telegram_users` → nhóm `active` **luôn rỗng** dù có tin gửi thành công, nên admin không có cách nào biết ID nào còn dùng được. Đã thêm: `sent` → `active`. Đã sửa 36 ID cũ bằng SQL trên VPS.
+- **KẾ QUẢ THỰC TẾ sau khi quét toàn bộ 61.094 ID** (VPS, ~2 giờ gửi):
+  - `sent` **36** — chỉ 36 ID trong toàn bộ danh sách thực sự tồn tại và nhận được tin.
+  - `failed` 23.346 — **tất cả** đều là `Telegram 400: Bad Request: chat not found` → ID sai / tài khoản đã bị xoá.
+  - `blocked` 13 job, `skipped` 97.985 (đã dọn).
+  - Phân loại cuối cùng: **active 36 / blocked 19.711 / invalid 41.349 = 61.096**.
+  - **Kết luận quan trọng cho chủ dự án**: danh sách ID nhập tay gần như **không còn dùng được** — Telegram báo "chat not found" cho ~99,9%. Muốn gửi được thì phải lấy ID từ người đã bấm `/start` (nhóm `active`/`unknown` của `telegram_users` có `telegram_links`), không phải từ danh sách nhập tay.
+  - Hệ thống đã làm đúng phần của nó: không còn lỗi scheduler, không còn job treo, ID tự phân loại, có nút dọn job.
+- **File**: `server/src/scheduler.ts`, `server/src/routes/telegram.ts`, `server/src/telegram.ts`, `server/test/scheduler.test.ts`, `server/test/telegramAdmin.test.ts`, `bot/src/jobs.ts`, `bot/src/config.ts`, `bot/src/client.ts`, `bot/src/registry.ts`, `bot/test/bot.test.ts`, `frontend/src/pages/admin/AdminTelegramTools.tsx`, `scripts/update.sh` — commit `4c5259d`, `8597a51`, `5f079e1`, `bbd01cd`, `8f588d8`, `29a5efe`, `7295b86`.
 
 
