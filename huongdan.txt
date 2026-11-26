@@ -461,6 +461,18 @@ Cài dịch vụ bot Telegram (ngoài Docker — cần token + kết nối Teleg
 --------------------------------------------------------------------------------
 6) VIỆC CÒN LẠI / KẾ HOẠCH
 --------------------------------------------------------------------------------
+- [2026-11-26] **Chiến dịch khẩn cấp tới toàn bộ 61.094 ID đã chạy được** (xem mục
+  1B và LUAT_VA_BOI_CANH.md B101–B106). Đã sửa: chia lô insert job, cache
+  media/text, phân loại trạng thái ID theo lỗi Telegram, bot gửi song song.
+  Trên VPS: chiến dịch `d4af5a28-0593-49f2-9651-085970c9fc28` đã queue
+  61.094 job, dọn 97.985 job của ID không dùng được, còn ~16.000 job trong hàng
+  đợi và đang gửi tiếp. Phân loại hiện tại: active ~9.370 / blocked ~19.765 /
+  invalid ~31.957 / unknown 2.
+  Việc còn lại:
+    - Đợi hàng đợi chạy nốt (bot gửi ~9 job/giây), theo dõi `docker compose
+      logs app | grep "scheduler tick failed"` — phải luôn rỗng.
+    - Sau khi quét xong lần 1: các chiến dịch sau chỉ nhắm nhóm **active**.
+    - Cân nhắc tăng BOT_SEND_RATE nếu Telegram không báo 429 (giờ 25/giây/bot).
 - [2026-11-24] **Telegram Bridge GĐ0–GĐ5 đã xong** (xem mục 1B). Đã chạy thử:
   server build + 40/40 test, giao diện build, bot build + 20/20 test.
   **CHƯA chạy thử với bot thật** (cần TELEGRAM_BOT_TOKENS thật của chủ dự án).
@@ -504,6 +516,13 @@ Cài dịch vụ bot Telegram (ngoài Docker — cần token + kết nối Teleg
 7) LỊCH SỬ GIT (oneline — cập nhật sau mỗi lần push)
 --------------------------------------------------------------------------------
 (xem `git log --oneline`; các commit chính)
+29a5efe fix(api): rate limit rieng cho endpoint bot va quan ly ID de khong chan nhau
+8f588d8 feat(telegram): bo qua ID da bi Telegram tu choi + nut don job trong trang quan ly
+bbd01cd perf(bot): gui nhieu job song song thay vi tung job mot
+5f079e1 fix(telegram): tang toc do gui, rut ngan cooldown 429 va thu lai job tam thoi
+8597a51 feat(telegram): phan loai trang thai ID theo loi Telegram + bot gui nhanh hon theo tung bot
+4c5259d fix(telegram): chia lot insert job + cache media/text de chien dich lon khong lam treo scheduler
+17a5c19 chore(deploy): build va restart dich vu bot trong update.sh
 39d4f64 feat(telegram): them o dem nhom trang thai ID vao tab Nhap ID
 5416460 feat(telegram): chien dich gui media, che do khan cap va nhom ID da nhap
 e43b911 docs: ghi nhat ky chien dich media + khan cap + nhom ID da nhap (B93-B95)
