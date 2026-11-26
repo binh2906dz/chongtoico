@@ -504,6 +504,9 @@ Cài dịch vụ bot Telegram (ngoài Docker — cần token + kết nối Teleg
 7) LỊCH SỬ GIT (oneline — cập nhật sau mỗi lần push)
 --------------------------------------------------------------------------------
 (xem `git log --oneline`; các commit chính)
+b38f2e8 fix(telegram): media upload dung thu muc ads + truyen SITE_URL vao container
+8734e44 feat(telegram): lời chào /start có media, nút bấm và link tuỳ chỉnh
+ed42f94 docs: ghi nhat ky tinh nang loi chao /start (B85-B88)
 c302d6d feat(telegram): them tinh nang loi chao khi /start + tab quan tri
 84f8e91 docs: ghi nhat ky dat lai mat khau admin (B81-B82)
 a64a299 fix(bot): dung bot.start() de bot nhan message (init() chi goi getMe, khong poll)
@@ -1169,6 +1172,53 @@ b22c5f7 feat: scaffold new platform (đã thay thế — xoá ở bản Node.js)
       chào" hien thong bao xanh "Đã lưu lời chào."; gia tri con nguyen sau khi
       tai lai trang (luu that, khong phai state tam).
   - Da dat san 2 cau chao mau (enabled=false) de admin tu bat va sua.
+
+[2026-11-26] MO RONG TINH NANG LOI CHAO: media + nut bam + link rieng cho tung cau chao.
+  - Yêu cầu: "chức năng lời chào đã hoạt động nhưng chưa có quá nhiều tùy
+    chỉnh cho admin, tôi muốn admin sẽ chủ động hơn như quyết định lời chào
+    gắn link nào, gắn nút nào, thêm ảnh hay video nào".
+  - Quyết định (hỏi user): link = chọn bài viết HOẶC tự nhập URL; media = upload
+    MỚI HOẶC chọn từ bài viết; nút = bộ mẫu + tự thêm nút riêng; vị trí = MỞ
+    RỘNG tab "Lời chào" hiện có (không tạo tab mới).
+  - Cấu trúc greeting (mở rộng, vẫn key "greeting" trong telegram_settings,
+    KHÔNG migration):
+      items[]: { id, text, media:{type,key,source}, buttons:[{label,url}],
+                 link:{articleId,url} }
+    media.key = "<kind>:<fileKey>" (giống chiến dịch).
+    media.source = "article" (file của bài viết) | "upload" (admin tải lên).
+  - Backend (server/src/routes/telegramAdmin.ts):
+    - PUT /api/admin/telegram/settings/greeting  — lưu đủ media/buttons/link.
+    - POST /api/admin/telegram/settings/greeting/media — UPLOAD media:
+      ảnh -> storeImage("ads") (URL /media/b/), video -> VIDEO_DIR() + check
+      magic bytes (URL /media/v/).
+    - GET /api/bot/settings — resolveGreeting(): link bài viết -> /bai-viet/{id},
+      dựng URL media TUYỆT ĐỐI, file của bài "chỉ thành viên" -> isPublic=false.
+  - Bot:
+    - bot/src/greeting.ts: GreetingItem có linkUrl/buttons/media;
+      planGreetingMedia() (ảnh >10MB, video >50MB, file members-only => bo qua);
+      buildGreetingKeyboard() (nút admin truoc, nút mac dinh sau).
+    - commands.ts handleStart(): {{link}} tro toi link cua cau chao do.
+    - index.ts: gui replyWithPhoto / replyWithVideo khi co media.
+  - Frontend (AdminTelegramTools.tsx): component GreetingEditor, nut
+    "⚙️ Ảnh, nút & link" mo 3 khu vuc — media (upload + dropdown file co san),
+    link (dropdown bai viet + o tu nhap), nut bam (4 nut mau + sua/xoa).
+    Dung lai API GET /api/admin/telegram/articles/recent?hours=720.
+  - FIX QUAN TRONG (file docker-compose.yml): them
+    SITE_URL: ${SITE_URL:-http://127.0.0.1:8090} vao environment cua service
+    "app". Truoc do .env co SITE_URL nhung container KHONG nhan -> config.siteUrl
+    roi ve 127.0.0.1 -> link trong tin nhan Telegram tro ve localhost (loi nay
+    anh huong CA chien dich). Bot thi da dung WEB_BASE_URL trong systemd.
+  - File media theo nguon: upload -> ads (/media/b/), bai viet -> albums
+    (/media/a/), video -> /media/v/.
+  - Test: bot 60/60 pass (them 7 test media+nut), server 67/67 pass (them 5
+    test). tsc + build frontend sach.
+  - ĐÃ KIỂM TRA production: upload anh that -> /media/b/... ; media bai viet ->
+    /media/a/... GET 200 (49KB) ; link -> /bai-viet/1553 ; UI 8/8 diem DAT
+    (F5 lai van con, luu that). Da dat lai 2 cau chao mau (media=none, nut
+    "Kênh VIP" -> https://t.me/nhomchongtoicoo, enabled=false).
+  - Bai hoc moi: B89 (media 2 thu muc khac nhau), B90 (SITE_URL phai truyen
+    vao container), B91 (kiem tra URL phuc vu sau khi deploy), B92 (test fail
+    sau khi doi logic — doc loi, cap nhat test theo hanh vi moi).
 
 ================================================================================
 Hết — lưu ý: không lưu mật khẩu / token thật trong file này.

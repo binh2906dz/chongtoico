@@ -223,6 +223,10 @@ Mỗi dòng: **lỗi / tình huống** → **cách tránh**.
 - **B86 — Thêm tab mới trong React + TS: cập nhật CẢ mảng tab lẫn danh sách phần tử render.** Bỏ sót mảng `TG_TABS` ⇒ lỗi `TS2367` ("types have no overlap") và `TS2322` (Union không khớp). Nhớ thêm vào mảng `const ... as const`.
 - **B87 — Biến do người dùng nhập vào tin nhắn HTML phải được escape.** `fillGreeting()` escape `& < > "` trước khi chèn `{{name}}`/`{{link}}` — nếu không, tên người dùng chứa `<b>` sẽ phá HTML của tin nhắn Telegram.
 - **B88 — Với 27 bot cùng chạy 1 process, cache cấu hình ở bot phải có TTL** (60 giây) để bot không hỏi web app liên tục, nhưng vẫn nhận được thay đổi của admin trong thời gian ngắn.
+- **B89 — Media upload và media của bài viết nằm ở THƯ MỤC KHÁC NHAU.** File admin upload lưu vào `ads` (URL `/media/b/`) còn file của bài viết nằm ở `albums` (URL `/media/a/`). Phải chọn thư mục theo `source`, nếu không bot sẽ tải 404. Thêm test riêng cho từng nguồn.
+- **B90 — `SITE_URL` phải được truyền vào container, nếu không link trong tin nhắn Telegram sẽ trỏ về localhost.** `.env` có `SITE_URL` nhưng `docker-compose.yml` không khai báo nó trong `environment:` của service `app` → `config.siteUrl` rơi về `http://127.0.0.1:8090`. Lỗi này ảnh hưởng CẢ chiến dịch lẫn lời chào. Đã thêm `SITE_URL: ${SITE_URL:-http://127.0.0.1:8090}` vào compose.
+- **B91 — Khi thêm endpoint upload, kiểm tra cả URL phục vụ sau khi deploy.** Upload trả `url: /media/b/...` nhưng bot cần URL **tuyệt đối** + **đúng thư mục**. Luôn test bằng `curl` tới URL đó sau khi deploy, không chỉ tin vào response của API.
+- **B92 — Test cũ có thể fail sau khi sửa logic — đọc kỹ lỗi thay vì đổi code cho vừa.** Khi đổi thư mục media, test cũ kỳ vọng `/media/a/`; cập nhật test theo hành vi MỚI và thêm test cho cả hai nguồn media.
 
 ## 10. Nhật ký làm việc
 
@@ -913,3 +917,53 @@ Mẫu mỗi mục:
   - **B87 — Biến do người dùng nhập vào tin nhắn HTML phải được escape.** `fillGreeting()` escape `& < > "` trước khi chèn `{{name}}`/`{{link}}` — nếu không, tên người dùng chứa `<b>` sẽ phá HTML của tin nhắn Telegram.
   - **B88 — Với 27 bot cùng chạy 1 process, cache cấu hình ở bot phải có TTL** (60 giây) để bot không hỏi web app liên tục, nhưng vẫn nhận được thay đổi của admin trong thời gian ngắn.
 - **File**: `bot/src/greeting.ts` (mới), `bot/test/greeting.test.ts` (mới), `bot/src/client.ts`, `bot/src/commands.ts`, `bot/src/index.ts`, `server/src/routes/telegramAdmin.ts`, `frontend/src/pages/admin/AdminTelegramTools.tsx`, `frontend/src/pages/admin/Admin.tsx`, `frontend/src/types.ts`, `huongdan.txt`, `LUAT_VA_BOI_CANH.md`.
+
+## 2026-11-26 — LỜI CHÀO /start NÂNG CAO: media, nút bấm và link tuỳ chỉnh theo từng câu
+
+- **Yêu cầu**: *"chức năng lời chào đã hoạt động nhưng chưa có quá nhiều tùy chỉnh cho admin, tôi muốn admin sẽ chủ động hơn như quyết định lời chào gắn link nào, gắn nút nào, thêm ảnh hay video nào"*.
+- **Quyết định thiết kế** (hỏi user qua AskQuestion):
+  - Link: **cả hai** — chọn bài viết có sẵn HOẶC tự nhập URL.
+  - Media: **cả hai** — upload file MỚI HOẶC chọn ảnh/video có sẵn trong bài viết.
+  - Nút: **cả hai** — bộ nút mẫu (Mở Website / Kênh VIP / Bài mới / CSKH) + tự thêm nút riêng (nhãn + URL).
+  - Vị trí: **mở rộng tab "Lời chào" hiện có** (không tạo tab mới), mỗi câu chào có phần tuỳ chỉnh riêng sau nút "⚙️ Ảnh, nút & link".
+- **Cấu trúc `greeting` (mở rộng, vẫn lưu trong `telegram_settings`, key = "greeting", KHÔNG migration)**:
+
+      {
+        "enabled": true, "keepButtons": true,
+        "items": [{
+          "id": "g1",
+          "text": "👋 Chào {{name}}\n\n{{link}}",
+          "media": { "type": "none|image|video", "key": "<kind>:<fileKey>", "source": "article|upload" },
+          "buttons": [{ "label": "👑 Kênh VIP", "url": "https://t.me/..." }],
+          "link": { "articleId": 1553, "url": "https://..." }
+        }]
+      }
+
+- **Backend** (`server/src/routes/telegramAdmin.ts`):
+  - `greetingMediaBody`, `greetingButtonBody`, mở rộng `greetingBody`.
+  - `PUT /api/admin/telegram/settings/greeting` — lưu đủ media/buttons/link.
+  - `POST /api/admin/telegram/settings/greeting/media` — **upload media** (ảnh → `storeImage("ads")`, video → `VIDEO_DIR()` + kiểm tra magic bytes `looksLikeVideo`).
+  - `GET /api/bot/settings` — gọi `resolveGreeting()`: **resolve link bài viết → `/bai-viet/{id}`**, dựng **URL media**, đánh dấu **file của bài "chỉ thành viên" là `isPublic=false`** để bot không gửi file đó.
+- **Bot** (`bot/src/greeting.ts`, `bot/src/client.ts`, `bot/src/commands.ts`, `bot/src/index.ts`):
+  - `GreetingItem` giờ có `linkUrl`, `buttons[]`, `media`.
+  - `planGreetingMedia()`: không gửi file quá lớn (ảnh > 10MB, video > 50MB) hoặc file của bài chỉ thành viên.
+  - `buildGreetingKeyboard()`: nút của admin đứng trước, nút mặc định của bot sau (nếu `keepButtons`).
+  - `handleStart()`: `{{link}}` trỏ tới link của câu chào đó (nếu không chọn thì link web có tracking).
+  - `index.ts`: gửi `replyWithPhoto` / `replyWithVideo` khi có media, ngược lại gửi text.
+- **Frontend** (`frontend/src/pages/admin/AdminTelegramTools.tsx`, `types.ts`):
+  - Component mới `GreetingEditor`: nút "⚙️ Ảnh, nút & link" mở 3 khu vực — **Ảnh/Video đính kèm** (3 nút chọn + upload + dropdown file có sẵn), **Link của câu chào này** (dropdown bài viết + ô tự nhập), **Nút bấm** (4 nút mẫu + sửa/xoá nút).
+  - Dùng lại API `GET /api/admin/telegram/articles/recent?hours=720` (đã có sẵn cho chiến dịch).
+  - Bài "chỉ thành viên" được đánh dấu 🔒 trong dropdown.
+- **Test**: bot `greeting.test.ts`: 60/60 pass (thêm 7 test cho media + nút). Server: **67/67 pass** (thêm 5 test: lưu greeting, bot nhận link+media, media bài viết nằm đúng thư mục, từ chối text rỗng, chặn role admin). `tsc` server + `npm run build` frontend sạch.
+- **ĐÃ KIỂM TRA trên production**:
+  - Upload ảnh thật (1×1 PNG) → `{"type":"image","key":"image:...","source":"upload","url":"/media/b/....webp"}`; file nằm đúng thư mục ads.
+  - Media bài viết → `/media/a/{key}.webp` → **GET 200 (49KB)**.
+  - Link bài viết → `https://ngeyhsvge683874.online/bai-viet/1553` ✓.
+  - Mô phỏng bot: thay biến đúng, `planGreetingMedia` = sendFile, nút đúng thứ tự.
+  - UI (browser thật): **8/8 điểm ĐẠT** — mở panel, 3 khu vực, dropdown 50 bài + 37 ảnh, thêm nút mẫu, lưu thành công, **F5 lại vẫn còn** (lưu thật).
+- **Bài học**:
+  - **B89 — Media upload và media của bài viết nằm ở THƯ MỤC KHÁC NHAU.** File admin upload lưu vào `ads` (URL `/media/b/`) còn file của bài viết nằm ở `albums` (URL `/media/a/`). Phải chọn thư mục theo `source`, nếu không bot sẽ tải 404. Thêm test riêng cho từng nguồn.
+  - **B90 — `SITE_URL` phải được truyền vào container, nếu không link trong tin nhắn Telegram sẽ trỏ về localhost.** `.env` có `SITE_URL` nhưng `docker-compose.yml` không khai báo nó trong `environment:` của service `app` → `config.siteUrl` rơi về `http://127.0.0.1:8090`. Lỗi này ảnh hưởng CẢ chiến dịch lẫn lời chào. Đã thêm `SITE_URL: ${SITE_URL:-http://127.0.0.1:8090}` vào compose.
+  - **B91 — Khi thêm endpoint upload, kiểm tra cả URL phục vụ sau khi deploy.** Upload trả `url: /media/b/...` nhưng bot cần URL **tuyệt đối** + **đúng thư mục**. Luôn test bằng `curl` tới URL đó sau khi deploy, không chỉ tin vào response của API.
+  - **B92 — Test cũ có thể fail sau khi sửa logic — đọc kỹ lỗi thay vì đổi code cho vừa.** Khi đổi thư mục media, test cũ kỳ vọng `/media/a/`; cập nhật test theo hành vi MỚI và thêm test cho cả hai nguồn media.
+- **File**: `server/src/routes/telegramAdmin.ts`, `server/test/telegramAdmin.test.ts`, `bot/src/greeting.ts`, `bot/src/client.ts`, `bot/src/commands.ts`, `bot/src/index.ts`, `bot/test/greeting.test.ts`, `frontend/src/pages/admin/AdminTelegramTools.tsx`, `frontend/src/types.ts`, `docker-compose.yml`, `huongdan.txt`, `LUAT_VA_BOI_CANH.md`.
