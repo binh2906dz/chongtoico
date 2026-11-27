@@ -3,7 +3,7 @@ import { createWriteStream } from "node:fs";
 import { mkdir, open, rename, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import { pipeline } from "node:stream/promises";
-import { and, count, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, count, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { requireAdmin } from "../auth.js";
@@ -14,6 +14,7 @@ import {
   articles,
   articleVideos,
   deliveryLog,
+  notificationJobs,
   telegramBotIncidents,
   telegramBots,
   telegramCampaigns,
@@ -965,6 +966,87 @@ export default async function telegramAdminRoutes(app: FastifyInstance) {
       stats.total += row.n;
     }
     return { stats };
+  });
+
+  /**
+   * The live numbers of the emergency campaign that is running right now.
+   *
+   * The panel of the id list polls this endpoint, so the admin sees how many
+   * ids are already sent, how many failed and how many are still on their
+   * way (B117).
+   */
+  app.get("/api/admin/telegram/ids/live-stats", async (req) => {
+    requireAdmin(req);
+    // The campaigns that are still moving.
+    const running = await db
+      .select()
+      .from(telegramCampaigns)
+      .where(inArray(telegramCampaigns.status, ["queued", "sending", "active"]))
+      .orderBy(desc(telegramCampaigns.createdAt))
+      .limit(5);
+
+    const campaigns = [];
+    for (const campaign of running) {
+      const rows = await db
+        .select({ status: notificationJobs.status, n: count() })
+        .from(notificationJobs)
+        .where(eq(notificationJobs.campaignId, campaign.id))
+        .groupBy(notificationJobs.status);
+      const jobs: Record<string, number> = {
+        queued: 0,
+        sending: 0,
+        sent: 0,
+        failed: 0,
+        skipped: 0,
+        cancelled: 0,
+      };
+      for (const row of rows) jobs[row.status] = row.n;
+      const total = Object.values(jobs).reduce((sum, n) => sum + n, 0);
+      const done = jobs.sent + jobs.failed + jobs.skipped + jobs.cancelled;
+      campaigns.push({
+        id: campaign.id,
+        name: campaign.name,
+        isEmergency: campaign.isEmergency,
+        status: campaign.status,
+        total,
+        ...jobs,
+        done,
+        pending: total - done,
+        percent: total ? Math.round((done / total) * 100) : 0,
+      });
+    }
+
+    // The totals of every job, so the panel keeps showing something even
+    // when no campaign is running.
+    const allRows = await db
+      .select({ status: notificationJobs.status, n: count() })
+      .from(notificationJobs)
+      .groupBy(notificationJobs.status);
+    const totals: Record<string, number> = {
+      queued: 0,
+      sending: 0,
+      sent: 0,
+      failed: 0,
+      skipped: 0,
+      cancelled: 0,
+    };
+    for (const row of allRows) totals[row.status] = row.n;
+
+    // The bots that carried the most messages of the running campaigns.
+    const botRows = await db
+      .select({ botId: notificationJobs.botId, n: count() })
+      .from(notificationJobs)
+      .where(and(eq(notificationJobs.status, "sent"), isNotNull(notificationJobs.botId)))
+      .groupBy(notificationJobs.botId)
+      .orderBy(desc(count()))
+      .limit(10);
+
+    return {
+      campaigns,
+      totals,
+      running: campaigns.length > 0,
+      bots: botRows.map((b) => ({ botId: b.botId, sent: b.n })),
+    };
   });
 
   /** Delete every imported id that is not linked to an account. */

@@ -86,6 +86,14 @@ export interface Job {
   campaignId: string;
   telegramId: number;
   botId: string | null;
+  /**
+   * The bots this person may receive a message from, best guess first.
+   *
+   * Telegram only lets a bot write to a user who pressed /start on that very
+   * bot, so the service tries the next candidate when the first one answers
+   * with "chat not found" (B115).
+   */
+  candidateBotIds?: string[];
   payload: JobPayload;
 }
 

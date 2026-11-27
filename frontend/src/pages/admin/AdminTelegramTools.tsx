@@ -47,6 +47,34 @@ const cellTypeLabel: Record<TelegramKeyboardCell["type"], string> = {
 };
 
 /* ------------------------------------------------------------------ *
+ * The live numbers of a running campaign (B119)
+ * ------------------------------------------------------------------ */
+
+interface LiveCampaign {
+  id: string;
+  name: string;
+  isEmergency: boolean;
+  status: string;
+  total: number;
+  queued: number;
+  sending: number;
+  sent: number;
+  failed: number;
+  skipped: number;
+  cancelled: number;
+  done: number;
+  pending: number;
+  percent: number;
+}
+
+interface LiveStats {
+  campaigns: LiveCampaign[];
+  totals: Record<string, number>;
+  running: boolean;
+  bots: { botId: string; sent: number }[];
+}
+
+/* ------------------------------------------------------------------ *
  * Bots — the management part
  * ------------------------------------------------------------------ */
 
@@ -1266,6 +1294,30 @@ export function AdminTelegramIdsManage() {
   const [notice, setNotice] = useState<{ tone: "ok" | "err"; message: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [fileName, setFileName] = useState<string | null>(null);
+  // The live numbers of the running campaigns (B119).
+  const [live, setLive] = useState<LiveStats | null>(null);
+
+  // The panel refreshes itself every five seconds, so the admin sees the
+  // campaign moving while it runs (B119).
+  useEffect(() => {
+    let alive = true;
+    const load = async () => {
+      try {
+        const res = await api<LiveStats>("/api/admin/telegram/ids/live-stats");
+        if (alive) setLive(res);
+      } catch {
+        // A failed poll must not break the panel.
+      }
+    };
+    void load();
+    const timer = setInterval(() => {
+      void load();
+    }, 5000);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+  }, []);
 
   async function upload(file: File) {
     setBusy(true);
@@ -1337,6 +1389,61 @@ export function AdminTelegramIdsManage() {
         Dữ liệu được dùng để gửi chiến dịch tới đúng nhóm người.
       </div>
       {notice && <Notice tone={notice.tone} message={notice.message} />}
+
+      {notice && <Notice tone={notice.tone} message={notice.message} />}
+
+      {/* The live progress of the running campaigns — the numbers change on
+          their own while the campaign runs (B119). */}
+      {live && live.campaigns.length > 0 && (
+        <div className="panel space-y-3 border-brand/40 bg-brand/5 p-4">
+          <div className="flex items-center justify-between">
+            <h2 className="font-black">📡 Tiến trình gửi đang chạy</h2>
+            <span className="badge bg-emerald-500/20 text-emerald-300">● cập nhật mỗi 5 giây</span>
+          </div>
+          {live.campaigns.map((c) => (
+            <div key={c.id} className="space-y-2 rounded-lg bg-panel-2 p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="font-bold">
+                  {c.isEmergency ? "⚡ " : ""}
+                  {c.name}
+                </div>
+                <div className="text-xs text-muted">
+                  {c.done}/{c.total} · {c.percent}%
+                </div>
+              </div>
+              {/* The bar shows how much of the campaign is already done. */}
+              <div className="h-2 w-full overflow-hidden rounded-full bg-line">
+                <div className="h-full bg-emerald-500 transition-all duration-500" style={{ width: `${c.percent}%` }} />
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
+                <div className="rounded bg-emerald-500/10 px-2 py-1 text-emerald-300">
+                  ✅ Thành công: <b>{formatNumber(c.sent)}</b>
+                </div>
+                <div className="rounded bg-rose-500/10 px-2 py-1 text-rose-300">
+                  ❌ Lỗi: <b>{formatNumber(c.failed)}</b>
+                </div>
+                <div className="rounded bg-sky-500/10 px-2 py-1 text-sky-300">
+                  📤 Đang gửi: <b>{formatNumber(c.sending)}</b>
+                </div>
+                <div className="rounded bg-amber-500/10 px-2 py-1 text-amber-300">
+                  ⏳ Chờ: <b>{formatNumber(c.queued)}</b>
+                </div>
+              </div>
+            </div>
+          ))}
+          {live.bots.length > 0 && (
+            <div className="text-xs text-muted">
+              <b>Bot đã gửi:</b>{" "}
+              {live.bots.map((b, i) => (
+                <span key={b.botId}>
+                  {i > 0 && " · "}
+                  <span className="font-mono">{b.botId.slice(0, 8)}</span>: {formatNumber(b.sent)}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
         {[

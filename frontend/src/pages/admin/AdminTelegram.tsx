@@ -313,6 +313,37 @@ export function AdminTelegramCampaigns() {
     }
   }
 
+  /**
+   * Delete a campaign for good.
+   *
+   * The campaign and every job of it disappear, so nothing is sent any more.
+   */
+  async function remove(c: TelegramCampaign) {
+    const ok = window.confirm(
+      `Xoá chiến dịch "${c.name}"?\n\n` +
+        `Toàn bộ tin nhắn của chiến dịch này sẽ bị xoá khỏi hàng đợi và không thể gửi lại.`,
+    );
+    if (!ok) return;
+    setMsg(null);
+    try {
+      await api(`/api/admin/telegram/campaigns/${c.id}`, { method: "DELETE" });
+      setMsg(`Đã xoá chiến dịch "${c.name}".`);
+      reload();
+    } catch (e) {
+      setMsg(errorMessage(e));
+    }
+  }
+
+  /** Cancel a running campaign — the messages that are left stop. */
+  async function cancel(c: TelegramCampaign) {
+    const ok = window.confirm(
+      `Huỷ chiến dịch "${c.name}"?\n\n` +
+        `Những tin nhắn chưa gửi sẽ dừng lại. Bạn có thể xoá hẳn chiến dịch nếu không cần nữa.`,
+    );
+    if (!ok) return;
+    await act(c.id, "cancel", `Đã huỷ chiến dịch "${c.name}"`);
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap gap-2">
@@ -378,8 +409,19 @@ export function AdminTelegramCampaigns() {
                       Kích hoạt lịch
                     </button>
                   )}
-                  <button className="btn-ghost px-3 py-1" onClick={() => void act(c.id, "cancel", "Đã huỷ chiến dịch")}>
-                    Huỷ
+                  {/* The cancel button only makes sense while the campaign is
+                      still moving — a finished campaign is simply deleted. */}
+                  {(c.status === "queued" || c.status === "sending" || c.status === "paused") && (
+                    <button className="btn-ghost px-3 py-1" onClick={() => void cancel(c)}>
+                      Huỷ
+                    </button>
+                  )}
+                  <button
+                    className="btn bg-red-500/20 px-3 py-1 text-red-300 hover:bg-red-500/30"
+                    title="Xoá chiến dịch và toàn bộ tin nhắn của nó"
+                    onClick={() => void remove(c)}
+                  >
+                    Xoá
                   </button>
                 </div>
               </div>

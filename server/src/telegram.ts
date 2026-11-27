@@ -320,6 +320,38 @@ export async function randomLiveBot() {
   return bots[randomInt(0, bots.length)];
 }
 
+/**
+ * The bots a Telegram person may actually receive a message from.
+ *
+ * Telegram only lets a bot write to a user who pressed /start on that very
+ * bot. When the campaign picks a random bot the message fails with
+ * "400 Bad Request: chat not found" for almost every recipient, which is
+ * what made the first emergency campaign deliver nothing (B115).
+ *
+ * The list therefore starts with the bots the person started on and falls
+ * back to every live bot, so the service can try another one when the first
+ * choice answers with "chat not found".
+ */
+export async function candidateBotsFor(telegramId: TelegramId): Promise<string[]> {
+  const [person] = await db
+    .select({ id: telegramUsers.id })
+    .from(telegramUsers)
+    .where(eq(telegramUsers.telegramId, telegramId))
+    .limit(1);
+  const preferred: string[] = [];
+  if (person) {
+    const linked = await db
+      .select({ botId: telegramUserLinks.botId })
+      .from(telegramUserLinks)
+      .where(eq(telegramUserLinks.telegramId, person.id));
+    preferred.push(...linked.map((l) => l.botId));
+  }
+  const bots = await liveBots();
+  const live = bots.map((b) => b.id);
+  // The bots the person started on come first, the rest is the fallback.
+  return [...new Set([...preferred, ...live])];
+}
+
 /* ------------------------------------------------------------------ *
  * Opt-out and status
  * ------------------------------------------------------------------ */
@@ -363,12 +395,14 @@ export function telegramFailureReason(
   error: string,
 ): "blocked" | "invalid" | null {
   const text = error.toLowerCase();
+  // "bot can't initiate conversation" only says that THIS bot has no chat
+  // with the user — the user may well have started another bot. It must not
+  // mark the id as blocked (B115).
   if (
     text.includes("bot was blocked by the user") ||
     text.includes("user is blocked") ||
     text.includes("bot was kicked") ||
     text.includes("user_deactivated") ||
-    text.includes("bot can't initiate conversation") ||
     text.includes("forbidden: bot was blocked")
   ) {
     return "blocked";

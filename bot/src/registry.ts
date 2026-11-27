@@ -13,6 +13,14 @@ import { registerBot, sendHeartbeat } from "./client.js";
 
 export type BotHealth = "live" | "ban" | "error";
 
+/**
+ * How long a bot stays out of the fleet after Telegram refused it.
+ *
+ * A 403 that comes from a user who blocked the bot must not take the bot
+ * out for good, so every ban is checked again after this delay (B115).
+ */
+export const BAN_RECHECK_MS = 10 * 60_000;
+
 export interface ManagedBot {
   id: string;
   token: string;
@@ -142,12 +150,36 @@ export class BotRegistry {
     bot.lastError = `429: chờ ${wait} giây`;
   }
 
-  /** Mark a bot as banned by Telegram. */
+  /**
+   * Mark a bot as banned by Telegram.
+   *
+   * The mark is not for ever: Telegram can lift a ban, and a bot that was
+   * taken out of the fleet once must be able to come back on its own. The
+   * bot therefore gets a cooldown like a rate limit and is checked again
+   * afterwards (B115).
+   */
   markBanned(id: string): void {
     const bot = this.bots.get(id);
     if (!bot) return;
     bot.health = "ban";
     bot.lastError = "Bot bị Telegram cấm (401).";
+    // The ban is re-checked after this delay — a bot that was only blocked
+    // by one user must not stay out of the fleet for ever.
+    bot.cooldownUntil = Date.now() + BAN_RECHECK_MS;
+  }
+
+  /**
+   * A bot that answers again is back in the fleet.
+   *
+   * The flag is cleared here so the web app sees the bot as alive with the
+   * next heartbeat (B115).
+   */
+  noteAlive(id: string): void {
+    const bot = this.bots.get(id);
+    if (!bot) return;
+    bot.health = "live";
+    bot.lastError = null;
+    bot.cooldownUntil = 0;
   }
 
   /** Mark a bot as temporarily broken. */

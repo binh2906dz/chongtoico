@@ -28,6 +28,7 @@ import { looksLikeVideo, storeImage, VIDEO_DIR, videoExtFromName } from "../medi
 import { nextAllowedTime, queueCampaign } from "../scheduler.js";
 import {
   applyBotResult,
+  candidateBotsFor,
   consumeLinkCode,
   createLinkCode,
   ensureTelegramUser,
@@ -358,6 +359,14 @@ export default async function telegramRoutes(app: FastifyInstance) {
           username: body.username ?? null,
           displayName: body.displayName ?? null,
           lastCheckedAt: new Date(),
+          // The bot service only registers a bot after Telegram answered, so
+          // the bot is alive. A bot that was marked as banned by mistake —
+          // a 403 because one user blocked it — goes back into the fleet
+          // here (B115).
+          status: "live",
+          lastError: null,
+          bannedAt: null,
+          lastBanReason: null,
         },
       });
     return { ok: true };
@@ -414,6 +423,10 @@ export default async function telegramRoutes(app: FastifyInstance) {
           campaignId: claimed.campaignId,
           telegramId: claimed.telegramId,
           botId: claimed.botId,
+          // The bots this person actually pressed /start on. A bot may only
+          // write to a user who started that very bot, so the service needs
+          // the whole list to be able to try the next one (B115).
+          candidateBotIds: await candidateBotsFor(claimed.telegramId),
           payload: claimed.payload,
         });
       }
@@ -957,10 +970,16 @@ export default async function telegramRoutes(app: FastifyInstance) {
   app.post("/api/admin/telegram/campaigns/:id/cancel", async (req) => {
     requireAdmin(req);
     const { id } = z.object({ id: z.string().trim().max(64) }).parse(req.params);
+    // The jobs that are already being sent cannot be stopped, but they must
+    // not be picked up again either (B116).
     await db
       .update(notificationJobs)
-      .set({ status: "cancelled" })
+      .set({ status: "cancelled", error: "Chiến dịch đã bị huỷ." })
       .where(and(eq(notificationJobs.campaignId, id), eq(notificationJobs.status, "queued")));
+    await db
+      .update(notificationJobs)
+      .set({ status: "cancelled", error: "Chiến dịch đã bị huỷ." })
+      .where(and(eq(notificationJobs.campaignId, id), eq(notificationJobs.status, "sending")));
     const [updated] = await db
       .update(telegramCampaigns)
       .set({ status: "cancelled", scheduleStatus: "paused", updatedAt: new Date() })
@@ -968,6 +987,80 @@ export default async function telegramRoutes(app: FastifyInstance) {
       .returning();
     if (!updated) throw notFound("Không tìm thấy chiến dịch.");
     return { campaign: updated };
+  });
+
+  /**
+   * Delete a campaign.
+   *
+   * A campaign that is still running is cancelled first, so no message goes
+   * out after the admin pressed the button (B116).
+   */
+  app.delete("/api/admin/telegram/campaigns/:id", async (req) => {
+    requireAdmin(req);
+    const { id } = z.object({ id: z.string().trim().max(64) }).parse(req.params);
+    const [campaign] = await db.select().from(telegramCampaigns).where(eq(telegramCampaigns.id, id)).limit(1);
+    if (!campaign) throw notFound("Không tìm thấy chiến dịch.");
+
+    // The jobs of the campaign go away as well — a deleted campaign must not
+    // keep any message in the queue.
+    await db
+      .update(notificationJobs)
+      .set({ status: "cancelled", error: "Chiến dịch đã bị xoá." })
+      .where(and(eq(notificationJobs.campaignId, id), inArray(notificationJobs.status, ["queued", "sending"])));
+    await db.delete(notificationJobs).where(eq(notificationJobs.campaignId, id));
+    await db.delete(telegramCampaigns).where(eq(telegramCampaigns.id, id));
+    return { deleted: id };
+  });
+
+  /**
+   * The live progress of a campaign.
+   *
+   * The numbers come straight from the job table, so the admin sees the
+   * campaign moving while it runs (B117).
+   */
+  app.get("/api/admin/telegram/campaigns/:id/progress", async (req) => {
+    requireAdmin(req);
+    const { id } = z.object({ id: z.string().trim().max(64) }).parse(req.params);
+    const [campaign] = await db.select().from(telegramCampaigns).where(eq(telegramCampaigns.id, id)).limit(1);
+    if (!campaign) throw notFound("Không tìm thấy chiến dịch.");
+
+    const rows = await db
+      .select({ status: notificationJobs.status, n: count() })
+      .from(notificationJobs)
+      .where(eq(notificationJobs.campaignId, id))
+      .groupBy(notificationJobs.status);
+    const jobs: Record<string, number> = {
+      queued: 0,
+      sending: 0,
+      sent: 0,
+      failed: 0,
+      skipped: 0,
+      cancelled: 0,
+    };
+    for (const row of rows) jobs[row.status] = row.n;
+
+    const total = Object.values(jobs).reduce((sum, n) => sum + n, 0);
+    const done = jobs.sent + jobs.failed + jobs.skipped + jobs.cancelled;
+    // The delivery log holds the errors, so the admin sees why a send
+    // failed.
+    const errors = await db
+      .select({ error: notificationJobs.error, n: count() })
+      .from(notificationJobs)
+      .where(and(eq(notificationJobs.campaignId, id), eq(notificationJobs.status, "failed")))
+      .groupBy(notificationJobs.error)
+      .orderBy(desc(count()))
+      .limit(6);
+    return {
+      campaignId: id,
+      status: campaign.status,
+      scheduleStatus: campaign.scheduleStatus,
+      total,
+      ...jobs,
+      done,
+      pending: total - done,
+      percent: total ? Math.round((done / total) * 100) : 0,
+      errors: errors.map((e) => ({ error: e.error, n: e.n })),
+    };
   });
 
   /** Recent articles so the admin can pick content quickly. */

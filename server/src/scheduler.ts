@@ -12,8 +12,10 @@ import {
   telegramLinks,
   telegramSettings,
   telegramUsers,
+  telegramUserLinks,
+  telegramBots,
 } from "./db/schema.js";
-import { liveBots, pickBot } from "./telegram.js";
+import { liveBots } from "./telegram.js";
 
 /* ------------------------------------------------------------------ *
  * Frequency rules (hard limits — the admin cannot go beyond them)
@@ -414,6 +416,58 @@ export interface QueueResult {
 }
 
 /**
+ * The bots every person started on.
+ *
+ * The map is keyed by the Telegram id. Only the people with a known link
+ * are in it — the rest of the list has no reliable bot and is served by the
+ * fallback (B115).
+ */
+async function preferredBotsByUser(): Promise<Map<number, string[]>> {
+  const rows = await db
+    .select({
+      telegramId: telegramUsers.telegramId,
+      botId: telegramUserLinks.botId,
+    })
+    .from(telegramUserLinks)
+    .innerJoin(telegramUsers, eq(telegramUsers.id, telegramUserLinks.telegramId));
+  const map = new Map<number, string[]>();
+  for (const row of rows) {
+    const list = map.get(row.telegramId) ?? [];
+    list.push(row.botId);
+    map.set(row.telegramId, list);
+  }
+  return map;
+}
+
+/**
+ * The bot that should carry the message to one person.
+ *
+ * A bot that the person started on is the only safe choice, so it comes
+ * first. When nobody is known the live bots share the work in turn, so the
+ * whole fleet sends and no bot carries the whole campaign (B120).
+ */
+function pickBotFor(
+  telegramId: number,
+  bots: (typeof telegramBots.$inferSelect)[],
+  preferred: Map<number, string[]>,
+  nextRoundRobin: () => number,
+) {
+  const started = preferred.get(telegramId);
+  if (started?.length) {
+    // Only a bot that is alive and may send is of any use.
+    const usable = started
+      .map((id) => bots.find((b) => b.id === id))
+      .filter((b): b is (typeof telegramBots.$inferSelect) => Boolean(b));
+    if (usable.length) {
+      // The person may have started several bots — spread the load over them.
+      return usable[nextRoundRobin() % usable.length];
+    }
+  }
+  if (!bots.length) return null;
+  return bots[nextRoundRobin() % bots.length];
+}
+
+/**
  * Turn a campaign into jobs, honouring every frequency rule.
  * The bot only ever receives jobs that are allowed to be sent.
  */
@@ -457,6 +511,14 @@ export async function queueCampaign(campaignId: string, scheduledAt: Date): Prom
     );
   const alreadyQueued = new Set(existingJobs.map((j) => j.telegramId));
 
+  // The bots each person actually started on. A bot may only write to a user
+  // who pressed /start on that very bot, so this is the only reliable choice
+  // (B115).
+  const preferredBots = await preferredBotsByUser();
+  // Every live bot takes a share of the messages, so an emergency campaign
+  // really uses the whole fleet and not one bot (B120).
+  let roundRobin = 0;
+
   for (const target of targets) {
     if (alreadyQueued.has(target.telegramId)) {
       skipped += 1;
@@ -472,7 +534,7 @@ export async function queueCampaign(campaignId: string, scheduledAt: Date): Prom
         continue;
       }
     }
-    const bot = pickBot(bots);
+    const bot = pickBotFor(target.telegramId, bots, preferredBots, () => roundRobin++);
     const payload = await buildPayloadWithMedia(campaign, target.telegramId, media, messageText);
     rows.push({
       campaignId,
