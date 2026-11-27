@@ -1256,9 +1256,13 @@ b22c5f7 feat: scaffold new platform (đã thay thế — xoá ở bản Node.js)
     3/tuan, cach nhau 6 gio) va khung gio gui (08:00-22:00) -> gui ngay.
     POST /campaigns/:id/send dung new Date() thay vi nextAllowedTime().
   - targetType = "imported": lay tat ca dong trong telegram_users, loc theo
-    nhom trang thai (active/blocked/invalid/unknown) trong targetIds. Dung de
-    quet toan bo danh sach ID da nhap va phan loai bot/nguoi con song.
+    nhom trang thai (active/blocked/invalid/unknown) trong targetIds. RONG
+    targetIds = GUI TOI TOAN BO ID (khong loai ID nao, ke ca ID da bi
+    Telegram danh dau invalid/blocked — trang thai chi de thong ke).
   - GET /api/admin/telegram/ids/groups: breakdown so luong theo nhom + tong.
+  - POST /api/admin/telegram/ids/requeue: xoa job da xong roi tao lai job
+    moi giu nguyen payload (gui lai). ?onlyUndelivered=true => chi lai nhom
+    failed/skipped; mac dinh lai ca nhom da nhan tin roi.
   - Giao dien (AdminTelegram.tsx): nut tai media + chon media bai viet, o chon
     "Toan bo ID da nhap" kem chip chon nhom trang thai, checkbox
     "⚡ Gui khan cap", o dem so ID theo nhom trong tab Nhap ID.
@@ -1379,6 +1383,42 @@ khi moi tin xong. De xuat lo 100 job thi moi lo/giay.
   - BAI HOC MOI: B113 (gi do chay cua bot bi gioi han boi DO TRO Telegram
     (1-2 giay/tin) chu khong phai boi rate limit; nen tang song song va
     poll lien tuc, va KHONG nen tang rate per second vuot 30).
+
+--------------------------------------------------------------------------------
+2026-11-27 — B114: CHONG NHAN BAN JOB (scheduler queue lai moi phut)
+--------------------------------------------------------------------------------
+PHAT HIEN: sau khi chien dich chay xong, bang notification_jobs co 487.452
+job cho 61.097 id (101.330 cap trung). Nguyen nhan:
+  POST /api/admin/telegram/campaigns/:id/send dat scheduleStatus = 'active'.
+  Scheduler tick (MOI 60 GIAY) thay schedule='now' + scheduleStatus='active'
+  + scheduledAt <= now => goi queueCampaign() LAI => moi phung them 61.096
+  job. Chiến dịch chạy 45 phut => 8 lan queue => 487.452 job.
+
+  - server/drizzle/0014_campaign_last_queued.sql (MOI) + entry idx 14 trong
+    server/drizzle/meta/_journal.json (B93: file .sql moi PHAI co entry):
+      ALTER TABLE telegram_campaigns ADD COLUMN last_queued_at timestamptz;
+  - server/src/db/schema.ts: truong lastQueuedAt.
+  - server/src/scheduler.ts:
+      - queueCampaign() ghi lastQueuedAt = now().
+      - runSchedulerTick() BO QUA chien dich vua queue trong 60 giay qua
+        (cho ca lich 'now' va lich lap lai daily/weekly).
+  - server/src/routes/telegram.ts: /campaigns/:id/send dat scheduleStatus =
+    'done' thay vi 'active'.
+  - scripts/dedupe.sql (MOI): don job trung tren production —
+    giu job cu nhat cho moi (campaign_id, telegram_id), xoa job moi hon.
+    Da chay: 487.452 -> 122.195 job, 0 cap trung.
+  - Kiem chung tren production (script scripts/test-b114.mjs chay trong
+    container app):
+      lan 1: { queued: 61134, skipped: 0, skippedReasons: {} } 10089ms
+      sau khi scheduler chay lai 2 lan: { jobs: 61134, ids: 61134 }
+      tong so id trong danh sach: 61134
+    => KHONG ID NAO BI BO QUA va KHONG CO JOB NHAN BAN.
+  - Test: server 83/83 pass (them "does not queue the same campaign again
+    and again"), bot 63/63 pass, tsc server + bot sach.
+  - BAI HOC MOI: B114 (route "gui ngay" KHONG duoc de scheduleStatus =
+    'active'; scheduler phai co moc thoi gian de khong queue lai chien
+    dich da gui — dung last_queued_at chu khong dung updatedAt vi updatedAt
+    doi khi sua chien dich).
 
 ================================================================================
 Hết — lưu ý: không lưu mật khẩu / token thật trong file này.
