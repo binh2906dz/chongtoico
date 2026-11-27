@@ -919,9 +919,12 @@ export default async function telegramRoutes(app: FastifyInstance) {
     const scheduledAt = campaign.isEmergency ? new Date() : nextAllowedTime();
     const result = await queueCampaign(id, scheduledAt);
     if (result.queued > 0) {
+      // The campaign is marked as "done" for the scheduler. When it stayed
+      // "active", the scheduler queued the whole campaign again every
+      // minute and the list of jobs grew without end (B114).
       await db
         .update(telegramCampaigns)
-        .set({ status: "queued", scheduleStatus: "active", updatedAt: new Date() })
+        .set({ status: "queued", scheduleStatus: "done", updatedAt: new Date() })
         .where(eq(telegramCampaigns.id, id));
     }
     return { queued: result.queued, skipped: result.skipped, reasons: result.skippedReasons, scheduledAt };

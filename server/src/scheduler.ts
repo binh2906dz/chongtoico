@@ -496,7 +496,12 @@ export async function queueCampaign(campaignId: string, scheduledAt: Date): Prom
 
   await db
     .update(telegramCampaigns)
-    .set({ total: queued, status: queued > 0 ? "queued" : "done", updatedAt: new Date() })
+    .set({
+      total: queued,
+      status: queued > 0 ? "queued" : "done",
+      lastQueuedAt: new Date(),
+      updatedAt: new Date(),
+    })
     .where(eq(telegramCampaigns.id, campaignId));
 
   return { queued, skipped, skippedReasons };
@@ -543,6 +548,10 @@ export async function runSchedulerTick(): Promise<void> {
       );
 
     for (const campaign of due) {
+      // A campaign that was put into the queue a moment ago is not queued
+      // again. Without this the scheduler added the whole list of jobs every
+      // minute and the table grew without end (B114).
+      if (campaign.lastQueuedAt && campaign.lastQueuedAt.getTime() > now.getTime() - 60_000) continue;
       await queueCampaign(campaign.id, now);
       await db
         .update(telegramCampaigns)
@@ -576,6 +585,9 @@ export async function runSchedulerTick(): Promise<void> {
           ),
         );
       if ((already?.n ?? 0) > 0) continue;
+      // The same guard as above: a campaign that just went out is not sent
+      // again the next minute (B114).
+      if (campaign.lastQueuedAt && campaign.lastQueuedAt.getTime() > now.getTime() - 60_000) continue;
       await queueCampaign(campaign.id, now);
     }
 

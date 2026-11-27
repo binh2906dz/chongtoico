@@ -400,4 +400,32 @@ describe("Telegram scheduler and frequency limits", () => {
     assert.equal(jobs.length, 2);
     assert.ok(jobs.every((j) => j.status === "queued"));
   });
+
+  it("does not queue the same campaign again and again", async () => {
+    // The scheduler looks at "lastQueuedAt". Without it the whole list of
+    // jobs was added again every minute and the table grew without end
+    // (B114).
+    const { db } = await import("../src/db/index.js");
+    const { notificationJobs, telegramCampaigns } = await import("../src/db/schema.js");
+    await db
+      .insert(telegramCampaigns)
+      .values({
+        id: "cid-once",
+        name: "Chiến dịch một lần",
+        text: "x",
+        targetType: "imported",
+        schedule: "now",
+        scheduleStatus: "active",
+        scheduledAt: new Date(Date.now() - 60_000),
+        lastQueuedAt: new Date(),
+      })
+      .onConflictDoNothing();
+    await db.insert(telegramUsers).values({ telegramId: 830001, status: "unknown" }).onConflictDoNothing();
+
+    const { runSchedulerTick } = await import("../src/scheduler.js");
+    await runSchedulerTick();
+
+    const jobs = await db.select().from(notificationJobs).where(eq(notificationJobs.campaignId, "cid-once"));
+    assert.equal(jobs.length, 0, "Chiến dịch vừa queue xong không được queue lại.");
+  });
 });

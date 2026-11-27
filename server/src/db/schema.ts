@@ -737,6 +737,13 @@ export const telegramCampaigns = pgTable(
     dayOfWeek: integer("day_of_week"),
     /** "draft" | "queued" | "sending" | "done" | "cancelled" | "paused" */
     status: varchar("status", { length: 16 }).notNull().default("draft"),
+    /**
+     * The moment the campaign was put into the queue the last time.
+     *
+     * The scheduler looks at it so a campaign is not queued again every
+     * minute, which would multiply the jobs without end (B114).
+     */
+    lastQueuedAt: timestamp("last_queued_at", { withTimezone: true }),
     total: integer("total").notNull().default(0),
     sentCount: integer("sent_count").notNull().default(0),
     failedCount: integer("failed_count").notNull().default(0),
